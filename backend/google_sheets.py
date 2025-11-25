@@ -94,3 +94,64 @@ def get_sheet_id(sheet_name: str):
             return s["properties"]["sheetId"]
 
     raise Exception(f"Sheet {sheet_name} not found")
+
+# ----------------------------------------
+# TROUVER L’INDEX D’UN DOSSIER PAR "Dossier N"
+# ----------------------------------------
+def find_row_index(sheet_name: str, dossier_number: str):
+    df = load_sheet(sheet_name)
+    if "Dossier N" not in df.columns:
+        raise Exception("Colonne 'Dossier N' introuvable dans le fichier.")
+
+    matches = df.index[df["Dossier N"] == dossier_number].tolist()
+    return matches[0] if matches else None
+
+
+# ----------------------------------------
+# METTRE À JOUR UNE LIGNE COMPLÈTE
+# ----------------------------------------
+def update_row(sheet_name: str, row_index: int, row_data: list):
+    service = get_gsheet_service()
+
+    body = {"values": [row_data]}
+
+    service.spreadsheets().values().update(
+        spreadsheetId=FILE_ID,
+        range=f"{sheet_name}!A{row_index+2}",
+        valueInputOption="USER_ENTERED",
+        body=body
+    ).execute()
+
+
+# ----------------------------------------
+# SUPPRESSION SÉCURISÉE D’UNE LIGNE
+# ----------------------------------------
+def delete_row_safely(sheet_name: str, row_index: int):
+    service = get_gsheet_service()
+    sheet_id = get_sheet_id(sheet_name)
+
+    body = {
+        "requests": [{
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_index,
+                    "endIndex": row_index + 1
+                }
+            }
+        }]
+    }
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=FILE_ID,
+        body=body
+    ).execute()
+
+
+# ----------------------------------------
+# CONVERTIR UN DICTIONNAIRE EN LISTE POUR GSHEETS
+# ----------------------------------------
+def convert_df_to_row(df_row, columns):
+    return [df_row[col] if col in df_row else "" for col in columns]
+
