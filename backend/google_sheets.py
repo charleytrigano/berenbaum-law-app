@@ -209,5 +209,30 @@ def update_visa_row(row_index: int, row_data: list):
 def delete_visa_row(row_index: int):
     delete_row_safely("Visa", row_index)
 
+# --------------------------------------------------
+# COMPTA – Load
+# --------------------------------------------------
+def load_compta():
+    return load_sheet("ComptaCli")
+
+# --------------------------------------------------
+# COMPTA – Add
+# --------------------------------------------------
+def add_compta_entry(row_data: list):
+    append_row("ComptaCli", row_data)
+
+# --------------------------------------------------
+# COMPTA – Update row
+# --------------------------------------------------
+def update_compta_row(row_index: int, row_data: list):
+    update_row("ComptaCli", row_index, row_data)
+
+# --------------------------------------------------
+# COMPTA – Delete row
+# --------------------------------------------------
+def delete_compta_row(row_index: int):
+    delete_row_safely("ComptaCli", row_index)
+
+
 
 
