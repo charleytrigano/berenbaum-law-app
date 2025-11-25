@@ -155,3 +155,31 @@ def delete_row_safely(sheet_name: str, row_index: int):
 def convert_df_to_row(df_row, columns):
     return [df_row[col] if col in df_row else "" for col in columns]
 
+# --------------------------------------------------
+# ESCROW – Chargement complet
+# --------------------------------------------------
+def load_escrow():
+    return load_sheet("Escrow")
+
+
+# --------------------------------------------------
+# ESCROW – Ajouter un mouvement
+# --------------------------------------------------
+def add_escrow_entry(row_data: list):
+    append_row("Escrow", row_data)
+
+
+# --------------------------------------------------
+# ESCROW – Modifier un mouvement
+# --------------------------------------------------
+def update_escrow_row(row_index: int, row_data: list):
+    update_row("Escrow", row_index, row_data)
+
+
+# --------------------------------------------------
+# ESCROW – Supprimer un mouvement
+# --------------------------------------------------
+def delete_escrow_row(row_index: int):
+    delete_row_safely("Escrow", row_index)
+
+
