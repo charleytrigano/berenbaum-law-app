@@ -1,25 +1,30 @@
 import streamlit as st
-from backend.google_sheets import append_row
-from backend.google_sheets import load_sheet
+from backend.google_sheets import append_row, load_sheet
 from utils.config import SHEET_CLIENTS
 
 st.title("➕ Nouveau dossier")
 
 df = load_sheet(SHEET_CLIENTS)
+columns = df.columns.tolist()
 
-with st.form("new_dossier_form"):
-    col1, col2 = st.columns(2)
+st.subheader("Créer un dossier")
 
-    dossier_n = col1.text_input("Dossier N")
-    nom = col1.text_input("Nom")
-    date = col2.date_input("Date")
-    categorie = col2.text_input("Catégorie")
+with st.form("form_new_dossier"):
+    inputs = {}
 
-    submitted = st.form_submit_button("Créer")
+    for col in columns:
+        # Champs basiques
+        if "Date" in col:
+            inputs[col] = st.date_input(col)
+        elif "Montant" in col or "Acompte" in col:
+            inputs[col] = st.number_input(col, value=0.0)
+        else:
+            inputs[col] = st.text_input(col)
+
+    submitted = st.form_submit_button("Créer le dossier")
 
 if submitted:
-    if dossier_n.strip() == "" or nom.strip() == "":
-        st.error("Les champs obligatoires doivent être remplis.")
-    else:
-        append_row(SHEET_CLIENTS, [dossier_n, nom, str(date), categorie])
-        st.success("Dossier créé avec succès !")
+    row = [inputs[col] for col in columns]
+    append_row(SHEET_CLIENTS, row)
+    st.success("Dossier ajouté avec succès ! 🔥")
+    st.info("Actualisez la page Liste des dossiers pour voir la mise à jour.")
