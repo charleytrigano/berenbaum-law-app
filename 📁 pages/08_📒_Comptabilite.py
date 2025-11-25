@@ -85,3 +85,16 @@ op_delete = st.selectbox("Opération à supprimer :", df.index.tolist(), key="de
 if st.button("Supprimer définitivement"):
     delete_compta_row(op_delete)
     st.error("Opération supprimée ❗")
+
+st.markdown("---")
+st.subheader("💵 Solde par dossier")
+
+if "Dossier N" in df.columns and "Montant" in df.columns:
+    solde = df.groupby("Dossier N")["Montant"].sum()
+    st.write(solde)
+
+st.subheader("💰 Solde global")
+
+if "Montant" in df.columns:
+    st.metric("Solde total", f"{df['Montant'].sum():,.2f} USD")
+
