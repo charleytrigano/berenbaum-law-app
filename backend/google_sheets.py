@@ -182,4 +182,32 @@ def update_escrow_row(row_index: int, row_data: list):
 def delete_escrow_row(row_index: int):
     delete_row_safely("Escrow", row_index)
 
+# --------------------------------------------------
+# VISA – Charger l’onglet Visa
+# --------------------------------------------------
+def load_visa():
+    return load_sheet("Visa")
+
+
+# --------------------------------------------------
+# VISA – Ajouter une entrée
+# --------------------------------------------------
+def add_visa_entry(row_data: list):
+    append_row("Visa", row_data)
+
+
+# --------------------------------------------------
+# VISA – Modifier une ligne Visa
+# --------------------------------------------------
+def update_visa_row(row_index: int, row_data: list):
+    update_row("Visa", row_index, row_data)
+
+
+# --------------------------------------------------
+# VISA – Supprimer une ligne Visa
+# --------------------------------------------------
+def delete_visa_row(row_index: int):
+    delete_row_safely("Visa", row_index)
+
+
 
