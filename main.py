@@ -1,6 +1,5 @@
 import streamlit as st
-from backend.google_sheets import load_sheet
-from utils.config import SHEET_CLIENTS
+from components.database import load_database
 
 # ---------------------------------------------------
 # CONFIGURATION GÉNÉRALE
@@ -18,20 +17,20 @@ st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
 # ---------------------------------------------------
-# CHARGEMENT DES DONNÉES (Clients)
+# CHARGEMENT DES DONNÉES (Dropbox)
 # ---------------------------------------------------
 try:
-    df_clients = load_sheet(SHEET_CLIENTS)
-    st.success("Données chargées depuis Google Sheets ✔")
+    db = load_database()
+    st.success("Base de données chargée depuis Dropbox ✔")
 except Exception as e:
-    st.error(f"Erreur lors du chargement des données Google Sheets : {e}")
-    df_clients = None
+    st.error(f"Erreur lors du chargement de la base Dropbox : {e}")
+    db = None
 
 # ---------------------------------------------------
 # APERÇU DES DONNÉES
 # ---------------------------------------------------
-if df_clients is not None:
+if db and "Clients" in db:
     st.subheader("Aperçu des dossiers")
-    st.dataframe(df_clients, use_container_width=True)
+    st.dataframe(db["Clients"], use_container_width=True)
 else:
-    st.warning("Données non disponibles.")
+    st.warning("Aucun client trouvé dans la base de données.")
