@@ -1,238 +1,166 @@
+import json
 import pandas as pd
-from backend.google_auth import get_gsheet_service
-from utils.config import FILE_ID
+from components.dropbox_utils import download_from_dropbox, upload_bytes_to_dropbox
 
-# ------------------------------
-# CHARGEMENT D'UN ONGLET COMPLET
-# ------------------------------
+DB_PATH = "/berenbaum/database.json"
+
+# ----------------------------------------------
+# CHARGEMENT / SAUVEGARDE DE LA BASE
+# ----------------------------------------------
+
+def initialize_database():
+    default = {
+        "Escrow": [],
+        "Visa": [],
+        "ComptaCli": [],
+        "Clients": [],
+        "Dossiers": [],
+        "Documents": []
+    }
+    save_database(default)
+    return default
+
+def load_database():
+    """Charge database.json depuis Dropbox."""
+    try:
+        content = download_from_dropbox(DB_PATH)
+        return json.loads(content.decode("utf-8"))
+    except Exception:
+        return initialize_database()
+
+def save_database(db):
+    """Sauvegarde database.json dans Dropbox."""
+    content = json.dumps(db, indent=2).encode("utf-8")
+    upload_bytes_to_dropbox(content, DB_PATH)
+
+
+# ----------------------------------------------
+# UTILITAIRES DE TABLES
+# ----------------------------------------------
+
+def get_table(table_name: str) -> pd.DataFrame:
+    db = load_database()
+    if table_name not in db:
+        raise Exception(f"Table {table_name} introuvable.")
+    return pd.DataFrame(db[table_name])
+
+
+def save_table(table_name: str, df: pd.DataFrame):
+    db = load_database()
+    db[table_name] = df.to_dict(orient="records")
+    save_database(db)
+
+
+# ----------------------------------------------
+# LECTURE D'UNE "FEUILLE"
+# ----------------------------------------------
 
 def load_sheet(sheet_name: str) -> pd.DataFrame:
-    service = get_gsheet_service()
-    sheet = service.spreadsheets().values().get(
-        spreadsheetId=FILE_ID,
-        range=sheet_name
-    ).execute()
-
-    values = sheet.get("values", [])
-
-    if not values:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(values[1:], columns=values[0])
-    return df
+    return get_table(sheet_name)
 
 
-# ------------------------------
+# ----------------------------------------------
 # AJOUT D'UNE LIGNE
-# ------------------------------
+# ----------------------------------------------
 
 def append_row(sheet_name: str, row_data: list):
-    service = get_gsheet_service()
-    service.spreadsheets().values().append(
-        spreadsheetId=FILE_ID,
-        range=sheet_name,
-        valueInputOption="USER_ENTERED",
-        body={"values": [row_data]}
-    ).execute()
+    df = get_table(sheet_name)
+
+    # Si table vide → on crée les colonnes
+    if df.empty:
+        df = pd.DataFrame([row_data])
+    else:
+        df.loc[len(df)] = row_data
+
+    save_table(sheet_name, df)
 
 
-# ------------------------------
-# MISE À JOUR D'UNE CELLULE
-# ------------------------------
+# ----------------------------------------------
+# METTRE À JOUR UNE CELLULE
+# ----------------------------------------------
 
-def update_cell(sheet_name: str, cell_range: str, value):
-    service = get_gsheet_service()
-    body = {
-        "values": [[value]]
-    }
-    service.spreadsheets().values().update(
-        spreadsheetId=FILE_ID,
-        range=f"{sheet_name}!{cell_range}",
-        valueInputOption="USER_ENTERED",
-        body=body
-    ).execute()
+def update_cell(sheet_name: str, row_idx: int, col_idx: int, value):
+    df = get_table(sheet_name)
+    df.iat[row_idx, col_idx] = value
+    save_table(sheet_name, df)
 
 
-# ------------------------------
-# SUPPRESSION D'UNE LIGNE PAR INDEX
-# ------------------------------
+# ----------------------------------------------
+# SUPPRIMER UNE LIGNE PAR INDEX
+# ----------------------------------------------
 
 def delete_row(sheet_name: str, row_index: int):
-    service = get_gsheet_service()
-    body = {
-        "requests": [
-            {
-                "deleteDimension": {
-                    "range": {
-                        "sheetId": get_sheet_id(sheet_name),
-                        "dimension": "ROWS",
-                        "startIndex": row_index,
-                        "endIndex": row_index + 1
-                    }
-                }
-            }
-        ]
-    }
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=FILE_ID,
-        body=body
-    ).execute()
+    df = get_table(sheet_name)
+    df = df.drop(index=row_index).reset_index(drop=True)
+    save_table(sheet_name, df)
 
 
-# ------------------------------
-# RÉCUPÉRATION DU SHEET_ID
-# ------------------------------
+# ----------------------------------------------
+# TROUVER INDEX PAR VALEUR (ex : “Dossier N”)
+# ----------------------------------------------
 
-def get_sheet_id(sheet_name: str):
-    service = get_gsheet_service()
-    metadata = service.spreadsheets().get(spreadsheetId=FILE_ID).execute()
-    sheets = metadata.get("sheets", "")
-
-    for s in sheets:
-        title = s["properties"]["title"]
-        if title == sheet_name:
-            return s["properties"]["sheetId"]
-
-    raise Exception(f"Sheet {sheet_name} not found")
-
-# ----------------------------------------
-# TROUVER L’INDEX D’UN DOSSIER PAR "Dossier N"
-# ----------------------------------------
-def find_row_index(sheet_name: str, dossier_number: str):
+def find_row_index(sheet_name: str, column: str, value):
     df = load_sheet(sheet_name)
-    if "Dossier N" not in df.columns:
-        raise Exception("Colonne 'Dossier N' introuvable dans le fichier.")
-
-    matches = df.index[df["Dossier N"] == dossier_number].tolist()
+    matches = df.index[df[column] == value].tolist()
     return matches[0] if matches else None
 
 
-# ----------------------------------------
-# METTRE À JOUR UNE LIGNE COMPLÈTE
-# ----------------------------------------
+# ----------------------------------------------
+# METTRE À JOUR UNE LIGNE ENTIÈRE
+# ----------------------------------------------
+
 def update_row(sheet_name: str, row_index: int, row_data: list):
-    service = get_gsheet_service()
-
-    body = {"values": [row_data]}
-
-    service.spreadsheets().values().update(
-        spreadsheetId=FILE_ID,
-        range=f"{sheet_name}!A{row_index+2}",
-        valueInputOption="USER_ENTERED",
-        body=body
-    ).execute()
+    df = get_table(sheet_name)
+    df.loc[row_index] = row_data
+    save_table(sheet_name, df)
 
 
-# ----------------------------------------
-# SUPPRESSION SÉCURISÉE D’UNE LIGNE
-# ----------------------------------------
-def delete_row_safely(sheet_name: str, row_index: int):
-    service = get_gsheet_service()
-    sheet_id = get_sheet_id(sheet_name)
+# ----------------------------------------------
+# ESCROW
+# ----------------------------------------------
 
-    body = {
-        "requests": [{
-            "deleteDimension": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "dimension": "ROWS",
-                    "startIndex": row_index,
-                    "endIndex": row_index + 1
-                }
-            }
-        }]
-    }
-
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=FILE_ID,
-        body=body
-    ).execute()
-
-
-# ----------------------------------------
-# CONVERTIR UN DICTIONNAIRE EN LISTE POUR GSHEETS
-# ----------------------------------------
-def convert_df_to_row(df_row, columns):
-    return [df_row[col] if col in df_row else "" for col in columns]
-
-# --------------------------------------------------
-# ESCROW – Chargement complet
-# --------------------------------------------------
 def load_escrow():
     return load_sheet("Escrow")
 
-
-# --------------------------------------------------
-# ESCROW – Ajouter un mouvement
-# --------------------------------------------------
-def add_escrow_entry(row_data: list):
+def add_escrow_entry(row_data):
     append_row("Escrow", row_data)
 
-
-# --------------------------------------------------
-# ESCROW – Modifier un mouvement
-# --------------------------------------------------
-def update_escrow_row(row_index: int, row_data: list):
+def update_escrow_row(row_index, row_data):
     update_row("Escrow", row_index, row_data)
 
+def delete_escrow_row(row_index):
+    delete_row("Escrow", row_index)
 
-# --------------------------------------------------
-# ESCROW – Supprimer un mouvement
-# --------------------------------------------------
-def delete_escrow_row(row_index: int):
-    delete_row_safely("Escrow", row_index)
 
-# --------------------------------------------------
-# VISA – Charger l’onglet Visa
-# --------------------------------------------------
+# ----------------------------------------------
+# VISA
+# ----------------------------------------------
+
 def load_visa():
     return load_sheet("Visa")
 
-
-# --------------------------------------------------
-# VISA – Ajouter une entrée
-# --------------------------------------------------
-def add_visa_entry(row_data: list):
+def add_visa_entry(row_data):
     append_row("Visa", row_data)
 
-
-# --------------------------------------------------
-# VISA – Modifier une ligne Visa
-# --------------------------------------------------
-def update_visa_row(row_index: int, row_data: list):
+def update_visa_row(row_index, row_data):
     update_row("Visa", row_index, row_data)
 
+def delete_visa_row(row_index):
+    delete_row("Visa", row_index)
 
-# --------------------------------------------------
-# VISA – Supprimer une ligne Visa
-# --------------------------------------------------
-def delete_visa_row(row_index: int):
-    delete_row_safely("Visa", row_index)
 
-# --------------------------------------------------
-# COMPTA – Load
-# --------------------------------------------------
+# ----------------------------------------------
+# COMPTA
+# ----------------------------------------------
+
 def load_compta():
     return load_sheet("ComptaCli")
 
-# --------------------------------------------------
-# COMPTA – Add
-# --------------------------------------------------
-def add_compta_entry(row_data: list):
+def add_compta_entry(row_data):
     append_row("ComptaCli", row_data)
 
-# --------------------------------------------------
-# COMPTA – Update row
-# --------------------------------------------------
-def update_compta_row(row_index: int, row_data: list):
+def update_compta_row(row_index, row_data):
     update_row("ComptaCli", row_index, row_data)
 
-# --------------------------------------------------
-# COMPTA – Delete row
-# --------------------------------------------------
-def delete_compta_row(row_index: int):
-    delete_row_safely("ComptaCli", row_index)
-
-
-
-
+def delete_compta_row(row_index):
+    delete_row("ComptaCli", row_index)
