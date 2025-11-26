@@ -63,3 +63,20 @@ if fig_compta:
     colB.plotly_chart(fig_compta, use_container_width=True)
 else:
     colB.info("Aucune donnée comptable suffisante pour un graphe.")
+
+from components.database import load_database, save_database
+
+db = load_database()
+
+nouveau_client = {"id": 1, "nom": "TRIGANO", "prenom": "Charley"}
+db["clients"].append(nouveau_client)
+save_database(db)
+
+from components.dropbox_utils import upload_file_to_dropbox
+
+uploaded = st.file_uploader("Ajouter un document")
+
+if uploaded:
+    upload_file_to_dropbox(uploaded, f"/berenbaum/documents/{uploaded.name}")
+    st.success("Document enregistré !")
+
