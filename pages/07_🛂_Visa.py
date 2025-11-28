@@ -1,131 +1,170 @@
 import streamlit as st
+import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
-
-from datetime import datetime
-
-# ---------------------------------------------------
-# PAGE SETUP
-# ---------------------------------------------------
-st.set_page_config(page_title="Gestion Visa", page_icon="🛂", layout="wide")
-
 st.title("🛂 Gestion des dossiers Visa")
-st.write("Ajouter, modifier ou supprimer les dossiers liés aux visas.")
 
-# ---------------------------------------------------
-# LOAD DATABASE
-# ---------------------------------------------------
-db = load_database()
+# ---------------------------------------------------------
+# Conversion sécurisée pour les montants
+# ---------------------------------------------------------
+def safe_float(x, default=0.0):
+    try:
+        if x is None:
+            return default
+        if isinstance(x, (int, float)):
+            return float(x)
+        x = str(x).replace(",", ".").strip()
+        return float(x) if x != "" else default
+    except:
+        return default
 
-if "visa" not in db:
-    db["visa"] = []
+# ---------------------------------------------------------
+# Charger base Dropbox
+# ---------------------------------------------------------
+try:
+    db = load_database()
+except:
+    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-visa_list = db["visa"]
+visa_entries = db.get("visa", [])
 
-# ---------------------------------------------------
-# AFFICHAGE DES DONNÉES
-# ---------------------------------------------------
+# ---------------------------------------------------------
+# Tableau de bord
+# ---------------------------------------------------------
 st.subheader("📋 Liste des dossiers Visa")
 
-if len(visa_list) > 0:
-    st.dataframe(visa_list, use_container_width=True)
+if visa_entries:
+    df = pd.DataFrame(visa_entries)
 else:
-    st.info("Aucun dossier Visa enregistré.")
+    df = pd.DataFrame(columns=[
+        "Dossier N", "Nom", "Type Visa", "Statut", "Frais USCIS", 
+        "Frais Cabinet", "Date Soumission", "Commentaires"
+    ])
+
+st.dataframe(df, use_container_width=True, height=350)
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# FORMULAIRE AJOUT / MODIFICATION
-# ---------------------------------------------------
-st.subheader("➕ Ajouter / Modifier un dossier Visa")
-
-# Liste des clients existants
-clients = db.get("clients", [])
-dossiers = [c["Dossier N"] for c in clients] if clients else []
+# ---------------------------------------------------------
+# AJOUTER UN DOSSIER VISA
+# ---------------------------------------------------------
+st.subheader("➕ Ajouter un dossier Visa")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    mode = st.radio("Mode", ["Ajouter", "Modifier"])
+    dnum = st.text_input("Dossier N")
+    nom = st.text_input("Nom")
+    type_visa = st.selectbox("Type de Visa", [
+        "I-130", "I-140", "I-485", "I-765", "I-131",
+        "EB1", "EB2", "EB3", "H-1B", "O-1", "E-2", "F-1", "Autre"
+    ], index=0)
 
 with col2:
-    selected_index = None
-    if mode == "Modifier" and len(visa_list) > 0:
-        selected_index = st.selectbox(
-            "Sélectionner un dossier à modifier",
-            list(range(len(visa_list)))
-        )
+    frais_uscis = st.number_input("Frais USCIS ($)", min_value=0.0, format="%.2f")
+    frais_cabinet = st.number_input("Frais Cabinet ($)", min_value=0.0, format="%.2f")
+    date_soumission = st.date_input("Date de soumission", format="YYYY-MM-DD")
 
-# Pré-remplissage
-if mode == "Modifier" and selected_index is not None:
-    entry = visa_list[selected_index]
-else:
-    entry = {
-        "Dossier N": "",
-        "Nom": "",
-        "Type Visa": "",
-        "Date": "",
-        "Statut": "",
-        "Commentaires": ""
+commentaires = st.text_area("Commentaires")
+
+if st.button("Ajouter le dossier Visa", type="primary"):
+    new_entry = {
+        "Dossier N": dnum,
+        "Nom": nom,
+        "Type Visa": type_visa,
+        "Statut": "En cours",
+        "Frais USCIS": frais_uscis,
+        "Frais Cabinet": frais_cabinet,
+        "Date Soumission": str(date_soumission),
+        "Commentaires": commentaires
     }
-
-# Champs
-colA, colB = st.columns(2)
-
-with colA:
-    dossier = st.selectbox(
-        "📁 Dossier N",
-        dossiers,
-        index=dossiers.index(entry["Dossier N"]) if entry["Dossier N"] in dossiers else 0
-    )
-    nom = st.text_input("Nom", entry.get("Nom", ""))
-
-with colB:
-    type_visa = st.text_input("Type de Visa", entry.get("Type Visa", ""))
-    statut = st.selectbox(
-        "Statut",
-        ["En cours", "Soumis", "Accepté", "Refusé"],
-        index=["En cours", "Soumis", "Accepté", "Refusé"].index(entry.get("Statut", "En cours"))
-    )
-
-date = st.date_input(
-    "Date",
-    datetime.fromisoformat(entry["Date"]) if entry.get("Date") else datetime.now()
-)
-
-commentaires = st.text_area("Commentaires", entry.get("Commentaires", ""))
+    visa_entries.append(new_entry)
+    db["visa"] = visa_entries
+    save_database(db)
+    st.success("Dossier Visa ajouté ✔")
+    st.balloons()
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# BOUTONS ACTION
-# ---------------------------------------------------
-colSave, colDelete = st.columns([1, 1])
+# ---------------------------------------------------------
+# MODIFIER / SUPPRIMER UN DOSSIER VISA
+# ---------------------------------------------------------
+st.subheader("✏️ Modifier un dossier Visa")
 
-with colSave:
-    if st.button("💾 Enregistrer", type="primary"):
-        new_entry = {
-            "Dossier N": dossier,
-            "Nom": nom,
-            "Type Visa": type_visa,
-            "Date": str(date),
-            "Statut": statut,
-            "Commentaires": commentaires
-        }
+if not visa_entries:
+    st.info("Aucun dossier Visa à modifier.")
+    st.stop()
 
-        if mode == "Ajouter":
-            db["visa"].append(new_entry)
-            st.success("✔️ Dossier Visa ajouté.")
-        else:
-            db["visa"][selected_index] = new_entry
-            st.success("✔️ Dossier Visa modifié.")
+# Liste déroulante
+liste = [
+    f"{v.get('Dossier N', '')} - {v.get('Nom', '')} ({v.get('Type Visa', '')})"
+    for v in visa_entries
+]
+selection = st.selectbox("Choisir un dossier", liste)
 
-        save_database(db)
-        st.balloons()
+index = liste.index(selection)
+entry = visa_entries[index]
 
-with colDelete:
-    if mode == "Modifier" and st.button("🗑️ Supprimer ce dossier"):
-        del db["visa"][selected_index]
-        save_database(db)
-        st.warning("❌ Dossier Visa supprimé.")
-        st.balloons()
+# Statuts autorisés
+STATUTS = ["En cours", "Soumis", "Accepté", "Refusé"]
+
+# Statut actuel sécurisé
+statut_actuel = entry.get("Statut", "En cours")
+if statut_actuel not in STATUTS:
+    statut_actuel = "En cours"
+index_statut = STATUTS.index(statut_actuel)
+
+colA, colB = st.columns(2)
+
+with colA:
+    mod_dnum = st.text_input("Dossier N", value=str(entry.get("Dossier N", "")))
+    mod_nom = st.text_input("Nom", value=str(entry.get("Nom", "")))
+
+    mod_type_visa = st.selectbox(
+        "Type Visa",
+        ["I-130", "I-140", "I-485", "I-765", "I-131", 
+         "EB1", "EB2", "EB3", "H-1B", "O-1", "E-2", "F-1", "Autre"],
+        index=0
+    )
+
+with colB:
+    mod_statut = st.selectbox("Statut", STATUTS, index=index_statut)
+    mod_frais_uscis = st.number_input(
+        "Frais USCIS ($)", 
+        value=safe_float(entry.get("Frais USCIS", 0)),
+        format="%.2f"
+    )
+    mod_frais_cabinet = st.number_input(
+        "Frais Cabinet ($)",
+        value=safe_float(entry.get("Frais Cabinet", 0)),
+        format="%.2f"
+    )
+
+mod_date = st.text_input("Date Soumission", value=str(entry.get("Date Soumission", "")))
+mod_comment = st.text_area("Commentaires", value=str(entry.get("Commentaires", "")))
+
+if st.button("💾 Enregistrer les modifications"):
+    visa_entries[index] = {
+        "Dossier N": mod_dnum,
+        "Nom": mod_nom,
+        "Type Visa": mod_type_visa,
+        "Statut": mod_statut,
+        "Frais USCIS": mod_frais_uscis,
+        "Frais Cabinet": mod_frais_cabinet,
+        "Date Soumission": mod_date,
+        "Commentaires": mod_comment
+    }
+    db["visa"] = visa_entries
+    save_database(db)
+    st.success("Dossier Visa mis à jour ✔")
+
+# ---------------------------------------------------------
+# SUPPRESSION
+# ---------------------------------------------------------
+st.markdown("---")
+
+if st.button("🗑️ Supprimer ce dossier Visa"):
+    del visa_entries[index]
+    db["visa"] = visa_entries
+    save_database(db)
+    st.success("Dossier supprimé ✔")
