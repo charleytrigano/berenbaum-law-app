@@ -1,6 +1,7 @@
 import streamlit as st
 from backend.dropbox_utils import load_database, save_database
 
+
 from utils.config import SHEET_CLIENTS
 
 st.title("👥 Suivi clients")
