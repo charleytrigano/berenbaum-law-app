@@ -1,131 +1,138 @@
 import streamlit as st
+import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
-from datetime import datetime
+st.title("💰 Escrow – Suivi des mouvements")
 
-# ---------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------
-st.set_page_config(
-    page_title="Gestion Escrow",
-    page_icon="💰",
-    layout="wide"
-)
+# ---------------------------------------------------------
+# Safe conversion (évite float("") et autres erreurs)
+# ---------------------------------------------------------
+def safe_float(x, default=0.0):
+    try:
+        if x is None:
+            return default
+        if isinstance(x, (int, float)):
+            return float(x)
+        x = str(x).replace(",", ".").strip()
+        return float(x) if x != "" else default
+    except:
+        return default
 
-st.title("💰 Gestion Escrow")
-st.write("Suivez les mouvements financiers liés aux dossiers.")
+# ---------------------------------------------------------
+# Chargement base Dropbox
+# ---------------------------------------------------------
+try:
+    db = load_database()
+except:
+    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-# ---------------------------------------------------
-# LOAD DATABASE
-# ---------------------------------------------------
-db = load_database()
+escrow = db.get("escrow", [])
 
-if "escrow" not in db:
-    db["escrow"] = []
+# ---------------------------------------------------------
+# Tableau Escrow
+# ---------------------------------------------------------
+st.subheader("📊 Mouvements Escrow")
 
-escrows = db["escrow"]
-
-# ---------------------------------------------------
-# AFFICHAGE TABLEAU
-# ---------------------------------------------------
-st.subheader("📋 Mouvements Escrow")
-
-if len(escrows) > 0:
-    st.dataframe(escrows, use_container_width=True)
+if escrow:
+    df = pd.DataFrame(escrow)
 else:
-    st.info("Aucun mouvement Escrow enregistré.")
+    df = pd.DataFrame(columns=["Dossier N", "Nom", "Montant", "Date envoi", "État", "Date réclamation"])
+
+st.dataframe(df, use_container_width=True, height=350)
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# FORMULAIRE AJOUT / MODIFICATION
-# ---------------------------------------------------
-st.subheader("➕ Ajouter / Modifier un mouvement")
 
-# Liste des dossiers existants pour sélection
-clients_list = [c["Dossier N"] for c in db.get("clients", [])]
+# ---------------------------------------------------------
+# AJOUTER UN NOUVEAU MOUVEMENT
+# ---------------------------------------------------------
+
+st.subheader("➕ Ajouter un mouvement Escrow")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    selected_mode = st.radio("Mode", ["Ajouter", "Modifier"])
+    dossier_num = st.text_input("Dossier N")
+    nom = st.text_input("Nom")
+    montant = st.number_input("Montant (USD)", min_value=0.0, format="%.2f")
 
 with col2:
-    selected_index = None
-    if selected_mode == "Modifier" and len(escrows) > 0:
-        selected_index = st.selectbox(
-            "Sélectionnez un mouvement à modifier",
-            list(range(len(escrows)))
-        )
+    date_envoi = st.date_input("Date envoi", format="YYYY-MM-DD")
+    etat = st.selectbox("État", ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"])
+    date_reclamation = st.date_input("Date réclamation", format="YYYY-MM-DD")
 
-# Pré-remplissage si modification
-if selected_mode == "Modifier" and selected_index is not None:
-    entry = escrows[selected_index]
-else:
-    entry = {
-        "Dossier N": "",
-        "Nom": "",
-        "Montant": "",
-        "Date envoi": "",
-        "État": "",
-        "Date réclamation": ""
+if st.button("Ajouter à Escrow", type="primary"):
+    nouveau = {
+        "Dossier N": dossier_num,
+        "Nom": nom,
+        "Montant": montant,
+        "Date envoi": str(date_envoi),
+        "État": etat,
+        "Date réclamation": str(date_reclamation)
     }
-
-# FORM
-colA, colB = st.columns(2)
-
-with colA:
-    dossier = st.selectbox("📁 Dossier N", clients_list, index=clients_list.index(entry["Dossier N"]) if entry["Dossier N"] in clients_list else 0)
-    nom = st.text_input("Nom", entry.get("Nom", ""))
-
-with colB:
-    montant = st.number_input("Montant (USD)", min_value=0.0, value=float(entry.get("Montant", 0)), format="%.2f")
-
-date_envoi = st.date_input(
-    "Date envoi",
-    datetime.fromisoformat(entry["Date envoi"]) if entry.get("Date envoi") else datetime.now()
-)
-
-etat = st.selectbox("État", ["En attente", "Envoyé", "Accepté", "Refusé"], index=["En attente", "Envoyé", "Accepté", "Refusé"].index(entry.get("État", "En attente")))
-
-date_reclamation = st.date_input(
-    "Date réclamation",
-    datetime.fromisoformat(entry["Date réclamation"]) if entry.get("Date réclamation") else datetime.now()
-)
+    escrow.append(nouveau)
+    db["escrow"] = escrow
+    save_database(db)
+    st.success("Mouvement ajouté ✔")
+    st.balloons()
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# BOUTONS D’ACTION
-# ---------------------------------------------------
-colSave, colDelete = st.columns([1, 1])
 
-with colSave:
-    if st.button("💾 Enregistrer", type="primary"):
-        new_entry = {
-            "Dossier N": dossier,
-            "Nom": nom,
-            "Montant": montant,
-            "Date envoi": str(date_envoi),
-            "État": etat,
-            "Date réclamation": str(date_reclamation)
-        }
+# ---------------------------------------------------------
+# MODIFIER / SUPPRIMER UN MOUVEMENT EXISTANT
+# ---------------------------------------------------------
 
-        if selected_mode == "Ajouter":
-            db["escrow"].append(new_entry)
-            st.success("✔️ Mouvement ajouté avec succès.")
+st.subheader("✏️ Modifier un mouvement existant")
 
-        else:
-            db["escrow"][selected_index] = new_entry
-            st.success("✔️ Mouvement modifié avec succès.")
+if not escrow:
+    st.info("Aucun mouvement à modifier.")
+    st.stop()
 
-        save_database(db)
-        st.balloons()
+liste = [f"{e.get('Dossier N', '')} - {e.get('Nom', '')} - {safe_float(e.get('Montant', 0))}$" for e in escrow]
+selection = st.selectbox("Choisir un mouvement", liste)
 
-with colDelete:
-    if selected_mode == "Modifier":
-        if st.button("🗑️ Supprimer ce mouvement"):
-            del db["escrow"][selected_index]
-            save_database(db)
-            st.warning("❌ Mouvement supprimé.")
-            st.balloons()
+index = liste.index(selection)
+entry = escrow[index]
+
+colA, colB = st.columns(2)
+
+with colA:
+    mod_dossier = st.text_input("Dossier N", value=str(entry.get("Dossier N", "")))
+    mod_nom = st.text_input("Nom", value=str(entry.get("Nom", "")))
+    mod_montant = st.number_input(
+        "Montant (USD)", 
+        min_value=0.0,
+        value=safe_float(entry.get("Montant")),
+        format="%.2f"
+    )
+
+with colB:
+    mod_date_envoi = st.text_input("Date envoi", value=str(entry.get("Date envoi", "")))
+    mod_etat = st.selectbox("État", ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"], index=0)
+    mod_date_reclam = st.text_input("Date réclamation", value=str(entry.get("Date réclamation", "")))
+
+
+if st.button("💾 Enregistrer les modifications"):
+    escrow[index] = {
+        "Dossier N": mod_dossier,
+        "Nom": mod_nom,
+        "Montant": mod_montant,
+        "Date envoi": mod_date_envoi,
+        "État": mod_etat,
+        "Date réclamation": mod_date_reclam
+    }
+    db["escrow"] = escrow
+    save_database(db)
+    st.success("Modification enregistrée ✔")
+
+
+# ---------------------------------------------------------
+# SUPPRESSION
+# ---------------------------------------------------------
+
+if st.button("🗑️ Supprimer ce mouvement"):
+    del escrow[index]
+    db["escrow"] = escrow
+    save_database(db)
+    st.success("Mouvement supprimé ✔")
