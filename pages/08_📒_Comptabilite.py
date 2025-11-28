@@ -1,149 +1,166 @@
 import streamlit as st
+import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
+st.title("📒 Comptabilité – Gestion des mouvements financiers")
 
-from datetime import datetime
-import pandas as pd
+# ---------------------------------------------------------
+# Fonction sécurisée de conversion montant
+# ---------------------------------------------------------
+def safe_float(x, default=0.0):
+    """
+    Convertit proprement n'importe quelle valeur Excel/JSON en float.
+    Évite les crashs sur "", None, "N/A", "—", etc.
+    """
+    try:
+        if x is None:
+            return default
+        if isinstance(x, (int, float)):
+            return float(x)
 
-# ---------------------------------------------------
-# PAGE SETUP
-# ---------------------------------------------------
-st.set_page_config(page_title="Comptabilité Clients", page_icon="📒", layout="wide")
+        x = str(x).replace(",", ".").strip()
 
-st.title("📒 Comptabilité – Berenbaum Law")
-st.write("Suivi des paiements, honoraires et mouvements financiers clients.")
+        if x == "":
+            return default
 
-# ---------------------------------------------------
-# LOAD DATABASE
-# ---------------------------------------------------
-db = load_database()
+        return float(x)
+    except:
+        return default
 
-if "compta" not in db:
-    db["compta"] = []
+# ---------------------------------------------------------
+# Charger base Dropbox
+# ---------------------------------------------------------
+try:
+    db = load_database()
+except:
+    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-compta_list = db["compta"]
+compta_entries = db.get("compta", [])
 
-# ---------------------------------------------------
-# AFFICHAGE TABLEAU
-# ---------------------------------------------------
-st.subheader("📋 Liste des mouvements comptables")
+# ---------------------------------------------------------
+# Tableau principal
+# ---------------------------------------------------------
+st.subheader("📌 Liste des opérations comptables")
 
-if len(compta_list) > 0:
-    df_compta = pd.DataFrame(compta_list)
-    st.dataframe(df_compta, use_container_width=True)
+if compta_entries:
+    df = pd.DataFrame(compta_entries)
 else:
-    st.info("Aucune donnée comptable enregistrée.")
+    df = pd.DataFrame(columns=[
+        "Date", "Type", "Dossier N", "Nom", 
+        "Montant", "Mode Paiement", "Catégorie", "Commentaires"
+    ])
+
+st.dataframe(df, use_container_width=True, height=350)
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# INDICATEURS
-# ---------------------------------------------------
-st.subheader("📊 Indicateurs comptables")
+# ---------------------------------------------------------
+# AJOUTER une opération comptable
+# ---------------------------------------------------------
+st.subheader("➕ Ajouter une opération")
 
-if len(compta_list) > 0:
-    df_compta["Montant"] = pd.to_numeric(df_compta["Montant"], errors="coerce").fillna(0)
-
-    total_global = df_compta["Montant"].sum()
-    mois = datetime.now().strftime("%Y-%m")
-
-    df_compta["Mois"] = df_compta["Date"].str.slice(0, 7)
-    total_mensuel = df_compta[df_compta["Mois"] == mois]["Montant"].sum()
-else:
-    total_global = 0
-    total_mensuel = 0
-
-colA, colB = st.columns(2)
-colA.metric("Total global", f"${total_global:,.2f}")
-colB.metric("Total du mois", f"${total_mensuel:,.2f}")
-
-st.markdown("---")
-
-# ---------------------------------------------------
-# FORMULAIRE AJOUT / MODIFICATION
-# ---------------------------------------------------
-st.subheader("➕ Ajouter / Modifier un mouvement")
-
-# Liste des clients existants
-clients = db.get("clients", [])
-dossiers = [c["Dossier N"] for c in clients] if clients else []
-
-mode = st.radio("Mode", ["Ajouter", "Modifier"])
-
-selected_index = None
-if mode == "Modifier" and len(compta_list) > 0:
-    selected_index = st.selectbox("Sélectionner un mouvement", list(range(len(compta_list))))
-
-# Pré-remplissage
-if mode == "Modifier" and selected_index is not None:
-    entry = compta_list[selected_index]
-else:
-    entry = {
-        "Dossier N": "",
-        "Nom": "",
-        "Date": "",
-        "Montant": "",
-        "Type": "",
-        "Commentaires": ""
-    }
-
-# FORMULAIRE
 col1, col2 = st.columns(2)
 
 with col1:
-    dossier = st.selectbox(
-        "📁 Dossier N",
-        dossiers,
-        index=dossiers.index(entry["Dossier N"]) if entry["Dossier N"] in dossiers else 0
-    )
-    nom = st.text_input("Nom", entry.get("Nom", ""))
+    date_op = st.date_input("Date de l'opération")
+    type_op = st.selectbox("Type d'opération", ["Encaissement", "Décaissement"])
+    dossier_num = st.text_input("Dossier N")
+    nom = st.text_input("Nom du client")
 
 with col2:
-    montant = st.number_input("Montant (USD)", value=float(entry.get("Montant", 0)), format="%.2f")
-    type_op = st.selectbox(
-        "Type d'opération",
-        ["Honoraires", "Acompte", "Frais", "Remboursement", "Autre"],
-        index=["Honoraires", "Acompte", "Frais", "Remboursement", "Autre"].index(entry.get("Type", "Honoraires"))
-    )
+    montant = st.number_input("Montant (USD)", min_value=0.0, format="%.2f")
+    mode = st.selectbox("Mode de paiement", ["Virement", "Carte", "Espèces", "Chèque", "Autre"])
+    categorie = st.text_input("Catégorie")
 
-date = st.date_input(
-    "Date",
-    datetime.fromisoformat(entry["Date"]) if entry.get("Date") else datetime.now()
-)
+comment = st.text_area("Commentaires")
 
-comment = st.text_area("Commentaires", entry.get("Commentaires", ""))
+if st.button("Ajouter l'opération", type="primary"):
+    new_entry = {
+        "Date": str(date_op),
+        "Type": type_op,
+        "Dossier N": dossier_num,
+        "Nom": nom,
+        "Montant": montant,
+        "Mode Paiement": mode,
+        "Catégorie": categorie,
+        "Commentaires": comment
+    }
+    compta_entries.append(new_entry)
+    db["compta"] = compta_entries
+    save_database(db)
+    st.success("Opération ajoutée ✔")
+    st.balloons()
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# BOUTONS ACTION
-# ---------------------------------------------------
-colSave, colDelete = st.columns([1, 1])
+# ---------------------------------------------------------
+# MODIFIER une opération existante
+# ---------------------------------------------------------
+st.subheader("✏️ Modifier une opération")
 
-with colSave:
-    if st.button("💾 Enregistrer", type="primary"):
-        new_entry = {
-            "Dossier N": dossier,
-            "Nom": nom,
-            "Date": str(date),
-            "Montant": montant,
-            "Type": type_op,
-            "Commentaires": comment
-        }
+if not compta_entries:
+    st.info("Aucune opération à modifier.")
+    st.stop()
 
-        if mode == "Ajouter":
-            db["compta"].append(new_entry)
-            st.success("✔️ Mouvement ajouté.")
-        else:
-            db["compta"][selected_index] = new_entry
-            st.success("✔️ Mouvement modifié.")
+liste = [
+    f"{c.get('Date', '')} – {c.get('Nom', '')} – ${c.get('Montant', '')}"
+    for c in compta_entries
+]
 
-        save_database(db)
-        st.balloons()
+selection = st.selectbox("Sélectionner une opération", liste)
 
-with colDelete:
-    if mode == "Modifier" and st.button("🗑️ Supprimer ce mouvement"):
-        del db["compta"][selected_index]
-        save_database(db)
-        st.warning("❌ Mouvement supprimé.")
-        st.balloons()
+index = liste.index(selection)
+entry = compta_entries[index]
+
+colA, colB = st.columns(2)
+
+with colA:
+    mod_date = st.text_input("Date", value=str(entry.get("Date", "")))
+    mod_type = st.selectbox(
+        "Type",
+        ["Encaissement", "Décaissement"],
+        index=["Encaissement", "Décaissement"].index(entry.get("Type", "Encaissement"))
+    )
+    mod_dossier = st.text_input("Dossier N", value=str(entry.get("Dossier N", "")))
+    mod_nom = st.text_input("Nom", value=str(entry.get("Nom", "")))
+
+with colB:
+    mod_montant = st.number_input(
+        "Montant (USD)",
+        value=safe_float(entry.get("Montant", 0)),
+        format="%.2f"
+    )
+    mod_mode = st.selectbox(
+        "Mode Paiement",
+        ["Virement", "Carte", "Espèces", "Chèque", "Autre"],
+        index=0
+    )
+    mod_categorie = st.text_input("Catégorie", value=str(entry.get("Catégorie", "")))
+
+mod_comment = st.text_area("Commentaires", value=str(entry.get("Commentaires", "")))
+
+if st.button("💾 Enregistrer les modifications"):
+    compta_entries[index] = {
+        "Date": mod_date,
+        "Type": mod_type,
+        "Dossier N": mod_dossier,
+        "Nom": mod_nom,
+        "Montant": mod_montant,
+        "Mode Paiement": mod_mode,
+        "Catégorie": mod_categorie,
+        "Commentaires": mod_comment
+    }
+    db["compta"] = compta_entries
+    save_database(db)
+    st.success("Opération mise à jour ✔")
+
+st.markdown("---")
+
+# ---------------------------------------------------------
+# SUPPRIMER une opération
+# ---------------------------------------------------------
+if st.button("🗑️ Supprimer cette opération"):
+    del compta_entries[index]
+    db["compta"] = compta_entries
+    save_database(db)
+    st.success("Opération supprimée ✔")
