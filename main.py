@@ -1,48 +1,22 @@
 import streamlit as st
-from components.database import load_database
+from backend.dropbox_utils import load_database, save_database
 
-# ---------------------------------------------------
-# CONFIGURATION GÉNÉRALE
-# ---------------------------------------------------
-st.set_page_config(
-    page_title="Berenbaum Law App",
-    page_icon="📁",
-    layout="wide"
-)
+st.set_page_config(page_title="Berenbaum Law App", page_icon="📁", layout="wide")
 
-# ---------------------------------------------------
-# TITRE & HEADER
-# ---------------------------------------------------
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
-# ---------------------------------------------------
-# CHARGEMENT DES DONNÉES (Dropbox)
-# ---------------------------------------------------
+# Charger la base depuis Dropbox
 try:
     db = load_database()
     st.success("Base de données chargée depuis Dropbox ✔")
 except Exception as e:
-    st.error(f"Erreur lors du chargement de la base Dropbox : {e}")
-    db = None
+    st.error(f"Erreur lors du chargement de Dropbox : {e}")
+    db = {"clients": []}
 
-# ---------------------------------------------------
-# APERÇU DES DONNÉES
-# ---------------------------------------------------
-if db and "Clients" in db:
-    st.subheader("Aperçu des dossiers")
-    st.dataframe(db["Clients"], use_container_width=True)
+# Aperçu
+st.subheader("Aperçu des dossiers")
+if "clients" in db and len(db["clients"]) > 0:
+    st.dataframe(db["clients"], use_container_width=True)
 else:
     st.warning("Aucun client trouvé dans la base de données.")
-
-from backend.dropbox_utils import load_database, save_database
-
-st.subheader("Test Dropbox")
-
-data = load_database()
-st.json(data)
-
-if st.button("➕ Ajouter un client test"):
-    data["clients"].append({"nom": "Test", "date": "2024"})
-    save_database(data)
-
