@@ -2,6 +2,7 @@ import streamlit as st
 from backend.dropbox_utils import load_database, save_database
 
 st.set_page_config(page_title="Berenbaum Law App", page_icon="📁", layout="wide")
+st.write("DEBUG SECRETS:", st.secrets)
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
