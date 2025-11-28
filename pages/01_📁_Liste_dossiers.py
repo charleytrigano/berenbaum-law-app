@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from components.database import load_database
+from backend.dropbox_utils import load_database, save_database
+
 
 # ---------------------------------------------------
 # PAGE SETUP
