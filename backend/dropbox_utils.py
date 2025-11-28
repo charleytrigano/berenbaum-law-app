@@ -5,8 +5,7 @@ from utils.config import DROPBOX_TOKEN, DROPBOX_FILE_PATH
 
 def _get_dbx():
     """Retourne un client Dropbox authentifié."""
-    token = st.secrets["DROPBOX_TOKEN"]
-    return dropbox.Dropbox(token)
+    return dropbox.Dropbox(DROPBOX_TOKEN)
 
 def load_database():
     """Charge le fichier JSON depuis Dropbox."""
