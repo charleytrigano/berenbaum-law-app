@@ -5,7 +5,7 @@ from backend.dropbox_utils import load_database, save_database
 st.title("💰 Escrow – Suivi des mouvements")
 
 # ---------------------------------------------------------
-# Safe conversion (évite float("") et autres erreurs)
+# Safe conversion pour éviter float("") et autres erreurs
 # ---------------------------------------------------------
 def safe_float(x, default=0.0):
     try:
@@ -18,8 +18,9 @@ def safe_float(x, default=0.0):
     except:
         return default
 
+
 # ---------------------------------------------------------
-# Chargement base Dropbox
+# Chargement de la base depuis Dropbox
 # ---------------------------------------------------------
 try:
     db = load_database()
@@ -27,6 +28,7 @@ except:
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
 escrow = db.get("escrow", [])
+
 
 # ---------------------------------------------------------
 # Tableau Escrow
@@ -46,7 +48,6 @@ st.markdown("---")
 # ---------------------------------------------------------
 # AJOUTER UN NOUVEAU MOUVEMENT
 # ---------------------------------------------------------
-
 st.subheader("➕ Ajouter un mouvement Escrow")
 
 col1, col2 = st.columns(2)
@@ -58,7 +59,8 @@ with col1:
 
 with col2:
     date_envoi = st.date_input("Date envoi", format="YYYY-MM-DD")
-    etat = st.selectbox("État", ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"])
+    etats = ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"]
+    etat = st.selectbox("État", etats)
     date_reclamation = st.date_input("Date réclamation", format="YYYY-MM-DD")
 
 if st.button("Ajouter à Escrow", type="primary"):
@@ -80,28 +82,34 @@ st.markdown("---")
 
 
 # ---------------------------------------------------------
-# MODIFIER / SUPPRIMER UN MOUVEMENT EXISTANT
+# MODIFIER / SUPPRIMER UN MOUVEMENT
 # ---------------------------------------------------------
-
 st.subheader("✏️ Modifier un mouvement existant")
 
 if not escrow:
     st.info("Aucun mouvement à modifier.")
     st.stop()
 
-liste = [f"{e.get('Dossier N', '')} - {e.get('Nom', '')} - {safe_float(e.get('Montant', 0))}$" for e in escrow]
+liste = [
+    f"{e.get('Dossier N', '')} - {e.get('Nom', '')} - {safe_float(e.get('Montant', 0))}$"
+    for e in escrow
+]
 selection = st.selectbox("Choisir un mouvement", liste)
 
 index = liste.index(selection)
 entry = escrow[index]
 
+
+# ---------------------------------------------------------
+# Formulaire de modification
+# ---------------------------------------------------------
 colA, colB = st.columns(2)
 
 with colA:
     mod_dossier = st.text_input("Dossier N", value=str(entry.get("Dossier N", "")))
     mod_nom = st.text_input("Nom", value=str(entry.get("Nom", "")))
     mod_montant = st.number_input(
-        "Montant (USD)", 
+        "Montant (USD)",
         min_value=0.0,
         value=safe_float(entry.get("Montant")),
         format="%.2f"
@@ -109,10 +117,20 @@ with colA:
 
 with colB:
     mod_date_envoi = st.text_input("Date envoi", value=str(entry.get("Date envoi", "")))
-    mod_etat = st.selectbox("État", ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"], index=0)
+
+    etats = ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"]
+    etat_actuel = entry.get("État", "Envoyé")
+
+    # Sélection propre avec fallback
+    index_etat = etats.index(etat_actuel) if etat_actuel in etats else 0
+    mod_etat = st.selectbox("État", etats, index=index_etat)
+
     mod_date_reclam = st.text_input("Date réclamation", value=str(entry.get("Date réclamation", "")))
 
 
+# ---------------------------------------------------------
+# Enregistrer modification
+# ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications"):
     escrow[index] = {
         "Dossier N": mod_dossier,
@@ -130,7 +148,6 @@ if st.button("💾 Enregistrer les modifications"):
 # ---------------------------------------------------------
 # SUPPRESSION
 # ---------------------------------------------------------
-
 if st.button("🗑️ Supprimer ce mouvement"):
     del escrow[index]
     db["escrow"] = escrow
