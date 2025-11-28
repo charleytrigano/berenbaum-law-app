@@ -19,13 +19,13 @@ def safe_float(x, default=0.0):
             return float(x)
 
         x = str(x).replace(",", ".").strip()
-
         if x == "":
             return default
 
         return float(x)
     except:
         return default
+
 
 # ---------------------------------------------------------
 # Charger base Dropbox
@@ -37,6 +37,7 @@ except:
 
 compta_entries = db.get("compta", [])
 
+
 # ---------------------------------------------------------
 # Tableau principal
 # ---------------------------------------------------------
@@ -46,13 +47,14 @@ if compta_entries:
     df = pd.DataFrame(compta_entries)
 else:
     df = pd.DataFrame(columns=[
-        "Date", "Type", "Dossier N", "Nom", 
+        "Date", "Type", "Dossier N", "Nom",
         "Montant", "Mode Paiement", "Catégorie", "Commentaires"
     ])
 
 st.dataframe(df, use_container_width=True, height=350)
 
 st.markdown("---")
+
 
 # ---------------------------------------------------------
 # AJOUTER une opération comptable
@@ -93,6 +95,7 @@ if st.button("Ajouter l'opération", type="primary"):
 
 st.markdown("---")
 
+
 # ---------------------------------------------------------
 # MODIFIER une opération existante
 # ---------------------------------------------------------
@@ -112,6 +115,14 @@ selection = st.selectbox("Sélectionner une opération", liste)
 index = liste.index(selection)
 entry = compta_entries[index]
 
+MODES = ["Virement", "Carte", "Espèces", "Chèque", "Autre"]
+
+# Sélection mode paiement correct
+mode_actuel = entry.get("Mode Paiement", "Virement")
+if mode_actuel not in MODES:
+    mode_actuel = "Virement"
+index_mode = MODES.index(mode_actuel)
+
 colA, colB = st.columns(2)
 
 with colA:
@@ -130,11 +141,7 @@ with colB:
         value=safe_float(entry.get("Montant", 0)),
         format="%.2f"
     )
-    mod_mode = st.selectbox(
-        "Mode Paiement",
-        ["Virement", "Carte", "Espèces", "Chèque", "Autre"],
-        index=0
-    )
+    mod_mode = st.selectbox("Mode Paiement", MODES, index=index_mode)
     mod_categorie = st.text_input("Catégorie", value=str(entry.get("Catégorie", "")))
 
 mod_comment = st.text_area("Commentaires", value=str(entry.get("Commentaires", "")))
@@ -155,6 +162,7 @@ if st.button("💾 Enregistrer les modifications"):
     st.success("Opération mise à jour ✔")
 
 st.markdown("---")
+
 
 # ---------------------------------------------------------
 # SUPPRIMER une opération
