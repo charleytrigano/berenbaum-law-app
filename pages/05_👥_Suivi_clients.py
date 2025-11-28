@@ -25,7 +25,7 @@ if not clients:
 
 df = pd.DataFrame(clients)
 
-# Nettoyage des colonnes clés
+# Colonnes utilisées
 colonnes_interet = [
     "Dossier N",
     "Nom",
@@ -38,10 +38,14 @@ colonnes_interet = [
     "Commentaires"
 ]
 
-# Ajouter colonnes manquantes si besoin
+# Ajouter colonnes manquantes
 for col in colonnes_interet:
     if col not in df.columns:
         df[col] = ""
+
+# Forcer toutes les colonnes texte → str
+for col in colonnes_interet:
+    df[col] = df[col].astype(str).fillna("")
 
 # ---------------------------------------------------
 # FILTRE UTILISATEUR
@@ -91,9 +95,9 @@ colA, colB, colC = st.columns(3)
 with colA:
     st.metric("Nombre total de clients", len(df))
 
+# Dossier envoyé = champ non vide
 with colB:
-    st.metric("Dossiers envoyés", df["Date envoi"].astype(bool).sum())
+    st.metric("Dossiers envoyés", (df["Date envoi"].str.len() > 0).sum())
 
 with colC:
-    st.metric("Dossiers acceptés", df["Date acceptation"].astype(bool).sum())
-
+    st.metric("Dossiers acceptés", (df["Date acceptation"].str.len() > 0).sum())
