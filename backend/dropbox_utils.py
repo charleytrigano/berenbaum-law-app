@@ -1,7 +1,7 @@
 import json
 import dropbox
 import streamlit as st
-from utils.config import DROPBOX_FILE_PATH
+from utils.config import DROPBOX_TOKEN, DROPBOX_FILE_PATH
 
 def _get_dbx():
     """Retourne un client Dropbox authentifié."""
