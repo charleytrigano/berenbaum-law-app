@@ -1,5 +1,6 @@
 import streamlit as st
-from components.database import load_database
+from backend.dropbox_utils import load_database
+
 
 # ---------------------------------------------------
 # CONFIGURATION GÉNÉRALE
