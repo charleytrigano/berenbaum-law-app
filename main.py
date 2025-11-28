@@ -1,6 +1,8 @@
 import streamlit as st
 from backend.dropbox_utils import load_database, save_database
 from utils.config import DROPBOX_TOKEN
+st.write("TOKEN OK ?", DROPBOX_TOKEN[:10] + "****")
+
 
 
 st.set_page_config(page_title="Berenbaum Law App", page_icon="📁", layout="wide")
