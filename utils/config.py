@@ -7,4 +7,13 @@ SHEET_CLIENTS = "Clients"
 SHEET_ESCROW = "Escrow"
 SHEET_VISA = "Visa"
 SHEET_COMPTA = "ComptaCli"
+# Dropbox
+DROPBOX_TOKEN = st.secrets["DROPBOX_TOKEN"]
+
+# Chemin du fichier Excel source
+DROPBOX_EXCEL_PATH = "/Clients BL.xlsx"
+
+# Chemin de la base JSON générée
+DROPBOX_JSON_PATH = "/database.json"
+
 
