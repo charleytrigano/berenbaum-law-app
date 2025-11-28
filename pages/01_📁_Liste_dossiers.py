@@ -1,105 +1,148 @@
 import streamlit as st
 import pandas as pd
 from components.database import load_database
-from components.cards import badge
 
 # ---------------------------------------------------
-# PAGE CONFIG
+# PAGE SETUP
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Liste des dossiers",
-    page_icon="📁",
-    layout="wide"
-)
+st.set_page_config(page_title="Liste des dossiers", page_icon="📁", layout="wide")
 
 st.title("📁 Liste des dossiers")
-st.write("Visualisez, filtrez et explorez tous les dossiers clients.")
+st.write("Visualisez, recherchez et filtrez tous les dossiers clients.")
 
 # ---------------------------------------------------
 # LOAD DATABASE
 # ---------------------------------------------------
-try:
-    db = load_database()
-except Exception as e:
-    st.error(f"Erreur lors du chargement de la base : {e}")
-    db = {"clients": []}
+db = load_database()
 
 clients = db.get("clients", [])
-df = pd.DataFrame(clients)
 
-if df.empty:
-    st.warning("Aucun dossier disponible.")
+# ---------------------------------------------------
+# SI PAS DE DOSSIER
+# ---------------------------------------------------
+if not clients:
+    st.info("Aucun dossier pour le moment. Ajoutez-en via la page ➕ Nouveau dossier.")
     st.stop()
 
-# ---------------------------------------------------
-# BARRE DE RECHERCHE + FILTRES
-# ---------------------------------------------------
-st.subheader("🔍 Recherche & Filtres")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    search = st.text_input("Recherche (Nom, Dossier N, Visa)")
-
-with col2:
-    categorie_filter = st.selectbox(
-        "Catégorie",
-        options=["Toutes"] + sorted(df["Catégories"].dropna().unique().tolist())
-        if "Catégories" in df.columns else ["Toutes"]
-    )
-
-with col3:
-    visa_filter = st.selectbox(
-        "Type de Visa",
-        options=["Tous"] + sorted(df["Visa"].dropna().unique().tolist())
-        if "Visa" in df.columns else ["Tous"]
-    )
+df = pd.DataFrame(clients)
 
 # ---------------------------------------------------
-# FILTRAGE LOGIQUE
+# BARRE DE RECHERCHE
 # ---------------------------------------------------
-filtered = df.copy()
+st.subheader("🔎 Rechercher un dossier")
+
+search = st.text_input("Recherche (nom, dossier, catégorie...)", "").lower()
 
 if search:
-    search_lower = search.lower()
-    filtered = filtered[
-        filtered.astype(str).apply(lambda row: search_lower in row.to_string().lower(), axis=1)
-    ]
-
-if categorie_filter != "Toutes" and "Catégories" in df.columns:
-    filtered = filtered[filtered["Catégories"] == categorie_filter]
-
-if visa_filter != "Tous" and "Visa" in df.columns:
-    filtered = filtered[filtered["Visa"] == visa_filter]
+    df = df[df.apply(lambda row: row.astype(str).str.lower().str.contains(search).any(), axis=1)]
 
 # ---------------------------------------------------
-# DATATABLE PRO
+# FILTRES AVANCÉS
 # ---------------------------------------------------
-st.subheader("📄 Résultats")
+st.subheader("🎛️ Filtres avancés")
 
-def render_row(row):
-    dossier = row.get("Dossier N", "")
-    nom = row.get("Nom", "")
-    cat = row.get("Catégories", "")
-    visa = row.get("Visa", "")
-    date = row.get("Date", "")
+col1, col2, col3, col4 = st.columns(4)
 
-    return f"""
-        <div style="padding:12px; border-bottom:1px solid #e0e0e0;">
-            <b>{dossier}</b> — {nom}<br>
-            <span style='color:#555'>Catégorie : {cat}</span><br>
-            <span style='color:#777'>Visa : {visa}</span><br>
-            <span style='font-size:12px; color:#999'>Créé le {date}</span>
-        </div>
-    """
+with col1:
+    categories = ["Toutes"] + sorted(df["Catégories"].dropna().unique().tolist())
+    filter_cat = st.selectbox("Catégorie", categories)
 
-st.markdown(
-    "<div style='border:1px solid #DDD; border-radius:10px; padding:5px;'>",
-    unsafe_allow_html=True
+with col2:
+    sous_cat_list = ["Toutes"] + sorted(df["Sous-catégories"].dropna().unique().tolist())
+    filter_souscat = st.selectbox("Sous-catégorie", sous_cat_list)
+
+with col3:
+    visas = ["Tous"] + sorted(df["Visa"].dropna().unique().tolist())
+    filter_visa = st.selectbox("Type de Visa", visas)
+
+with col4:
+    filter_status = st.selectbox(
+        "Statut du dossier",
+        ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé"]
+    )
+
+# Application des filtres
+if filter_cat != "Toutes":
+    df = df[df["Catégories"] == filter_cat]
+
+if filter_souscat != "Toutes":
+    df = df[df["Sous-catégories"] == filter_souscat]
+
+if filter_visa != "Tous":
+    df = df[df["Visa"] == filter_visa]
+
+if filter_status != "Tous":
+    target_col = {
+        "Envoyé": "Date envoi",
+        "Accepté": "Date acceptation",
+        "Refusé": "Date refus",
+        "Annulé": "Date annulation"
+    }.get(filter_status)
+
+    df = df[df[target_col].notna() & (df[target_col] != "")]
+
+st.markdown("---")
+
+# ---------------------------------------------------
+# BOUTONS RAPIDES
+# ---------------------------------------------------
+colA, colB = st.columns([1, 1])
+
+with colA:
+    st.link_button("➕ Créer un nouveau dossier", "/02_➕_Nouveau_dossier")
+
+with colB:
+    st.write("")
+
+# ---------------------------------------------------
+# STATISTIQUES
+# ---------------------------------------------------
+st.subheader("📊 Aperçu global")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Nombre total de dossiers", len(df))
+
+nb_acceptes = df[df["Date acceptation"].notna() & (df["Date acceptation"] != "")]
+nb_refuses = df[df["Date refus"].notna() & (df["Date refus"] != "")]
+nb_annules = df[df["Date annulation"].notna() & (df["Date annulation"] != "")]
+
+col2.metric("Dossiers acceptés", len(nb_acceptes))
+col3.metric("Dossiers refusés", len(nb_refuses))
+
+# ---------------------------------------------------
+# TABLEAU FINAL
+# ---------------------------------------------------
+st.subheader("📋 Dossiers")
+
+# Colonnes pertinentes
+colonnes = [
+    "Dossier N",
+    "Nom",
+    "Catégories",
+    "Sous-catégories",
+    "Visa",
+    "Date envoi",
+    "Date acceptation",
+    "Date refus"
+]
+
+display_cols = [c for c in colonnes if c in df.columns]
+
+st.dataframe(df[display_cols], use_container_width=True, height=500)
+
+# ---------------------------------------------------
+# MODIFIER UN DOSSIER
+# ---------------------------------------------------
+st.markdown("---")
+st.subheader("✏️ Modifier un dossier")
+
+selected_dossier = st.selectbox(
+    "Sélectionner un dossier",
+    [""] + df["Dossier N"].unique().tolist()
 )
 
-for _, row in filtered.iterrows():
-    st.markdown(render_row(row), unsafe_allow_html=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
-
+if selected_dossier:
+    st.link_button(
+        f"Modifier le dossier {selected_dossier}",
+        f"/03_✏️_Modifier_dossier?dossier={selected_dossier}"
+    )
