@@ -1,30 +1,22 @@
 import json
 import dropbox
 import streamlit as st
-
-# Lire depuis Streamlit Secrets
-DROPBOX_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
-DROPBOX_FILE_PATH = st.secrets["paths"]["DROPBOX_FILE_PATH"]
+from utils.config import DROPBOX_TOKEN, DROPBOX_FILE_PATH
 
 def _get_dbx():
-    """Retourne un client Dropbox authentifié."""
     return dropbox.Dropbox(DROPBOX_TOKEN)
 
 def load_database():
-    """Charge le fichier JSON depuis Dropbox."""
     dbx = _get_dbx()
 
     try:
         metadata, res = dbx.files_download(DROPBOX_FILE_PATH)
         data = json.loads(res.content.decode("utf-8"))
         return data
-
-    except dropbox.exceptions.ApiError as e:
-        # Si le fichier n'existe pas encore → base vide
-        return {"clients": []}
+    except Exception:
+        return {"clients": [], "visa": [], "escrow": [], "compta": []}
 
 def save_database(data):
-    """Sauvegarde le fichier JSON dans Dropbox."""
     dbx = _get_dbx()
 
     dbx.files_upload(
