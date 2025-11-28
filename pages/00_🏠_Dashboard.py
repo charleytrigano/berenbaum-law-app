@@ -6,13 +6,16 @@ from components.database import load_database
 # PAGE CONFIG
 # ---------------------------------------------------
 st.set_page_config(
-    page_title="Tableau de bord – Berenbaum Law",
+    page_title="Berenbaum Law App",
     page_icon="📁",
     layout="wide"
 )
 
+st.title("📊 Tableau de bord – Berenbaum Law App")
+st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
+
 # ---------------------------------------------------
-# LOAD DATABASE
+# LOAD DATABASE (Dropbox)
 # ---------------------------------------------------
 try:
     db = load_database()
@@ -21,9 +24,8 @@ except Exception as e:
     st.error(f"Erreur lors du chargement de Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-
 # ---------------------------------------------------
-# STYLES
+# KPI FUNCTIONS
 # ---------------------------------------------------
 def kpi_card(title, value, color):
     st.markdown(f"""
@@ -40,11 +42,6 @@ def kpi_card(title, value, color):
         </div>
     """, unsafe_allow_html=True)
 
-
-st.title("📊 Tableau de bord – Berenbaum Law App")
-st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
-
-
 # ---------------------------------------------------
 # KPI CALCULATIONS
 # ---------------------------------------------------
@@ -57,8 +54,7 @@ nb_clients = len(clients)
 nb_visa = len(visa)
 nb_escrow = len(escrow)
 
-escrow_total = sum(float(x.get("montant", 0)) for x in escrow)
-
+escrow_total = sum(float(x.get("Montant", 0)) for x in escrow)
 
 # ---------------------------------------------------
 # KPI DISPLAY
@@ -73,22 +69,19 @@ with col3:
 with col4:
     kpi_card("Total Escrow ($)", f"${escrow_total:,.2f}", "#E65100")
 
+st.markdown("---")
 
 # ---------------------------------------------------
-# APERÇU DES DONNÉES
+# APERÇU DES CLIENTS
 # ---------------------------------------------------
-st.markdown("### 🗂️ Aperçu des dossiers")
+st.subheader("🗂️ Aperçu des dossiers")
 
-if nb_clients > 0:
-    df_preview = pd.DataFrame(clients)
+if len(clients) > 0:
+    df_clients = pd.DataFrame(clients)
 
-    # Sélection des colonnes clés si elles existent
-    columns_to_show = [col for col in ["Dossier N", "Nom", "Date", "Catégories", "Visa"] if col in df_preview.columns]
+    # colonnes utiles si présentes
+    cols = [c for c in ["Dossier N", "Nom", "Catégories", "Visa", "Date envoi"] if c in df_clients.columns]
 
-    st.dataframe(
-        df_preview[columns_to_show],
-        use_container_width=True,
-        height=350
-    )
+    st.dataframe(df_clients[cols], use_container_width=True, height=350)
 else:
-    st.info("Aucun client pour le moment.")
+    st.info("Aucun dossier client enregistré.")
