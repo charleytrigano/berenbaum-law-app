@@ -34,3 +34,15 @@ if db and "Clients" in db:
     st.dataframe(db["Clients"], use_container_width=True)
 else:
     st.warning("Aucun client trouvé dans la base de données.")
+
+from backend.dropbox_utils import load_database, save_database
+
+st.subheader("Test Dropbox")
+
+data = load_database()
+st.json(data)
+
+if st.button("➕ Ajouter un client test"):
+    data["clients"].append({"nom": "Test", "date": "2024"})
+    save_database(data)
+
