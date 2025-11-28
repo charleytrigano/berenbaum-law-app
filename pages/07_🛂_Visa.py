@@ -18,8 +18,9 @@ def safe_float(x, default=0.0):
     except:
         return default
 
+
 # ---------------------------------------------------------
-# Charger base Dropbox
+# Charger la base Dropbox
 # ---------------------------------------------------------
 try:
     db = load_database()
@@ -27,6 +28,7 @@ except:
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
 visa_entries = db.get("visa", [])
+
 
 # ---------------------------------------------------------
 # Tableau de bord
@@ -37,7 +39,7 @@ if visa_entries:
     df = pd.DataFrame(visa_entries)
 else:
     df = pd.DataFrame(columns=[
-        "Dossier N", "Nom", "Type Visa", "Statut", "Frais USCIS", 
+        "Dossier N", "Nom", "Type Visa", "Statut", "Frais USCIS",
         "Frais Cabinet", "Date Soumission", "Commentaires"
     ])
 
@@ -45,20 +47,24 @@ st.dataframe(df, use_container_width=True, height=350)
 
 st.markdown("---")
 
+
 # ---------------------------------------------------------
 # AJOUTER UN DOSSIER VISA
 # ---------------------------------------------------------
 st.subheader("➕ Ajouter un dossier Visa")
+
+VISA_TYPES = [
+    "I-130", "I-140", "I-485", "I-765", "I-131",
+    "EB1", "EB2", "EB3", "H-1B", "O-1", "E-2", "F-1",
+    "I-526", "I-829", "Autre"
+]
 
 col1, col2 = st.columns(2)
 
 with col1:
     dnum = st.text_input("Dossier N")
     nom = st.text_input("Nom")
-    type_visa = st.selectbox("Type de Visa", [
-        "I-130", "I-140", "I-485", "I-765", "I-131",
-        "EB1", "EB2", "EB3", "H-1B", "O-1", "E-2", "F-1", "Autre"
-    ], index=0)
+    type_visa = st.selectbox("Type de Visa", VISA_TYPES)
 
 with col2:
     frais_uscis = st.number_input("Frais USCIS ($)", min_value=0.0, format="%.2f")
@@ -86,6 +92,7 @@ if st.button("Ajouter le dossier Visa", type="primary"):
 
 st.markdown("---")
 
+
 # ---------------------------------------------------------
 # MODIFIER / SUPPRIMER UN DOSSIER VISA
 # ---------------------------------------------------------
@@ -105,32 +112,31 @@ selection = st.selectbox("Choisir un dossier", liste)
 index = liste.index(selection)
 entry = visa_entries[index]
 
-# Statuts autorisés
 STATUTS = ["En cours", "Soumis", "Accepté", "Refusé"]
 
-# Statut actuel sécurisé
+# Sélection sécurisée du statut
 statut_actuel = entry.get("Statut", "En cours")
 if statut_actuel not in STATUTS:
     statut_actuel = "En cours"
 index_statut = STATUTS.index(statut_actuel)
+
+# Sélection sécurisée du type visa
+visa_actuel = entry.get("Type Visa", "Autre")
+if visa_actuel not in VISA_TYPES:
+    visa_actuel = "Autre"
+index_visa = VISA_TYPES.index(visa_actuel)
 
 colA, colB = st.columns(2)
 
 with colA:
     mod_dnum = st.text_input("Dossier N", value=str(entry.get("Dossier N", "")))
     mod_nom = st.text_input("Nom", value=str(entry.get("Nom", "")))
-
-    mod_type_visa = st.selectbox(
-        "Type Visa",
-        ["I-130", "I-140", "I-485", "I-765", "I-131", 
-         "EB1", "EB2", "EB3", "H-1B", "O-1", "E-2", "F-1", "Autre"],
-        index=0
-    )
+    mod_type_visa = st.selectbox("Type Visa", VISA_TYPES, index=index_visa)
 
 with colB:
     mod_statut = st.selectbox("Statut", STATUTS, index=index_statut)
     mod_frais_uscis = st.number_input(
-        "Frais USCIS ($)", 
+        "Frais USCIS ($)",
         value=safe_float(entry.get("Frais USCIS", 0)),
         format="%.2f"
     )
@@ -157,6 +163,7 @@ if st.button("💾 Enregistrer les modifications"):
     db["visa"] = visa_entries
     save_database(db)
     st.success("Dossier Visa mis à jour ✔")
+
 
 # ---------------------------------------------------------
 # SUPPRESSION
