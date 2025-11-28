@@ -23,5 +23,13 @@ DROPBOX_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
 DROPBOX_EXCEL_PATH = "/Clients BL.xlsx"    # le nom exact dans ton Dropbox
 DROPBOX_JSON_PATH = "/database.json"       # fichier généré
 
+import streamlit as st
+
+DROPBOX_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
+
+DROPBOX_EXCEL_PATH = "/Clients BL.xlsx"  # ton Excel
+DROPBOX_JSON_PATH = "/database.json"     # base générée
+
+
 
 
