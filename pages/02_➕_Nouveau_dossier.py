@@ -1,121 +1,118 @@
 import streamlit as st
 from components.database import load_database, save_database
 from datetime import datetime
-import uuid
 
 # ---------------------------------------------------
-# PAGE CONFIG
+# PAGE SETUP
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Nouveau dossier",
-    page_icon="➕",
-    layout="wide"
-)
+st.set_page_config(page_title="Nouveau dossier", page_icon="➕", layout="wide")
 
 st.title("➕ Nouveau dossier")
-st.write("Créez un nouveau dossier client dans la base Dropbox.")
+st.write("Créer un nouveau dossier client.")
 
 # ---------------------------------------------------
-# LOAD DATABASE
+# LOAD DATA
 # ---------------------------------------------------
 db = load_database()
-clients = db.get("clients", [])
+if "clients" not in db:
+    db["clients"] = []
+
+clients = db["clients"]
 
 # ---------------------------------------------------
-# AUTOMATIC DOSSIER NUMBER
+# FONCTION POUR GÉNÉRER AUTOMATIQUEMENT UN NUMÉRO DE DOSSIER
 # ---------------------------------------------------
-def generate_dossier_number():
-    now = datetime.now()
-    number = f"D{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
-    return number
+def generer_dossier_numero():
+    if not clients:
+        return "1001"
+    numeros = [int(c["Dossier N"]) for c in clients if c["Dossier N"].isdigit()]
+    return str(max(numeros) + 1)
 
-dossier_number = generate_dossier_number()
+dossier_num = generer_dossier_numero()
 
 # ---------------------------------------------------
 # FORMULAIRE
 # ---------------------------------------------------
-st.subheader("📝 Informations générales")
+st.subheader("📄 Informations du dossier")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    nom = st.text_input("Nom du client *")
-    date = st.date_input("Date d'ouverture", datetime.now())
+    nom = st.text_input("Nom du client", "")
+    categorie = st.text_input("Catégories", "")
+    sous_categorie = st.text_input("Sous-catégories", "")
+    visa = st.text_input("Visa", "")
 
 with col2:
-    categorie = st.selectbox(
-        "Catégorie *",
-        ["Immigration", "Visa", "Consultation", "Autre"]
-    )
-
-    sous_categorie = st.text_input("Sous-catégorie")
-
-
-st.subheader("🛂 Informations Visa")
-
-visa_type = st.text_input("Type de Visa (si applicable)")
-
-st.subheader("💰 Paiements & Finances")
-
-colf1, colf2 = st.columns(2)
-
-with colf1:
-    honoraires = st.number_input("Montant honoraires (USD)", min_value=0.0, format="%.2f")
-    frais_divers = st.number_input("Autres frais (USD)", min_value=0.0, format="%.2f")
-
-with colf2:
+    montant = st.number_input("Montant honoraires (USD)", min_value=0.0, format="%.2f")
+    autres_frais = st.number_input("Autres frais (USD)", min_value=0.0, format="%.2f")
     acompte1 = st.number_input("Acompte 1 (USD)", min_value=0.0, format="%.2f")
     date_acompte1 = st.date_input("Date Acompte 1", datetime.now())
-    mode_paiement = st.text_input("Mode de paiement")
+    mode_paiement = st.text_input("Mode de paiement", "")
 
-st.subheader("📦 Suivi du dossier")
+st.markdown("---")
+st.subheader("📅 Dates et statut")
 
-dossier_envoye = st.checkbox("Dossier envoyé")
-date_envoi = st.date_input("Date d'envoi", datetime.now())
+colA, colB = st.columns(2)
 
-dossier_accepte = st.checkbox("Dossier accepté")
-date_acceptation = st.date_input("Date d'acceptation", datetime.now())
+with colA:
+    date_envoi = st.date_input("Date envoi", None)
+    date_accept = st.date_input("Date acceptation", None)
+with colB:
+    date_refus = st.date_input("Date refus", None)
+    date_annulation = st.date_input("Date annulation", None)
 
-dossier_refuse = st.checkbox("Dossier refusé")
-date_refus = st.date_input("Date de refus", datetime.now())
-
-commentaires = st.text_area("Commentaires")
+rfe = st.text_area("RFE", "")
+commentaires = st.text_area("Commentaires", "")
 
 # ---------------------------------------------------
-# SUBMIT BUTTON
+# BOUTON SAUVEGARDE
 # ---------------------------------------------------
 st.markdown("---")
-create = st.button("💾 Enregistrer le dossier", type="primary")
+if st.button("💾 Enregistrer le dossier", type="primary"):
 
-if create:
-    if not nom.strip():
+    if nom.strip() == "":
         st.error("Le nom du client est obligatoire.")
         st.stop()
 
-    new_entry = {
-        "Dossier N": dossier_number,
+    nouveau_dossier = {
+        "Dossier N": dossier_num,
         "Nom": nom,
-        "Date": str(date),
+        "Date": str(datetime.now().date()),
         "Catégories": categorie,
         "Sous-catégories": sous_categorie,
-        "Visa": visa_type,
-        "Montant honoraires (US $)": honoraires,
-        "Autres frais (US $)": frais_divers,
+        "Visa": visa,
+        "Montant honoraires (US $)": montant,
+        "Autres frais (US $)": autres_frais,
         "Acompte 1": acompte1,
         "Date Acompte 1": str(date_acompte1),
         "mode de paiement": mode_paiement,
-        "Dossier envoyé": dossier_envoye,
-        "Date envoi": str(date_envoi),
-        "Dossier accepté": dossier_accepte,
-        "Date acceptation": str(date_acceptation),
-        "Dossier refusé": dossier_refuse,
-        "Date refus": str(date_refus),
+        "Escrow": "",
+        "Acompte 2": "",
+        "Date Acompte 2": "",
+        "Acompte 3": "",
+        "Date Acompte 3": "",
+        "Acompte 4": "",
+        "Date Acompte 4": "",
+        "Dossier envoyé": "",
+        "Date envoi": str(date_envoi) if date_envoi else "",
+        "Dossier accepté": "",
+        "Date acceptation": str(date_accept) if date_accept else "",
+        "Dossier refusé": "",
+        "Date refus": str(date_refus) if date_refus else "",
+        "Dossier Annulé": "",
+        "Date annulation": str(date_annulation) if date_annulation else "",
+        "RFE": rfe,
         "Commentaires": commentaires,
+        "Escrow_final": "",
+        "Date réclamation": ""
     }
 
-    clients.append(new_entry)
-    db["clients"] = clients
+    db["clients"].append(nouveau_dossier)
     save_database(db)
 
-    st.success(f"🎉 Le dossier **{dossier_number}** a été créé avec succès !")
+    st.success(f"✔️ Dossier {dossier_num} enregistré avec succès !")
     st.balloons()
+
+    st.info("💡 Vous pouvez maintenant modifier le dossier dans la page dédiée.")
+    st.stop()
