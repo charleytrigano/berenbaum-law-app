@@ -3,145 +3,134 @@ from components.database import load_database, save_database
 from datetime import datetime
 
 # ---------------------------------------------------
-# PAGE CONFIG
+# PAGE SETUP
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Modifier un dossier",
-    page_icon="✏️",
-    layout="wide"
-)
+st.set_page_config(page_title="Modifier dossier", page_icon="✏️", layout="wide")
 
 st.title("✏️ Modifier un dossier")
-st.write("Modifiez les informations d’un dossier existant.")
+st.write("Recherchez un dossier existant puis modifiez ses informations.")
 
 # ---------------------------------------------------
-# LOAD DATABASE
+# LOAD DB
 # ---------------------------------------------------
 db = load_database()
-clients = db.get("clients", [])
 
-if not clients:
-    st.error("Aucun dossier trouvé dans la base Dropbox.")
+if "clients" not in db:
+    st.error("⚠️ Aucun client dans la base Dropbox.")
     st.stop()
 
-# ---------------------------------------------------
-# LISTE DES DOSSIERS
-# ---------------------------------------------------
-dossier_list = [c["Dossier N"] for c in clients if "Dossier N" in c]
-
-selected_dossier = st.selectbox("📁 Sélectionnez un dossier", dossier_list)
-
-# Trouver l’entrée sélectionnée
-client = next(c for c in clients if c["Dossier N"] == selected_dossier)
+clients = db["clients"]
 
 # ---------------------------------------------------
-# FORMULAIRE AVEC AUTO-FILL
+# CHOIX DU DOSSIER
 # ---------------------------------------------------
-st.subheader("📝 Informations générales")
+st.subheader("🔎 Sélectionner un dossier")
+
+liste_dossiers = [c["Dossier N"] for c in clients]
+
+selected = st.selectbox("Choisir un numéro de dossier", [""] + liste_dossiers)
+
+if not selected:
+    st.info("Sélectionnez un dossier pour commencer.")
+    st.stop()
+
+# Trouver le dossier dans la liste
+index = next(i for i, c in enumerate(clients) if c["Dossier N"] == selected)
+dossier = clients[index]
+
+# ---------------------------------------------------
+# FORMULAIRE
+# ---------------------------------------------------
+st.subheader(f"📄 Dossier {selected}")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    nom = st.text_input("Nom du client", client.get("Nom", ""))
-    date = st.date_input(
-        "Date d'ouverture",
-        datetime.fromisoformat(client["Date"]) if client.get("Date") else datetime.now()
-    )
+    nom = st.text_input("Nom", dossier.get("Nom", ""))
+    categorie = st.text_input("Catégories", dossier.get("Catégories", ""))
+    sous_categorie = st.text_input("Sous-catégories", dossier.get("Sous-catégories", ""))
+    visa = st.text_input("Visa", dossier.get("Visa", ""))
 
 with col2:
-    categorie = st.text_input("Catégorie", client.get("Catégories", ""))
-    sous_categorie = st.text_input("Sous-catégorie", client.get("Sous-catégories", ""))
+    montant = st.number_input("Montant honoraires (USD)", value=float(dossier.get("Montant honoraires (US $)", 0)), format="%.2f")
+    autres_frais = st.number_input("Autres frais (USD)", value=float(dossier.get("Autres frais (US $)", 0)), format="%.2f")
+    acompte1 = st.number_input("Acompte 1 (USD)", value=float(dossier.get("Acompte 1", 0)), format="%.2f")
+    date_acompte1 = st.date_input("Date Acompte 1", datetime.fromisoformat(dossier["Date Acompte 1"]) if dossier.get("Date Acompte 1") else datetime.now())
+    mode_paiement = st.text_input("Mode de paiement", dossier.get("mode de paiement", ""))
 
-st.subheader("🛂 Informations Visa")
-
-visa_type = st.text_input("Type de Visa", client.get("Visa", ""))
-
-st.subheader("💰 Paiements & Finances")
-
-colf1, colf2 = st.columns(2)
-
-with colf1:
-    honoraires = st.number_input(
-        "Montant honoraires (USD)",
-        min_value=0.0,
-        value=float(client.get("Montant honoraires (US $)", 0)),
-        format="%.2f"
-    )
-    frais_divers = st.number_input(
-        "Autres frais (USD)",
-        min_value=0.0,
-        value=float(client.get("Autres frais (US $)", 0)),
-        format="%.2f"
-    )
-
-with colf2:
-    acompte1 = st.number_input(
-        "Acompte 1 (USD)",
-        min_value=0.0,
-        value=float(client.get("Acompte 1", 0)),
-        format="%.2f"
-    )
-
-    date_acompte1 = st.date_input(
-        "Date Acompte 1",
-        datetime.fromisoformat(client["Date Acompte 1"]) if client.get("Date Acompte 1") else datetime.now()
-    )
-
-    mode_paiement = st.text_input("Mode de paiement", client.get("mode de paiement", ""))
-
-st.subheader("📦 Suivi du dossier")
-
-dossier_envoye = st.checkbox("Dossier envoyé", client.get("Dossier envoyé", False))
-date_envoi = st.date_input(
-    "Date d'envoi",
-    datetime.fromisoformat(client["Date envoi"]) if client.get("Date envoi") else datetime.now()
-)
-
-dossier_accepte = st.checkbox("Dossier accepté", client.get("Dossier accepté", False))
-date_acceptation = st.date_input(
-    "Date d'acceptation",
-    datetime.fromisoformat(client["Date acceptation"]) if client.get("Date acceptation") else datetime.now()
-)
-
-dossier_refuse = st.checkbox("Dossier refusé", client.get("Dossier refusé", False))
-date_refus = st.date_input(
-    "Date de refus",
-    datetime.fromisoformat(client["Date refus"]) if client.get("Date refus") else datetime.now()
-)
-
-commentaires = st.text_area("Commentaires", client.get("Commentaires", ""))
-
-# ---------------------------------------------------
-# SAUVEGARDER LES MODIFICATIONS
-# ---------------------------------------------------
 st.markdown("---")
-save_btn = st.button("💾 Enregistrer les modifications", type="primary")
 
-if save_btn:
+# DATES / STATUT
+st.subheader("📅 Dates & Suivi")
 
-    # Mise à jour de l'objet client
-    client.update({
+colA, colB = st.columns(2)
+
+with colA:
+    date_envoi = st.date_input("Date envoi", datetime.fromisoformat(dossier["Date envoi"]) if dossier.get("Date envoi") else None)
+    date_accepte = st.date_input("Date acceptation", datetime.fromisoformat(dossier["Date acceptation"]) if dossier.get("Date acceptation") else None)
+
+with colB:
+    date_refus = st.date_input("Date refus", datetime.fromisoformat(dossier["Date refus"]) if dossier.get("Date refus") else None)
+    date_annulation = st.date_input("Date annulation", datetime.fromisoformat(dossier["Date annulation"]) if dossier.get("Date annulation") else None)
+
+rfe = st.text_area("RFE", dossier.get("RFE", ""))
+commentaires = st.text_area("Commentaires", dossier.get("Commentaires", ""))
+
+st.markdown("---")
+
+# ---------------------------------------------------
+# SAUVEGARDER
+# ---------------------------------------------------
+if st.button("💾 Enregistrer les modifications", type="primary"):
+
+    dossier_modifie = {
+        "Dossier N": selected,
         "Nom": nom,
-        "Date": str(date),
+        "Date": dossier.get("Date", str(datetime.now().date())),
         "Catégories": categorie,
         "Sous-catégories": sous_categorie,
-        "Visa": visa_type,
-        "Montant honoraires (US $)": honoraires,
-        "Autres frais (US $)": frais_divers,
+        "Visa": visa,
+        "Montant honoraires (US $)": montant,
+        "Autres frais (US $)": autres_frais,
         "Acompte 1": acompte1,
         "Date Acompte 1": str(date_acompte1),
         "mode de paiement": mode_paiement,
-        "Dossier envoyé": dossier_envoye,
-        "Date envoi": str(date_envoi),
-        "Dossier accepté": dossier_accepte,
-        "Date acceptation": str(date_acceptation),
-        "Dossier refusé": dossier_refuse,
-        "Date refus": str(date_refus),
+        "Escrow": dossier.get("Escrow", ""),
+        "Acompte 2": dossier.get("Acompte 2", ""),
+        "Date Acompte 2": dossier.get("Date Acompte 2", ""),
+        "Acompte 3": dossier.get("Acompte 3", ""),
+        "Date Acompte 3": dossier.get("Date Acompte 3", ""),
+        "Acompte 4": dossier.get("Acompte 4", ""),
+        "Date Acompte 4": dossier.get("Date Acompte 4", ""),
+        "Dossier envoyé": "",
+        "Date envoi": str(date_envoi) if date_envoi else "",
+        "Dossier accepté": "",
+        "Date acceptation": str(date_accepte) if date_accepte else "",
+        "Dossier refusé": "",
+        "Date refus": str(date_refus) if date_refus else "",
+        "Dossier Annulé": "",
+        "Date annulation": str(date_annulation) if date_annulation else "",
+        "RFE": rfe,
         "Commentaires": commentaires,
-    })
+        "Escrow_final": dossier.get("Escrow_final", ""),
+        "Date réclamation": dossier.get("Date réclamation", "")
+    }
 
-    db["clients"] = clients
+    db["clients"][index] = dossier_modifie
     save_database(db)
 
-    st.success("✔️ Les modifications ont été enregistrées avec succès !")
+    st.success("✔️ Le dossier a été mis à jour.")
     st.balloons()
+
+# ---------------------------------------------------
+# SUPPRESSION
+# ---------------------------------------------------
+st.markdown("---")
+st.subheader("🗑️ Suppression")
+
+if st.button("⚠️ Supprimer définitivement ce dossier"):
+    del db["clients"][index]
+    save_database(db)
+    st.warning("❌ Dossier supprimé définitivement.")
+    st.balloons()
+    st.stop()
