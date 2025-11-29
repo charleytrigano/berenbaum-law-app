@@ -1,12 +1,12 @@
 import streamlit as st
 
 # ---- Dropbox config ----
-DROPBOX_TOKEN = st.secrets["DROPBOX_TOKEN"]
+DROPBOX_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
 
 # 🔥 Chemin correct du fichier JSON dans Dropbox :
 DROPBOX_FILE_PATH = "/Apps/berenbaum-law/database.json"
 
-# ---- Sheet (non utilisés maintenant) ----
+# ---- Sheet names (non utilisés mais conservés) ----
 SHEET_CLIENTS = "Clients"
 SHEET_ESCROW = "Escrow"
 SHEET_VISA = "Visa"
