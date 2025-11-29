@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import load_database  # ✔ correct import
+from backend.dropbox_utils import load_database
 
 # ---------------------------------------------------
 # PAGE CONFIG
@@ -19,64 +19,140 @@ st.write("Bienvenue dans l'application professionnelle de gestion des dossiers."
 # ---------------------------------------------------
 try:
     db = load_database()
-
-    # DEBUG chemin exact utilisé
-    import utils.config as cfg
-    st.warning(f"Chemin utilisé : {cfg.DROPBOX_FILE_PATH}")
-
     st.success("Base de données chargée depuis Dropbox ✔")
-
 except Exception as e:
-    st.error(f"Erreur lors du chargement de Dropbox : {e}")
-    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+    st.error(f"Erreur Dropbox : {e}")
+    db = {"clients": []}
 
-# ---------------------------------------------------
-# DEBUG (temporaire)
-# ---------------------------------------------------
-with st.expander("🛠️ DEBUG — Contenu brut de la base"):
-    st.write(db)
-
-# ---------------------------------------------------
-# EXTRACTION DES TABLES
-# ---------------------------------------------------
 clients = db.get("clients", [])
-visa = db.get("visa", [])
-escrow = db.get("escrow", [])
-compta = db.get("compta", [])
+
+if not clients:
+    st.info("Aucun dossier trouvé.")
+    st.stop()
+
+df = pd.DataFrame(clients)
 
 # ---------------------------------------------------
-# KPIs
+# Normalisation des colonnes
+# ---------------------------------------------------
+for col in [
+    "Montant honoraires (US $)",
+    "Autres frais (US $)",
+    "Acompte 1",
+    "Acompte 2",
+    "Acompte 3",
+    "Acompte 4"
+]:
+    if col not in df.columns:
+        df[col] = 0
+
+    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+# Total facturé
+df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
+
+# Montant encaissé
+df["Montant encaissé"] = (
+    df["Acompte 1"] +
+    df["Acompte 2"] +
+    df["Acompte 3"] +
+    df["Acompte 4"]
+)
+
+# Solde
+df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
+
+# ---------------------------------------------------
+# KPI
 # ---------------------------------------------------
 st.subheader("📌 Indicateurs principaux")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
-col1.metric("Clients actifs", len(clients))
-col2.metric("Dossiers Visa", len(visa))
-col3.metric("Mouvements Escrow", len(escrow))
+col1.metric("Nombre de dossiers", len(df))
+col2.metric("Total honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}")
+col3.metric("Total autres frais", f"${df['Autres frais (US $)'].sum():,.2f}")
+col4.metric("Total facturé", f"${df['Total facturé'].sum():,.2f}")
+col5.metric("Montant encaissé", f"${df['Montant encaissé'].sum():,.2f}")
+col6.metric("Solde restant", f"${df['Solde'].sum():,.2f}")
 
-# Total Escrow sécurisé
-total_escrow = 0
-for e in escrow:
-    try:
-        total_escrow += float(e.get("Montant", 0))
-    except:
-        pass
-
-col4.metric("Total Escrow ($)", f"${total_escrow:,.2f}")
-
-# ---------------------------------------------------
-# APERÇU DES CLIENTS
-# ---------------------------------------------------
 st.markdown("---")
-st.subheader("🗂️ Aperçu des dossiers")
 
-if not clients:
-    st.info("Aucun dossier client enregistré.")
-else:
-    df = pd.DataFrame(clients)
+# ---------------------------------------------------
+# FILTRES
+# ---------------------------------------------------
+st.subheader("🎛️ Filtres")
 
-    # Colonnes utiles
-    cols = [c for c in ["Dossier N", "Nom", "Catégories", "Visa", "Date envoi"] if c in df.columns]
+colA, colB, colC, colD, colE = st.columns(5)
 
-    st.dataframe(df[cols], use_container_width=True, height=350)
+# Catégories
+cat_list = ["Toutes"] + sorted(df["Catégories"].dropna().unique().tolist())
+cat_filter = colA.selectbox("Catégorie", cat_list)
+
+# Sous-catégories
+scat_list = ["Toutes"] + sorted(df["Sous-catégories"].dropna().unique().tolist())
+souscat_filter = colB.selectbox("Sous-catégorie", scat_list)
+
+# Visa
+visa_list = ["Tous"] + sorted(df["Visa"].dropna().unique().tolist())
+visa_filter = colC.selectbox("Visa", visa_list)
+
+# Année
+df["Année"] = pd.to_datetime(df["Date"], errors="coerce").dt.year
+annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
+annee_filter = colD.selectbox("Année", annee_list)
+
+# Date range
+date_debut = colE.date_input("Date début")
+date_fin = colE.date_input("Date fin")
+
+# ---------------------------------------------------
+# Application des filtres
+# ---------------------------------------------------
+filtered_df = df.copy()
+
+if cat_filter != "Toutes":
+    filtered_df = filtered_df[filtered_df["Catégories"] == cat_filter]
+
+if souscat_filter != "Toutes":
+    filtered_df = filtered_df[filtered_df["Sous-catégories"] == souscat_filter]
+
+if visa_filter != "Tous":
+    filtered_df = filtered_df[filtered_df["Visa"] == visa_filter]
+
+if annee_filter != "Toutes":
+    filtered_df = filtered_df[filtered_df["Année"] == annee_filter]
+
+# Filtre date à date
+filtered_df["Date"] = pd.to_datetime(filtered_df["Date"], errors="coerce")
+
+if date_debut:
+    filtered_df = filtered_df[filtered_df["Date"] >= pd.to_datetime(date_debut)]
+
+if date_fin:
+    filtered_df = filtered_df[filtered_df["Date"] <= pd.to_datetime(date_fin)]
+
+# ---------------------------------------------------
+# AFFICHAGE DES DOSSIERS FILTRÉS
+# ---------------------------------------------------
+st.subheader("📋 Dossiers filtrés")
+
+st.dataframe(
+    filtered_df[
+        [
+            "Dossier N",
+            "Nom",
+            "Catégories",
+            "Sous-catégories",
+            "Visa",
+            "Montant honoraires (US $)",
+            "Autres frais (US $)",
+            "Total facturé",
+            "Montant encaissé",
+            "Solde",
+            "Date"
+        ]
+    ],
+    use_container_width=True,
+    height=500
+)
