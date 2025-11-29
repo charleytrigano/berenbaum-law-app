@@ -19,10 +19,13 @@ st.write("Bienvenue dans l'application professionnelle de gestion des dossiers."
 # ---------------------------------------------------
 try:
     db = load_database()
+
+    # DEBUG chemin exact utilisé
     import utils.config as cfg
-st.warning(f"Chemin utilisé : {cfg.DROPBOX_FILE_PATH}")
+    st.warning(f"Chemin utilisé : {cfg.DROPBOX_FILE_PATH}")
 
     st.success("Base de données chargée depuis Dropbox ✔")
+
 except Exception as e:
     st.error(f"Erreur lors du chargement de Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
