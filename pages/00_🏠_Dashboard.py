@@ -1,96 +1,73 @@
 import streamlit as st
-import pandas as pd
-from backend.dropbox_utils import load_database, save_database
+import json
+from utils.dropbox_utils import load_json_from_dropbox
 
-
-# ---------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------
-st.set_page_config(
-    page_title="Berenbaum Law App",
-    page_icon="📁",
-    layout="wide"
-)
+st.set_page_config(page_title="📊 Tableau de bord – Berenbaum Law App", layout="wide")
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
-# ---------------------------------------------------
-# LOAD DATABASE (Dropbox)
-# ---------------------------------------------------
-try:
-    db = load_database()
-    st.success("Base de données chargée depuis Dropbox ✔")
-except Exception as e:
-    st.error(f"Erreur lors du chargement de Dropbox : {e}")
-    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+# -----------------------------
+# 1. Charger la base depuis Dropbox
+# -----------------------------
+db = load_json_from_dropbox("/Apps/berenbaum-law/database.json")
 
-# ---------------------------------------------------
-# DEBUG (à supprimer plus tard)
-# ---------------------------------------------------
-st.subheader("🛠️ DEBUG — Contenu brut de la base")
-st.write(db)  # ← plus stable que st.json pour l’instant
+if db is None:
+    st.error("❌ Impossible de charger la base depuis Dropbox.")
+    st.stop()
 
-st.markdown("---")
+st.success("Base de données chargée depuis Dropbox ✔")
 
-# ---------------------------------------------------
-# KPI FUNCTIONS
-# ---------------------------------------------------
-def kpi_card(title, value, color):
-    st.markdown(f"""
-        <div style="
-            background:{color};
-            padding:20px;
-            border-radius:10px;
-            text-align:center;
-            color:white;
-            font-size:22px;
-            font-weight:700;">
-            {value}<br>
-            <span style="font-size:15px; font-weight:400;">{title}</span>
-        </div>
-    """, unsafe_allow_html=True)
+# -----------------------------
+# 2. DEBUG (à garder provisoirement)
+# -----------------------------
+with st.expander("🛠️ DEBUG — Contenu brut de la base"):
+    st.json(db)
 
-# ---------------------------------------------------
-# KPI CALCULATIONS
-# ---------------------------------------------------
+# -----------------------------
+# 3. Sécurité : s'assurer que les clés existent
+# -----------------------------
 clients = db.get("clients", [])
 visa = db.get("visa", [])
 escrow = db.get("escrow", [])
 compta = db.get("compta", [])
 
-nb_clients = len(clients)
-nb_visa = len(visa)
-nb_escrow = len(escrow)
-
-escrow_total = sum(float(x.get("Montant", 0)) for x in escrow)
-
-# ---------------------------------------------------
-# KPI DISPLAY
-# ---------------------------------------------------
+# -----------------------------
+# 4. Statistiques principales
+# -----------------------------
 col1, col2, col3, col4 = st.columns(4)
-with col1:
-    kpi_card("Clients actifs", nb_clients, "#1E88E5")
-with col2:
-    kpi_card("Dossiers Visa", nb_visa, "#6A1B9A")
-with col3:
-    kpi_card("Mouvements Escrow", nb_escrow, "#00897B")
-with col4:
-    kpi_card("Total Escrow ($)", f"${escrow_total:,.2f}", "#E65100")
 
-st.markdown("---")
+col1.metric("📁 Clients actifs", len(clients))
+col2.metric("🛂 Dossiers Visa", len(visa))
+col3.metric("💵 Mouvements Escrow", len(escrow))
 
-# ---------------------------------------------------
-# APERÇU DES CLIENTS
-# ---------------------------------------------------
+# Total escrow
+total_escrow = 0
+for entry in escrow:
+    amount = entry.get("Montant ($)") or entry.get("Amount ($)") or 0
+    try:
+        total_escrow += float(amount)
+    except:
+        pass
+
+col4.metric("💰 Total Escrow ($)", f"${total_escrow:,.2f}")
+
+# -----------------------------
+# 5. Aperçu des dossiers clients
+# -----------------------------
 st.subheader("🗂️ Aperçu des dossiers")
 
-if len(clients) > 0:
-    df_clients = pd.DataFrame(clients)
-
-    cols = [c for c in ["Dossier N", "Nom", "Catégories", "Visa", "Date envoi"]
-            if c in df_clients.columns]
-
-    st.dataframe(df_clients[cols], use_container_width=True, height=350)
-else:
+if len(clients) == 0:
     st.info("Aucun dossier client enregistré.")
+else:
+    # Afficher un tableau compact
+    preview = [
+        {
+            "N° dossier": c.get("Dossier N"),
+            "Nom": c.get("Nom"),
+            "Visa": c.get("Visa"),
+            "Montant": c.get("Montant honoraires (US $)")
+        }
+        for c in clients[:15]
+    ]
+    st.table(preview)
