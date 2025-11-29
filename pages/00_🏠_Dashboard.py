@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
-st.subheader("DEBUG — Contenu brut de la base")
-st.json(db)
 
 
 # ---------------------------------------------------
@@ -23,12 +21,17 @@ st.write("Bienvenue dans l'application professionnelle de gestion des dossiers."
 try:
     db = load_database()
     st.success("Base de données chargée depuis Dropbox ✔")
-    st.subheader("DEBUG — Contenu brut de la base")
-st.write(db)  # <- plus sûr que st.json pour l’instant
-
 except Exception as e:
     st.error(f"Erreur lors du chargement de Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+
+# ---------------------------------------------------
+# DEBUG (à supprimer plus tard)
+# ---------------------------------------------------
+st.subheader("🛠️ DEBUG — Contenu brut de la base")
+st.write(db)  # ← plus stable que st.json pour l’instant
+
+st.markdown("---")
 
 # ---------------------------------------------------
 # KPI FUNCTIONS
@@ -85,8 +88,8 @@ st.subheader("🗂️ Aperçu des dossiers")
 if len(clients) > 0:
     df_clients = pd.DataFrame(clients)
 
-    # colonnes utiles si présentes
-    cols = [c for c in ["Dossier N", "Nom", "Catégories", "Visa", "Date envoi"] if c in df_clients.columns]
+    cols = [c for c in ["Dossier N", "Nom", "Catégories", "Visa", "Date envoi"]
+            if c in df_clients.columns]
 
     st.dataframe(df_clients[cols], use_container_width=True, height=350)
 else:
