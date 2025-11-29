@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
+import json
 import dropbox
 import io
 
+# ---------------------------------------------------------
+# CHARGEMENT DES SECRETS
+# ---------------------------------------------------------
 DROPBOX_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
-EXCEL_PATH = st.secrets["paths"]["EXCEL_FILE_PATH"]
-JSON_PATH = st.secrets["paths"]["DROPBOX_FILE_PATH"]
-
-dbx = dropbox.Dropbox(DROPBOX_TOKEN)
-
 EXCEL_PATH = st.secrets["paths"]["EXCEL_FILE_PATH"]
 JSON_PATH = st.secrets["paths"]["DROPBOX_FILE_PATH"]
 
