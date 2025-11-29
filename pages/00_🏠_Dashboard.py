@@ -23,6 +23,9 @@ st.write("Bienvenue dans l'application professionnelle de gestion des dossiers."
 try:
     db = load_database()
     st.success("Base de données chargée depuis Dropbox ✔")
+    st.subheader("DEBUG — Contenu brut de la base")
+st.write(db)  # <- plus sûr que st.json pour l’instant
+
 except Exception as e:
     st.error(f"Erreur lors du chargement de Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
