@@ -2,118 +2,119 @@ import streamlit as st
 import pandas as pd
 import json
 import dropbox
-import io
 
-# ---------------------------------------------------------
-# CHARGEMENT DES SECRETS
-# ---------------------------------------------------------
-DROPBOX_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
-EXCEL_PATH = st.secrets["paths"]["EXCEL_FILE_PATH"]
-JSON_PATH = st.secrets["paths"]["DROPBOX_FILE_PATH"]
+# ============================================================
+# CONFIG
+# ============================================================
+TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
 
-# ---------------------------------------------------------
-# CLIENT DROPBOX
-# ---------------------------------------------------------
-dbx = dropbox.Dropbox(DROPBOX_TOKEN)
+PATH_CLIENTS = st.secrets["paths"]["CLIENTS_FILE"]
+PATH_ESCROW = st.secrets["paths"]["ESCROW_FILE"]
+PATH_VISA = st.secrets["paths"]["VISA_FILE"]
+PATH_COMPTA = st.secrets["paths"]["COMPTA_FILE"]
+JSON_PATH = st.secrets["paths"]["DROPBOX_JSON"]
 
-st.title("📥 Import Excel → Base Dropbox")
-st.write("Synchroniser votre fichier Excel avec la base de données JSON Dropbox.")
+dbx = dropbox.Dropbox(TOKEN)
 
+st.set_page_config(page_title="🔄 Synchronisation", layout="wide")
+st.title("🔄 Synchronisation Excel ↔ JSON (Dropbox)")
 
-# ---------------------------------------------------------
-# CHARGEMENT FICHIER EXCEL DEPUIS DROPBOX
-# ---------------------------------------------------------
-def load_excel_from_dropbox():
+# ============================================================
+# UTILS
+# ============================================================
+def dl_excel(path):
+    """Télécharge un fichier Excel depuis Dropbox."""
     try:
-        metadata, res = dbx.files_download(EXCEL_PATH)
-        excel_bytes = res.content
-        return pd.ExcelFile(io.BytesIO(excel_bytes))
+        meta, res = dbx.files_download(path)
+        df = pd.read_excel(res.content)
+        st.success(f"✔ Fichier chargé : {path}")
+        return df
     except Exception as e:
-        st.error(f"❌ Impossible de télécharger le fichier Excel : {e}")
-        return None
-
-
-# ---------------------------------------------------------
-# SAUVEGARDER JSON DANS DROPBOX
-# ---------------------------------------------------------
-def save_json_to_dropbox(data):
-    try:
-        dbx.files_upload(
-            json.dumps(data, indent=2).encode("utf-8"),
-            JSON_PATH,
-            mode=dropbox.files.WriteMode("overwrite")
-        )
-        st.success("✔ Base mise à jour dans Dropbox !")
-    except Exception as e:
-        st.error(f"❌ Erreur lors de la sauvegarde du JSON : {e}")
-
-
-# ---------------------------------------------------------
-# LECTURE DU FICHIER EXCEL
-# ---------------------------------------------------------
-st.subheader("📄 Lecture du fichier Excel")
-
-xls = load_excel_from_dropbox()
-
-if xls is None:
-    st.stop()
-
-st.success("✔ Fichier Excel chargé depuis Dropbox")
-
-
-# ---------------------------------------------------------
-# LECTURE DES FEUILLES
-# ---------------------------------------------------------
-def read_sheet(name):
-    if name in xls.sheet_names:
-        return pd.read_excel(xls, sheet_name=name).fillna("")
-    else:
-        st.warning(f"⚠ La feuille '{name}' est absente dans Excel.")
+        st.error(f"❌ Impossible de lire {path} : {e}")
         return pd.DataFrame()
 
+def upload_excel(df, path):
+    """Uploader un DataFrame en Excel vers Dropbox."""
+    try:
+        excel_bytes = df.to_excel(index=False, engine="openpyxl")
+    except:
+        import io
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False)
+        excel_bytes = buffer.getvalue()
 
-df_clients = read_sheet("Clients")
-df_visa = read_sheet("Visa")
-df_escrow = read_sheet("Escrow")
-df_compta = read_sheet("ComptaCli")
+    dbx.files_upload(excel_bytes, path, mode=dropbox.files.WriteMode("overwrite"))
+    st.success(f"✔ Uploadé : {path}")
 
+def load_json():
+    """Télécharge le JSON depuis Dropbox."""
+    try:
+        _, res = dbx.files_download(JSON_PATH)
+        data = json.loads(res.content.decode())
+        st.success("✔ JSON chargé depuis Dropbox")
+        return data
+    except:
+        st.warning("⚠ Aucun JSON existant → nouvelle base créée")
+        return {"clients": [], "escrow": [], "visa": [], "compta": []}
 
-# ---------------------------------------------------------
-# PREVIEW
-# ---------------------------------------------------------
-st.subheader("👀 Aperçu des données importées")
-
-tabs = st.tabs(["Clients", "Visa", "Escrow", "Compta"])
-
-with tabs[0]:
-    st.dataframe(df_clients, use_container_width=True, height=300)
-
-with tabs[1]:
-    st.dataframe(df_visa, use_container_width=True, height=300)
-
-with tabs[2]:
-    st.dataframe(df_escrow, use_container_width=True, height=300)
-
-with tabs[3]:
-    st.dataframe(df_compta, use_container_width=True, height=300)
-
-
-# ---------------------------------------------------------
-# CONVERTIR EN JSON
-# ---------------------------------------------------------
-st.subheader("🔄 Conversion Excel → JSON Dropbox")
-
-def df_to_list(df):
-    return df.to_dict(orient="records") if not df.empty else []
+def save_json(data):
+    """Sauvegarde JSON → Dropbox."""
+    dbx.files_upload(
+        json.dumps(data, indent=2).encode(),
+        JSON_PATH,
+        mode=dropbox.files.WriteMode("overwrite"),
+    )
+    st.success("✔ database.json mis à jour")
 
 
-database = {
-    "clients": df_to_list(df_clients),
-    "visa": df_to_list(df_visa),
-    "escrow": df_to_list(df_escrow),
-    "compta": df_to_list(df_compta)
-}
+# ============================================================
+# 1️⃣ IMPORT EXCEL → JSON
+# ============================================================
+st.header("📥 Importer les fichiers Excel → JSON")
 
-if st.button("📤 Importer et mettre à jour la base Dropbox", type="primary"):
-    save_json_to_dropbox(database)
-    st.balloons()
+if st.button("Importer Excel → JSON (Dropbox)", type="primary"):
+
+    df_clients = dl_excel(PATH_CLIENTS)
+    df_escrow = dl_excel(PATH_ESCROW)
+    df_visa = dl_excel(PATH_VISA)
+    df_compta = dl_excel(PATH_COMPTA)
+
+    db = {
+        "clients": df_clients.to_dict("records"),
+        "escrow": df_escrow.to_dict("records"),
+        "visa": df_visa.to_dict("records"),
+        "compta": df_compta.to_dict("records"),
+    }
+
+    save_json(db)
+    st.success("🎉 Importation Excel → JSON terminée !")
+
+st.markdown("---")
+
+
+# ============================================================
+# 2️⃣ EXPORT JSON → EXCEL
+# ============================================================
+st.header("📤 Exporter database.json → Excel")
+
+if st.button("Exporter JSON → Excel (Dropbox)", type="primary"):
+
+    db = load_json()
+
+    upload_excel(pd.DataFrame(db["clients"]), PATH_CLIENTS)
+    upload_excel(pd.DataFrame(db["escrow"]), PATH_ESCROW)
+    upload_excel(pd.DataFrame(db["visa"]), PATH_VISA)
+    upload_excel(pd.DataFrame(db["compta"]), PATH_COMPTA)
+
+    st.success("🎉 Exportation JSON → Excel terminée !")
+
+
+# ============================================================
+# 3️⃣ PREVIEW JSON
+# ============================================================
+st.markdown("---")
+st.header("🧐 Aperçu Database JSON")
+
+db = load_json()
+st.json(db, expanded=False)
+
