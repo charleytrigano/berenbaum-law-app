@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
+st.subheader("DEBUG — Contenu brut de la base")
+st.json(db)
 
 
 # ---------------------------------------------------
