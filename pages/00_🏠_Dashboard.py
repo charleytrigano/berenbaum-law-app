@@ -1,73 +1,76 @@
 import streamlit as st
-import json
-from utils.dropbox_utils import load_json_from_dropbox
+import pandas as pd
+from backend.dropbox_utils import load_database  # ✔ correct import
 
-st.set_page_config(page_title="📊 Tableau de bord – Berenbaum Law App", layout="wide")
+# ---------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------
+st.set_page_config(
+    page_title="Berenbaum Law App",
+    page_icon="📁",
+    layout="wide"
+)
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
-# -----------------------------
-# 1. Charger la base depuis Dropbox
-# -----------------------------
-db = load_json_from_dropbox("/Apps/berenbaum-law/database.json")
+# ---------------------------------------------------
+# LOAD DATABASE (Dropbox)
+# ---------------------------------------------------
+try:
+    db = load_database()
+    st.success("Base de données chargée depuis Dropbox ✔")
+except Exception as e:
+    st.error(f"Erreur lors du chargement de Dropbox : {e}")
+    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-if db is None:
-    st.error("❌ Impossible de charger la base depuis Dropbox.")
-    st.stop()
-
-st.success("Base de données chargée depuis Dropbox ✔")
-
-# -----------------------------
-# 2. DEBUG (à garder provisoirement)
-# -----------------------------
+# ---------------------------------------------------
+# DEBUG (temporaire)
+# ---------------------------------------------------
 with st.expander("🛠️ DEBUG — Contenu brut de la base"):
-    st.json(db)
+    st.write(db)
 
-# -----------------------------
-# 3. Sécurité : s'assurer que les clés existent
-# -----------------------------
+# ---------------------------------------------------
+# EXTRACTION DES TABLES
+# ---------------------------------------------------
 clients = db.get("clients", [])
 visa = db.get("visa", [])
 escrow = db.get("escrow", [])
 compta = db.get("compta", [])
 
-# -----------------------------
-# 4. Statistiques principales
-# -----------------------------
+# ---------------------------------------------------
+# KPIs
+# ---------------------------------------------------
+st.subheader("📌 Indicateurs principaux")
+
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("📁 Clients actifs", len(clients))
-col2.metric("🛂 Dossiers Visa", len(visa))
-col3.metric("💵 Mouvements Escrow", len(escrow))
+col1.metric("Clients actifs", len(clients))
+col2.metric("Dossiers Visa", len(visa))
+col3.metric("Mouvements Escrow", len(escrow))
 
-# Total escrow
+# Total Escrow sécurisé
 total_escrow = 0
-for entry in escrow:
-    amount = entry.get("Montant ($)") or entry.get("Amount ($)") or 0
+for e in escrow:
     try:
-        total_escrow += float(amount)
+        total_escrow += float(e.get("Montant", 0))
     except:
         pass
 
-col4.metric("💰 Total Escrow ($)", f"${total_escrow:,.2f}")
+col4.metric("Total Escrow ($)", f"${total_escrow:,.2f}")
 
-# -----------------------------
-# 5. Aperçu des dossiers clients
-# -----------------------------
+# ---------------------------------------------------
+# APERÇU DES CLIENTS
+# ---------------------------------------------------
+st.markdown("---")
 st.subheader("🗂️ Aperçu des dossiers")
 
-if len(clients) == 0:
+if not clients:
     st.info("Aucun dossier client enregistré.")
 else:
-    # Afficher un tableau compact
-    preview = [
-        {
-            "N° dossier": c.get("Dossier N"),
-            "Nom": c.get("Nom"),
-            "Visa": c.get("Visa"),
-            "Montant": c.get("Montant honoraires (US $)")
-        }
-        for c in clients[:15]
-    ]
-    st.table(preview)
+    df = pd.DataFrame(clients)
+
+    # Colonnes utiles
+    cols = [c for c in ["Dossier N", "Nom", "Catégories", "Visa", "Date envoi"] if c in df.columns]
+
+    st.dataframe(df[cols], use_container_width=True, height=350)
