@@ -20,6 +20,7 @@ st.set_page_config(
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
+st.warning(f"JSON lu : {cfg.DROPBOX_JSON}")
 
 # ---------------------------------------------------
 # LOAD DB
