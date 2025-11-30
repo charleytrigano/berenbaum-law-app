@@ -6,7 +6,6 @@ st.json(load_database())
 import streamlit as st
 st.json(st.secrets)
 
-
 # ---------------------------------------------------
 # PAGE CONFIG
 # ---------------------------------------------------
