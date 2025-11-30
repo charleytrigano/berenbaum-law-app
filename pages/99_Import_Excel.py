@@ -1,88 +1,122 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import dropbox_client, save_database, load_database
+from backend.dropbox_utils import load_database, save_database
+import dropbox
 
-st.set_page_config(page_title="Importer Excel → JSON", page_icon="🔄")
 
-st.title("🔄 Import Excel → Base JSON (Dropbox)")
-st.write("Cette page permet d'importer automatiquement les fichiers Excel pour mettre à jour la base JSON.")
+# --------------------------------------------------------
+# CONFIG – chemins fichiers Excel dans Dropbox
+# --------------------------------------------------------
+TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
+APP_KEY = st.secrets["dropbox"]["APP_KEY"]
+APP_SECRET = st.secrets["dropbox"]["APP_SECRET"]
 
-# -----------------------------
-# Charger chemins depuis secrets
-# -----------------------------
 PATH_CLIENTS = st.secrets["paths"]["CLIENTS_FILE"]
 PATH_ESCROW = st.secrets["paths"]["ESCROW_FILE"]
 PATH_VISA = st.secrets["paths"]["VISA_FILE"]
 PATH_COMPTA = st.secrets["paths"]["COMPTA_FILE"]
 
-dbx = dropbox_client()
 
+# --------------------------------------------------------
+# Téléchargement fichier depuis Dropbox
+# --------------------------------------------------------
 def read_excel_from_dropbox(path):
-    """Téléchargement + lecture Excel."""
+    """Télécharge un fichier Excel Dropbox et retourne un DataFrame."""
     try:
-        md, res = dbx.files_download(path)
-        return pd.ExcelFile(res.content)
+        import requests
+
+        # Récupération access_token via refresh_token
+        resp = requests.post(
+            "https://api.dropbox.com/oauth2/token",
+            data={
+                "refresh_token": TOKEN,
+                "client_id": APP_KEY,
+                "client_secret": APP_SECRET,
+                "grant_type": "refresh_token",
+            },
+        )
+
+        access_token = resp.json()["access_token"]
+
+        dbx = dropbox.Dropbox(access_token)
+
+        metadata, res = dbx.files_download(path)
+
+        return pd.read_excel(res.content)
+
     except Exception as e:
         st.error(f"❌ Erreur lecture fichier : {path} — {e}")
         return None
 
 
-# -----------------------------
-# IMPORT
-# -----------------------------
-if st.button("🚀 Importer les 4 fichiers Excel maintenant"):
+# --------------------------------------------------------
+# Normalisation JSON
+# --------------------------------------------------------
+def normalize_record(record):
+    """Convertit toutes les valeurs en types compatibles JSON."""
+    import pandas as pd
+    import numpy as np
 
-    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+    out = {}
+    for k, v in record.items():
 
+        if isinstance(v, (pd.Timestamp,)):
+            out[k] = v.strftime("%Y-%m-%d")
+
+        elif hasattr(v, "item"):
+            out[k] = v.item()
+
+        elif v is None:
+            out[k] = ""
+
+        else:
+            out[k] = v if isinstance(v, (int, float, str, bool)) else str(v)
+
+    return out
+
+
+# --------------------------------------------------------
+# PAGE UI
+# --------------------------------------------------------
+st.title("🔄 Import Excel → Base JSON (Dropbox)")
+st.write("Cette page importe automatiquement les fichiers Excel pour mettre à jour la base JSON.")
+
+
+# --------------------------------------------------------
+# Affichage JSON actuel
+# --------------------------------------------------------
+db = load_database()
+
+st.subheader("📦 Contenu actuel du JSON Dropbox")
+st.json(db)
+
+
+# --------------------------------------------------------
+# Bouton Import
+# --------------------------------------------------------
+if st.button("🚀 Importer les 4 fichiers Excel maintenant", type="primary"):
     st.subheader("📥 Lecture des fichiers Excel")
 
-    # === Clients ===
-    xls_clients = read_excel_from_dropbox(PATH_CLIENTS)
-    if xls_clients and "Clients" in xls_clients.sheet_names:
-        df = pd.read_excel(xls_clients, "Clients")
-        db["clients"] = df.fillna("").to_dict(orient="records")
-        st.success("✔ Clients importés")
-    else:
-        st.warning("⚠ La feuille 'Clients' est absente dans Excel.")
+    df_clients = read_excel_from_dropbox(PATH_CLIENTS)
+    df_visa = read_excel_from_dropbox(PATH_VISA)
+    df_escrow = read_excel_from_dropbox(PATH_ESCROW)
+    df_compta = read_excel_from_dropbox(PATH_COMPTA)
 
-    # === Visa ===
-    xls_visa = read_excel_from_dropbox(PATH_VISA)
-    if xls_visa and "Visa" in xls_visa.sheet_names:
-        df = pd.read_excel(xls_visa, "Visa")
-        db["visa"] = df.fillna("").to_dict(orient="records")
-        st.success("✔ Visa importés")
-    else:
-        st.warning("⚠ La feuille 'Visa' est absente dans Excel.")
+    # Normalisation
+    db["clients"] = [] if df_clients is None else [normalize_record(r) for _, r in df_clients.iterrows()]
+    st.success("✔ Clients importés")
 
-    # === Escrow ===
-    xls_escrow = read_excel_from_dropbox(PATH_ESCROW)
-    if xls_escrow and "Escrow" in xls_escrow.sheet_names:
-        df = pd.read_excel(xls_escrow, "Escrow")
-        db["escrow"] = df.fillna("").to_dict(orient="records")
-        st.success("✔ Escrow importé")
-    else:
-        st.warning("⚠ La feuille 'Escrow' est absente dans Excel.")
+    db["visa"] = [] if df_visa is None else [normalize_record(r) for _, r in df_visa.iterrows()]
+    st.success("✔ Visa importés")
 
-    # === Compta ===
-    xls_compta = read_excel_from_dropbox(PATH_COMPTA)
-    if xls_compta and "ComptaCli" in xls_compta.sheet_names:
-        df = pd.read_excel(xls_compta, "ComptaCli")
-        db["compta"] = df.fillna("").to_dict(orient="records")
-        st.success("✔ Compta importée")
-    else:
-        st.warning("⚠ La feuille 'ComptaCli' est absente dans Excel.")
+    db["escrow"] = [] if df_escrow is None else [normalize_record(r) for _, r in df_escrow.iterrows()]
+    st.success("✔ Escrow importé")
 
-    # -----------------------------
-    # Écriture JSON
-    # -----------------------------
+    db["compta"] = [] if df_compta is None else [normalize_record(r) for _, r in df_compta.iterrows()]
+    st.success("✔ Compta importée")
+
+    # Sauvegarde Dropbox
     save_database(db)
 
-    st.success("🎉 Import terminé et base JSON mise à jour !")
+    st.success("🎉 Mise à jour JSON terminée et synchronisée dans Dropbox ✔")
     st.balloons()
-
-
-# -----------------------------
-# Aperçu JSON actuel
-# -----------------------------
-st.subheader("📦 Contenu actuel du JSON Dropbox")
-st.json(load_database())
