@@ -1,43 +1,38 @@
 import dropbox
-import requests
-import streamlit as st
 import json
+import streamlit as st
 
+# ---------------------------------------------------------
+# Authentification Dropbox (refresh_token)
+# ---------------------------------------------------------
 APP_KEY = st.secrets["dropbox"]["APP_KEY"]
 APP_SECRET = st.secrets["dropbox"]["APP_SECRET"]
-REFRESH_TOKEN = st.secrets["dropbox"]["REFRESH_TOKEN"]
-
-def get_access_token():
-    """Échange le refresh token contre un access token valide."""
-    url = "https://api.dropbox.com/oauth2/token"
-    data = {
-        "grant_type": "refresh_token",
-        "refresh_token": REFRESH_TOKEN,
-        "client_id": APP_KEY,
-        "client_secret": APP_SECRET
-    }
-    r = requests.post(url, data=data)
-    return r.json()["access_token"]
+REFRESH_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
 
 def get_dbx():
-    return dropbox.Dropbox(get_access_token())
+    """Retourne un client Dropbox authentifié via refresh token"""
+    return dropbox.Dropbox(
+        oauth2_refresh_token=REFRESH_TOKEN,
+        app_key=APP_KEY,
+        app_secret=APP_SECRET
+    )
 
-def load_database():
+# ---------------------------------------------------------
+# Télécharger un fichier depuis Dropbox
+# ---------------------------------------------------------
+def dropbox_download(path):
     dbx = get_dbx()
-    path = st.secrets["paths"]["DROPBOX_JSON"]
+    metadata, res = dbx.files_download(path)
+    return res.content  # bytes
 
-    try:
-        metadata, res = dbx.files_download(path)
-        return json.loads(res.content.decode())
-    except:
-        return {"clients": [], "visa": [], "escrow": [], "compta": []}
-
-def save_database(data):
+# ---------------------------------------------------------
+# Écrire un JSON dans Dropbox
+# ---------------------------------------------------------
+def dropbox_upload_json(path, data):
     dbx = get_dbx()
-    path = st.secrets["paths"]["DROPBOX_JSON"]
 
     dbx.files_upload(
-        json.dumps(data, indent=2).encode(),
+        json.dumps(data, indent=2).encode("utf-8"),
         path,
         mode=dropbox.files.WriteMode("overwrite")
     )
