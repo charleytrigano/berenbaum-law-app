@@ -1,3 +1,8 @@
+import streamlit as st
+import pandas as pd
+from backend.dropbox_utils import load_database
+import utils.config as cfg   # ← AJOUT IMPORTANT !
+
 import utils.config as cfg
 st.warning(f"JSON lu : {cfg.DROPBOX_JSON}")
 import streamlit as st
