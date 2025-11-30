@@ -25,6 +25,9 @@ try:
 except Exception as e:
     st.error(f"Erreur Dropbox : {e}")
     db = {"clients": []}
+    st.subheader("DEBUG JSON (lu par Dashboard)")
+st.json(db)
+
 
 clients = db.get("clients", [])
 
