@@ -1,5 +1,10 @@
 import streamlit as st
 from backend.dropbox_utils import load_database, save_database
+from backend.dropbox_utils import load_database
+
+st.write("🔍 Test lecture JSON :")
+st.json(load_database())
+
 
 st.set_page_config(page_title="Synchronisation Dropbox", page_icon="🔄")
 
