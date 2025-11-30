@@ -2,102 +2,67 @@ import json
 import dropbox
 import streamlit as st
 
-# ----------------------------------------------------
-# CONFIG (Streamlit Secrets)
-# ----------------------------------------------------
+# ---------------------------------------------
+# 🔐 Chargement des secrets Dropbox
+# ---------------------------------------------
 APP_KEY = st.secrets["dropbox"]["APP_KEY"]
 APP_SECRET = st.secrets["dropbox"]["APP_SECRET"]
 REFRESH_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
+
 JSON_PATH = st.secrets["paths"]["DROPBOX_JSON"]
 
-
-# ----------------------------------------------------
-# OAUTH2 — Obtention d'un access token valide
-# ----------------------------------------------------
-def get_access_token():
-    """Génère un access_token en utilisant le refresh_token Dropbox OAuth2."""
-    url = "https://api.dropbox.com/oauth2/token"
-
-    data = {
-        "refresh_token": REFRESH_TOKEN,
-        "grant_type": "refresh_token",
-        "client_id": APP_KEY,
-        "client_secret": APP_SECRET
-    }
-
-    import requests
-    r = requests.post(url, data=data)
-
-    if r.status_code != 200:
-        raise Exception(f"Erreur OAuth Dropbox : {r.text}")
-
-    return r.json()["access_token"]
-
-
+# ---------------------------------------------
+# 🔄 Obtenir un access_token PROPRE via refresh token
+# ---------------------------------------------
 def get_dbx():
-    """Retourne un client Dropbox authentifié."""
-    token = get_access_token()
-    return dropbox.Dropbox(token)
+    """Retourne un client Dropbox avec un access_token actualisé."""
+    oauth_result = dropbox.DropboxOAuth2FlowNoRedirect(
+        consumer_key=APP_KEY,
+        consumer_secret=APP_SECRET
+    )
 
+    # Demande un nouveau access_token à partir du refresh_token
+    token_result = dropbox.oauth.RefreshResult(
+        access_token=None,
+        expires_in=None,
+        refresh_token=REFRESH_TOKEN,
+        scope=None,
+        token_type="bearer",
+        account_id=None,
+        user_id=None
+    )
 
-# ----------------------------------------------------
-# JSON SAFE — Convertit toute structure Python → JSON valide
-# ----------------------------------------------------
-def json_safe(obj):
-    import pandas as pd
-    import numpy as np
+    dbx = dropbox.Dropbox(
+        oauth2_refresh_token=REFRESH_TOKEN,
+        app_key=APP_KEY,
+        app_secret=APP_SECRET
+    )
 
-    if isinstance(obj, dict):
-        return {k: json_safe(v) for k, v in obj.items()}
+    return dbx
 
-    if isinstance(obj, list):
-        return [json_safe(x) for x in obj]
-
-    # Dates Pandas
-    if isinstance(obj, (pd.Timestamp,)):
-        return obj.strftime("%Y-%m-%d")
-
-    # NumPy types
-    if isinstance(obj, (np.integer, np.floating)):
-        return obj.item()
-
-    if obj is None:
-        return ""
-
-    # Autres types non JSON
-    if not isinstance(obj, (int, float, str, bool)):
-        return str(obj)
-
-    return obj
-
-
-# ----------------------------------------------------
-# LOAD JSON
-# ----------------------------------------------------
+# ---------------------------------------------
+# 📥 Charger la base JSON
+# ---------------------------------------------
 def load_database():
-    """Télécharge et charge le JSON depuis Dropbox."""
-    dbx = get_dbx()
-
     try:
+        dbx = get_dbx()
         metadata, res = dbx.files_download(JSON_PATH)
         data = json.loads(res.content.decode("utf-8"))
         return data
     except Exception as e:
-        print("Erreur load_database:", e)
-        return {"clients": [], "visa": [], "escrow": [], "compta": [], "__test__": "OK"}
+        print("❌ Erreur load_database :", e)
+        return {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-
-# ----------------------------------------------------
-# SAVE JSON
-# ----------------------------------------------------
+# ---------------------------------------------
+# 📤 Sauvegarder la base JSON
+# ---------------------------------------------
 def save_database(data):
-    """Convertit en JSON et sauvegarde dans Dropbox."""
-    dbx = get_dbx()
-
-    safe_data = json_safe(data)
-
-    dbx.files_upload(
-        json.dumps(safe_data, indent=2).encode("utf-8"),
-        JSON_PATH,
-        mode=dropbox.files.WriteMode("overwrite")
-    )
+    try:
+        dbx = get_dbx()
+        dbx.files_upload(
+            json.dumps(data, indent=2).encode("utf-8"),
+            JSON_PATH,
+            mode=dropbox.files.WriteMode("overwrite")
+        )
+    except Exception as e:
+        print("❌ Erreur save_database :", e)
