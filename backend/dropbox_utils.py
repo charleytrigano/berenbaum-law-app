@@ -1,38 +1,68 @@
-import dropbox
 import json
+import dropbox
 import streamlit as st
 
-# ---------------------------------------------------------
-# Authentification Dropbox (refresh_token)
-# ---------------------------------------------------------
+# ---------------------------
+# CHARGEMENT DES SECRETS
+# ---------------------------
+
 APP_KEY = st.secrets["dropbox"]["APP_KEY"]
 APP_SECRET = st.secrets["dropbox"]["APP_SECRET"]
-REFRESH_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
+REFRESH_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]  # ✔ OK
+JSON_PATH = st.secrets["paths"]["DROPBOX_JSON"]          # ✔ OK
 
-def get_dbx():
-    """Retourne un client Dropbox authentifié via refresh token"""
-    return dropbox.Dropbox(
-        oauth2_refresh_token=REFRESH_TOKEN,
-        app_key=APP_KEY,
-        app_secret=APP_SECRET
-    )
+# ---------------------------
+# RÉCUPÉRER ACCESS TOKEN
+# ---------------------------
 
-# ---------------------------------------------------------
-# Télécharger un fichier depuis Dropbox
-# ---------------------------------------------------------
-def dropbox_download(path):
-    dbx = get_dbx()
-    metadata, res = dbx.files_download(path)
-    return res.content  # bytes
+def get_access_token():
+    """Échange le refresh token contre un access token valide."""
+    dbx = dropbox.DropboxOAuth2FlowNoRedirect(APP_KEY, APP_SECRET)
+    oauth_result = dbx.refresh_access_token(REFRESH_TOKEN)
+    return oauth_result.access_token
 
-# ---------------------------------------------------------
-# Écrire un JSON dans Dropbox
-# ---------------------------------------------------------
-def dropbox_upload_json(path, data):
-    dbx = get_dbx()
 
-    dbx.files_upload(
-        json.dumps(data, indent=2).encode("utf-8"),
-        path,
-        mode=dropbox.files.WriteMode("overwrite")
-    )
+# ---------------------------
+# CLIENT DROPBOX
+# ---------------------------
+
+def get_client():
+    access_token = get_access_token()
+    return dropbox.Dropbox(oauth2_access_token=access_token)
+
+
+# ---------------------------
+# LECTURE JSON
+# ---------------------------
+
+def load_database():
+    """Télécharge et charge le fichier JSON depuis Dropbox."""
+    try:
+        dbx = get_client()
+        metadata, res = dbx.files_download(JSON_PATH)
+        data = json.loads(res.content.decode("utf-8"))
+        return data
+
+    except Exception as e:
+        st.error(f"❌ Erreur load_database : {e}")
+        return {"clients": [], "visa": [], "escrow": [], "compta": []}
+
+
+# ---------------------------
+# ÉCRITURE JSON
+# ---------------------------
+
+def save_database(data):
+    """Écrit le JSON sur Dropbox."""
+    try:
+        dbx = get_client()
+        dbx.files_upload(
+            json.dumps(data, indent=2).encode("utf-8"),
+            JSON_PATH,
+            mode=dropbox.files.WriteMode("overwrite")
+        )
+        return True
+
+    except Exception as e:
+        st.error(f"❌ Erreur save_database : {e}")
+        return False
