@@ -18,7 +18,7 @@ dbx = dropbox.Dropbox(TOKEN)
 
 st.set_page_config(page_title="🔄 Synchronisation", layout="wide")
 st.title("🔄 Synchronisation Excel ↔ JSON (Dropbox)")
-
+st.write("DEBUG SECRETS =", st.secrets)
 # ============================================================
 # UTILS
 # ============================================================
