@@ -1,14 +1,6 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from backend.dropbox_utils import load_database
-st.json(load_database())st.subheader("DEBUG JSON (Dropbox)")
-st.json(db)
-
-
-import streamlit as st
-st.json(st.secrets)
-
 
 # ---------------------------------------------------
 # PAGE CONFIG
@@ -23,7 +15,7 @@ st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
 # ---------------------------------------------------
-# LOAD DATABASE (Dropbox)
+# LOAD DB
 # ---------------------------------------------------
 try:
     db = load_database()
@@ -41,39 +33,31 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------
-# Normalisation des colonnes
+# NORMALISATION
 # ---------------------------------------------------
-for col in [
+num_cols = [
     "Montant honoraires (US $)",
     "Autres frais (US $)",
     "Acompte 1",
     "Acompte 2",
     "Acompte 3",
     "Acompte 4"
-]:
+]
+
+for col in num_cols:
     if col not in df.columns:
         df[col] = 0
-
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-# Total facturé
+# TOTALS
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-
-# Montant encaissé
-df["Montant encaissé"] = (
-    df["Acompte 1"] +
-    df["Acompte 2"] +
-    df["Acompte 3"] +
-    df["Acompte 4"]
-)
-
-# Solde
+df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
 # ---------------------------------------------------
 # KPI
 # ---------------------------------------------------
-st.subheader("📌 Indicateurs principaux")
+st.subheader("📌 Indicateurs")
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
@@ -82,7 +66,7 @@ col2.metric("Total honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}"
 col3.metric("Total autres frais", f"${df['Autres frais (US $)'].sum():,.2f}")
 col4.metric("Total facturé", f"${df['Total facturé'].sum():,.2f}")
 col5.metric("Montant encaissé", f"${df['Montant encaissé'].sum():,.2f}")
-col6.metric("Solde restant", f"${df['Solde'].sum():,.2f}")
+col6.metric("Solde", f"${df['Solde'].sum():,.2f}")
 
 st.markdown("---")
 
@@ -93,11 +77,11 @@ st.subheader("🎛️ Filtres")
 
 colA, colB, colC, colD, colE = st.columns(5)
 
-# Catégories
+# Catégorie
 cat_list = ["Toutes"] + sorted(df["Catégories"].dropna().unique().tolist())
 cat_filter = colA.selectbox("Catégorie", cat_list)
 
-# Sous-catégories
+# Sous-catégorie
 scat_list = ["Toutes"] + sorted(df["Sous-catégories"].dropna().unique().tolist())
 souscat_filter = colB.selectbox("Sous-catégorie", scat_list)
 
@@ -106,16 +90,19 @@ visa_list = ["Tous"] + sorted(df["Visa"].dropna().unique().tolist())
 visa_filter = colC.selectbox("Visa", visa_list)
 
 # Année
-df["Année"] = pd.to_datetime(df["Date"], errors="coerce").dt.year
-annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
+if "Date" in df.columns:
+    df["Année"] = pd.to_datetime(df["Date"], errors="coerce").dt.year
+    annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
+else:
+    annee_list = ["Toutes"]
+
 annee_filter = colD.selectbox("Année", annee_list)
 
-# Date range
 date_debut = colE.date_input("Date début")
 date_fin = colE.date_input("Date fin")
 
 # ---------------------------------------------------
-# Application des filtres
+# APPLY FILTERS
 # ---------------------------------------------------
 filtered_df = df.copy()
 
@@ -131,7 +118,6 @@ if visa_filter != "Tous":
 if annee_filter != "Toutes":
     filtered_df = filtered_df[filtered_df["Année"] == annee_filter]
 
-# Filtre date à date
 filtered_df["Date"] = pd.to_datetime(filtered_df["Date"], errors="coerce")
 
 if date_debut:
@@ -141,26 +127,16 @@ if date_fin:
     filtered_df = filtered_df[filtered_df["Date"] <= pd.to_datetime(date_fin)]
 
 # ---------------------------------------------------
-# AFFICHAGE DES DOSSIERS FILTRÉS
+# RESULT TABLE
 # ---------------------------------------------------
 st.subheader("📋 Dossiers filtrés")
 
-st.dataframe(
-    filtered_df[
-        [
-            "Dossier N",
-            "Nom",
-            "Catégories",
-            "Sous-catégories",
-            "Visa",
-            "Montant honoraires (US $)",
-            "Autres frais (US $)",
-            "Total facturé",
-            "Montant encaissé",
-            "Solde",
-            "Date"
-        ]
-    ],
-    use_container_width=True,
-    height=500
-)
+columns_to_display = [
+    "Dossier N", "Nom", "Catégories", "Sous-catégories", "Visa",
+    "Montant honoraires (US $)", "Autres frais (US $)",
+    "Total facturé", "Montant encaissé", "Solde", "Date"
+]
+
+cols = [c for c in columns_to_display if c in filtered_df.columns]
+
+st.dataframe(filtered_df[cols], use_container_width=True, height=500)
