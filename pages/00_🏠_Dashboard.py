@@ -1,17 +1,58 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-import utils.config as cfg   # ← AJOUT IMPORTANT !
 
-import utils.config as cfg
-st.warning(f"JSON lu : {cfg.DROPBOX_JSON}")
-import streamlit as st
-import pandas as pd
-from backend.dropbox_utils import load_database
+# ==========================================================
+#  DÉPENDANCES VISA (extraites du fichier Visa.xlsx)
+# ==========================================================
+dependencies = {
 
-# ---------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------
+    "Affaires / Tourisme": {
+        "B-1": ["1-COS", "2-EOS"],
+        "B-2": ["1-COS", "2-EOS"]
+    },
+
+    "Professionnel": {
+        "P-1": ["1-Inv.", "2-CP", "3-USCIS"],
+        "P-2": ["1-CP", "2-USCIS"]
+    },
+
+    "Travailleur temporaire": {
+        "H-1B": ["1-Initial", "2-Extension", "3-Transfer", "4-CP"],
+        "H-2B": ["2-CP.1"],
+        "E-3": ["1-Employement"]
+    },
+
+    "Immigration permanente - EB": {
+        "EB1": ["1-I-140", "2-AOS", "3-I-140 & AOS", "4-CP.1"],
+        "EB2": ["4-Perm", "5-CP"],
+        "EB5": ["1-I-526", "2-AOS.1", "3-I527 & AOS", "4-CP.2", "I-829"]
+    },
+
+    "Immigration familiale": {
+        "I-130": ["2-I-130", "3-AOS", "4-I-130 & AOS", "5-CP.1"],
+        "K-1": ["1-CP.1", "2-AOS.2"]
+    },
+
+    "Autres": {
+        "Traditional": ["Traditional"],
+        "Marriage": ["Marriage"],
+        "Derivatives": ["Derivatives"],
+        "Travel Permit": ["Travel Permit"],
+        "Work Permit": ["Work Permit"],
+        "I-751": ["I-751"],
+        "Re-entry Permit": ["Re-entry Permit"],
+        "I-90": ["I-90"],
+        "Consultation": ["Consultation"],
+        "Analysis": ["Analysis"],
+        "Referral": ["Referral"],
+        "I-407": ["I-407"]
+    }
+}
+
+# ==========================================================
+#  PAGE CONFIG
+# ==========================================================
 st.set_page_config(
     page_title="Berenbaum Law App",
     page_icon="📁",
@@ -20,20 +61,16 @@ st.set_page_config(
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
-st.warning(f"JSON lu : {cfg.DROPBOX_JSON}")
 
-# ---------------------------------------------------
-# LOAD DB
-# ---------------------------------------------------
+# ==========================================================
+#  LOAD DB
+# ==========================================================
 try:
     db = load_database()
     st.success("Base de données chargée depuis Dropbox ✔")
-except Exception as e:
-    st.error(f"Erreur Dropbox : {e}")
-    db = {"clients": []}
-    st.subheader("DEBUG JSON (lu par Dashboard)")
-st.json(db)
-
+except:
+    st.error("Impossible de lire la base Dropbox.")
+    st.stop()
 
 clients = db.get("clients", [])
 
@@ -43,31 +80,28 @@ if not clients:
 
 df = pd.DataFrame(clients)
 
-# ---------------------------------------------------
-# NORMALISATION
-# ---------------------------------------------------
-num_cols = [
+# ==========================================================
+#  NORMALISATION DES MONTANTS
+# ==========================================================
+for col in [
     "Montant honoraires (US $)",
     "Autres frais (US $)",
     "Acompte 1",
     "Acompte 2",
     "Acompte 3",
     "Acompte 4"
-]
-
-for col in num_cols:
+]:
     if col not in df.columns:
         df[col] = 0
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-# TOTALS
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
-# ---------------------------------------------------
-# KPI
-# ---------------------------------------------------
+# ==========================================================
+#  KPI
+# ==========================================================
 st.subheader("📌 Indicateurs")
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -81,73 +115,66 @@ col6.metric("Solde", f"${df['Solde'].sum():,.2f}")
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# FILTRES
-# ---------------------------------------------------
+# ==========================================================
+#  FILTRES DYNAMIQUES
+# ==========================================================
 st.subheader("🎛️ Filtres")
 
-colA, colB, colC, colD, colE = st.columns(5)
+colA, colB, colC = st.columns(3)
 
-# Catégorie
-cat_list = ["Toutes"] + sorted(df["Catégories"].dropna().unique().tolist())
-cat_filter = colA.selectbox("Catégorie", cat_list)
+# --- Catégorie ---
+categorie = colA.selectbox("Catégorie", ["Toutes"] + list(dependencies.keys()))
 
-# Sous-catégorie
-scat_list = ["Toutes"] + sorted(df["Sous-catégories"].dropna().unique().tolist())
-souscat_filter = colB.selectbox("Sous-catégorie", scat_list)
-
-# Visa
-visa_list = ["Tous"] + sorted(df["Visa"].dropna().unique().tolist())
-visa_filter = colC.selectbox("Visa", visa_list)
-
-# Année
-if "Date" in df.columns:
-    df["Année"] = pd.to_datetime(df["Date"], errors="coerce").dt.year
-    annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
+# --- Sous-catégorie dépendante ---
+if categorie == "Toutes":
+    souscats = ["Toutes"]
 else:
-    annee_list = ["Toutes"]
+    souscats = ["Toutes"] + list(dependencies[categorie].keys())
 
-annee_filter = colD.selectbox("Année", annee_list)
+sous_categorie = colB.selectbox("Sous-catégorie", souscats)
 
-date_debut = colE.date_input("Date début")
-date_fin = colE.date_input("Date fin")
+# --- Visa dépendant ---
+if categorie == "Toutes" or sous_categorie == "Toutes":
+    visas = ["Tous"]
+else:
+    visas = ["Tous"] + dependencies[categorie][sous_categorie]
 
-# ---------------------------------------------------
-# APPLY FILTERS
-# ---------------------------------------------------
+visa = colC.selectbox("Visa", visas)
+
+# ==========================================================
+#  APPLICATION DES FILTRES
+# ==========================================================
 filtered_df = df.copy()
 
-if cat_filter != "Toutes":
-    filtered_df = filtered_df[filtered_df["Catégories"] == cat_filter]
+if categorie != "Toutes":
+    filtered_df = filtered_df[filtered_df["Catégories"] == categorie]
 
-if souscat_filter != "Toutes":
-    filtered_df = filtered_df[filtered_df["Sous-catégories"] == souscat_filter]
+if sous_categorie != "Toutes":
+    filtered_df = filtered_df[filtered_df["Sous-catégories"] == sous_categorie]
 
-if visa_filter != "Tous":
-    filtered_df = filtered_df[filtered_df["Visa"] == visa_filter]
+if visa != "Tous":
+    filtered_df = filtered_df[filtered_df["Visa"] == visa]
 
-if annee_filter != "Toutes":
-    filtered_df = filtered_df[filtered_df["Année"] == annee_filter]
-
-filtered_df["Date"] = pd.to_datetime(filtered_df["Date"], errors="coerce")
-
-if date_debut:
-    filtered_df = filtered_df[filtered_df["Date"] >= pd.to_datetime(date_debut)]
-
-if date_fin:
-    filtered_df = filtered_df[filtered_df["Date"] <= pd.to_datetime(date_fin)]
-
-# ---------------------------------------------------
-# RESULT TABLE
-# ---------------------------------------------------
+# ==========================================================
+#  TABLEAU FILTRÉ
+# ==========================================================
 st.subheader("📋 Dossiers filtrés")
 
-columns_to_display = [
-    "Dossier N", "Nom", "Catégories", "Sous-catégories", "Visa",
-    "Montant honoraires (US $)", "Autres frais (US $)",
-    "Total facturé", "Montant encaissé", "Solde", "Date"
-]
-
-cols = [c for c in columns_to_display if c in filtered_df.columns]
-
-st.dataframe(filtered_df[cols], use_container_width=True, height=500)
+st.dataframe(
+    filtered_df[
+        [
+            "Dossier N",
+            "Nom",
+            "Catégories",
+            "Sous-catégories",
+            "Visa",
+            "Montant honoraires (US $)",
+            "Autres frais (US $)",
+            "Total facturé",
+            "Montant encaissé",
+            "Solde"
+        ]
+    ],
+    use_container_width=True,
+    height=500
+)
