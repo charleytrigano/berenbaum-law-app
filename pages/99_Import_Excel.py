@@ -1,86 +1,88 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import dropbox_download, dropbox_upload_json
-import json
+from backend.dropbox_utils import dropbox_client, save_database, load_database
 
-st.set_page_config(page_title="Import Excel", page_icon="📥")
+st.set_page_config(page_title="Importer Excel → JSON", page_icon="🔄")
 
-st.title("📥 Import Excel → JSON (Dropbox)")
+st.title("🔄 Import Excel → Base JSON (Dropbox)")
+st.write("Cette page permet d'importer automatiquement les fichiers Excel pour mettre à jour la base JSON.")
 
-# ---------------------------------------------------------
-# Chargement des chemins
-# ---------------------------------------------------------
-try:
-    CLIENTS_PATH = st.secrets["paths"]["CLIENTS_FILE"]
-    ESCROW_PATH = st.secrets["paths"]["ESCROW_FILE"]
-    VISA_PATH = st.secrets["paths"]["VISA_FILE"]
-    COMPTA_PATH = st.secrets["paths"]["COMPTA_FILE"]
-    JSON_PATH = st.secrets["paths"]["DROPBOX_JSON"]
-except Exception as e:
-    st.error(f"❌ Erreur lecture secrets.toml : {e}")
-    st.stop()
+# -----------------------------
+# Charger chemins depuis secrets
+# -----------------------------
+PATH_CLIENTS = st.secrets["paths"]["CLIENTS_FILE"]
+PATH_ESCROW = st.secrets["paths"]["ESCROW_FILE"]
+PATH_VISA = st.secrets["paths"]["VISA_FILE"]
+PATH_COMPTA = st.secrets["paths"]["COMPTA_FILE"]
 
-# ---------------------------------------------------------
-# Fonction sécurisée
-# ---------------------------------------------------------
-def safe_xlsx_load(path):
+dbx = dropbox_client()
+
+def read_excel_from_dropbox(path):
+    """Téléchargement + lecture Excel."""
     try:
-        file_bytes = dropbox_download(path)
-        return pd.ExcelFile(file_bytes)
+        md, res = dbx.files_download(path)
+        return pd.ExcelFile(res.content)
     except Exception as e:
-        st.error(f"❌ Impossible lire : {path} — {e}")
+        st.error(f"❌ Erreur lecture fichier : {path} — {e}")
         return None
 
-# ---------------------------------------------------------
-# Importation des fichiers
-# ---------------------------------------------------------
-st.header("📄 Lecture des fichiers Excel")
 
-xls_clients = safe_xlsx_load(CLIENTS_PATH)
-xls_escrow = safe_xlsx_load(ESCROW_PATH)
-xls_visa = safe_xlsx_load(VISA_PATH)
-xls_compta = safe_xlsx_load(COMPTA_PATH)
+# -----------------------------
+# IMPORT
+# -----------------------------
+if st.button("🚀 Importer les 4 fichiers Excel maintenant"):
 
-# ---------------------------------------------------------
-# Conversion → JSON
-# ---------------------------------------------------------
-st.header("🔄 Conversion Excel → JSON")
+    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+    st.subheader("📥 Lecture des fichiers Excel")
 
-if xls_clients and "Clients" in xls_clients.sheet_names:
-    st.success("Clients → OK")
-    db["clients"] = pd.read_excel(xls_clients, "Clients").fillna("").to_dict(orient="records")
-else:
-    st.warning("⚠ Feuille 'Clients' absente ou introuvable.")
+    # === Clients ===
+    xls_clients = read_excel_from_dropbox(PATH_CLIENTS)
+    if xls_clients and "Clients" in xls_clients.sheet_names:
+        df = pd.read_excel(xls_clients, "Clients")
+        db["clients"] = df.fillna("").to_dict(orient="records")
+        st.success("✔ Clients importés")
+    else:
+        st.warning("⚠ La feuille 'Clients' est absente dans Excel.")
 
-if xls_visa and "Visa" in xls_visa.sheet_names:
-    st.success("Visa → OK")
-    db["visa"] = pd.read_excel(xls_visa, "Visa").fillna("").to_dict(orient="records")
-else:
-    st.warning("⚠ Feuille 'Visa' absente ou introuvable.")
+    # === Visa ===
+    xls_visa = read_excel_from_dropbox(PATH_VISA)
+    if xls_visa and "Visa" in xls_visa.sheet_names:
+        df = pd.read_excel(xls_visa, "Visa")
+        db["visa"] = df.fillna("").to_dict(orient="records")
+        st.success("✔ Visa importés")
+    else:
+        st.warning("⚠ La feuille 'Visa' est absente dans Excel.")
 
-if xls_escrow and "Escrow" in xls_escrow.sheet_names:
-    st.success("Escrow → OK")
-    db["escrow"] = pd.read_excel(xls_escrow, "Escrow").fillna("").to_dict(orient="records")
-else:
-    st.warning("⚠ Feuille 'Escrow' absente ou introuvable.")
+    # === Escrow ===
+    xls_escrow = read_excel_from_dropbox(PATH_ESCROW)
+    if xls_escrow and "Escrow" in xls_escrow.sheet_names:
+        df = pd.read_excel(xls_escrow, "Escrow")
+        db["escrow"] = df.fillna("").to_dict(orient="records")
+        st.success("✔ Escrow importé")
+    else:
+        st.warning("⚠ La feuille 'Escrow' est absente dans Excel.")
 
-if xls_compta and "ComptaCli" in xls_compta.sheet_names:
-    st.success("ComptaCli → OK")
-    db["compta"] = pd.read_excel(xls_compta, "ComptaCli").fillna("").to_dict(orient="records")
-else:
-    st.warning("⚠ Feuille 'ComptaCli' absente ou introuvable.")
+    # === Compta ===
+    xls_compta = read_excel_from_dropbox(PATH_COMPTA)
+    if xls_compta and "ComptaCli" in xls_compta.sheet_names:
+        df = pd.read_excel(xls_compta, "ComptaCli")
+        db["compta"] = df.fillna("").to_dict(orient="records")
+        st.success("✔ Compta importée")
+    else:
+        st.warning("⚠ La feuille 'ComptaCli' est absente dans Excel.")
 
-# ---------------------------------------------------------
-# SAUVEGARDE JSON Dropbox
-# ---------------------------------------------------------
-st.header("💾 Sauvegarde JSON dans Dropbox")
+    # -----------------------------
+    # Écriture JSON
+    # -----------------------------
+    save_database(db)
 
-try:
-    dropbox_upload_json(JSON_PATH, db)
-    st.success("✔ Base JSON mise à jour dans Dropbox")
-except Exception as e:
-    st.error(f"❌ Erreur écriture JSON : {e}")
+    st.success("🎉 Import terminé et base JSON mise à jour !")
+    st.balloons()
 
-st.success("🎉 Import terminé")
+
+# -----------------------------
+# Aperçu JSON actuel
+# -----------------------------
+st.subheader("📦 Contenu actuel du JSON Dropbox")
+st.json(load_database())
