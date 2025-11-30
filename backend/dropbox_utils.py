@@ -1,26 +1,43 @@
-import json
 import dropbox
+import requests
 import streamlit as st
-from utils.config import DROPBOX_TOKEN, DROPBOX_FILE_PATH
+import json
 
-def _get_dbx():
-    return dropbox.Dropbox(DROPBOX_TOKEN)
+APP_KEY = st.secrets["dropbox"]["APP_KEY"]
+APP_SECRET = st.secrets["dropbox"]["APP_SECRET"]
+REFRESH_TOKEN = st.secrets["dropbox"]["REFRESH_TOKEN"]
+
+def get_access_token():
+    """Échange le refresh token contre un access token valide."""
+    url = "https://api.dropbox.com/oauth2/token"
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": REFRESH_TOKEN,
+        "client_id": APP_KEY,
+        "client_secret": APP_SECRET
+    }
+    r = requests.post(url, data=data)
+    return r.json()["access_token"]
+
+def get_dbx():
+    return dropbox.Dropbox(get_access_token())
 
 def load_database():
-    dbx = _get_dbx()
+    dbx = get_dbx()
+    path = st.secrets["paths"]["DROPBOX_JSON"]
 
     try:
-        metadata, res = dbx.files_download(DROPBOX_FILE_PATH)
-        data = json.loads(res.content.decode("utf-8"))
-        return data
-    except Exception:
+        metadata, res = dbx.files_download(path)
+        return json.loads(res.content.decode())
+    except:
         return {"clients": [], "visa": [], "escrow": [], "compta": []}
 
 def save_database(data):
-    dbx = _get_dbx()
+    dbx = get_dbx()
+    path = st.secrets["paths"]["DROPBOX_JSON"]
 
     dbx.files_upload(
-        json.dumps(data, indent=2).encode("utf-8"),
-        DROPBOX_FILE_PATH,
+        json.dumps(data, indent=2).encode(),
+        path,
         mode=dropbox.files.WriteMode("overwrite")
     )
