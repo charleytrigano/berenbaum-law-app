@@ -2,7 +2,10 @@ import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
 from backend.dropbox_utils import load_database
-st.json(load_database())
+st.json(load_database())st.subheader("DEBUG JSON (Dropbox)")
+st.json(db)
+
+
 import streamlit as st
 st.json(st.secrets)
 
