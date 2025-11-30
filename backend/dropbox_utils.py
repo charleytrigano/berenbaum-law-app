@@ -8,27 +8,21 @@ import streamlit as st
 
 APP_KEY = st.secrets["dropbox"]["APP_KEY"]
 APP_SECRET = st.secrets["dropbox"]["APP_SECRET"]
-REFRESH_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]  # ✔ OK
-JSON_PATH = st.secrets["paths"]["DROPBOX_JSON"]          # ✔ OK
-
-# ---------------------------
-# RÉCUPÉRER ACCESS TOKEN
-# ---------------------------
-
-def get_access_token():
-    """Échange le refresh token contre un access token valide."""
-    dbx = dropbox.DropboxOAuth2FlowNoRedirect(APP_KEY, APP_SECRET)
-    oauth_result = dbx.refresh_access_token(REFRESH_TOKEN)
-    return oauth_result.access_token
+REFRESH_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]  # Refresh token permanent
+JSON_PATH = st.secrets["paths"]["DROPBOX_JSON"]
 
 
 # ---------------------------
-# CLIENT DROPBOX
+# CLIENT DROPBOX AVEC REFRESH TOKEN
 # ---------------------------
 
 def get_client():
-    access_token = get_access_token()
-    return dropbox.Dropbox(oauth2_access_token=access_token)
+    """Retourne le client Dropbox en utilisant le refresh token (automatique)."""
+    return dropbox.Dropbox(
+        oauth2_refresh_token=REFRESH_TOKEN,
+        app_key=APP_KEY,
+        app_secret=APP_SECRET
+    )
 
 
 # ---------------------------
@@ -36,7 +30,6 @@ def get_client():
 # ---------------------------
 
 def load_database():
-    """Télécharge et charge le fichier JSON depuis Dropbox."""
     try:
         dbx = get_client()
         metadata, res = dbx.files_download(JSON_PATH)
@@ -53,7 +46,6 @@ def load_database():
 # ---------------------------
 
 def save_database(data):
-    """Écrit le JSON sur Dropbox."""
     try:
         dbx = get_client()
         dbx.files_upload(
