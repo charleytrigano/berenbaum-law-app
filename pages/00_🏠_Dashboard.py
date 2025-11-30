@@ -3,6 +3,8 @@ import pandas as pd
 from backend.dropbox_utils import load_database
 from backend.dropbox_utils import load_database
 st.json(load_database())
+import streamlit as st
+st.json(st.secrets)
 
 
 # ---------------------------------------------------
