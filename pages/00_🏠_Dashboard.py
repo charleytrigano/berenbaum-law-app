@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
+from backend.dropbox_utils import load_database
+st.json(load_database())
+
 
 # ---------------------------------------------------
 # PAGE CONFIG
