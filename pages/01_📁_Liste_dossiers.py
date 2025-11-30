@@ -122,3 +122,25 @@ if selected_dossier:
         f"Modifier le dossier {selected_dossier}",
         f"/03_✏️_Modifier_dossier?dossier={selected_dossier}"
     )
+
+from utils.dependencies import dependencies
+
+# --- Catégorie ---
+categorie = st.selectbox("Catégorie", ["Toutes"] + list(dependencies.keys()))
+
+# --- Sous-catégorie dynamiques ---
+if categorie == "Toutes":
+    souscats = ["Toutes"]
+else:
+    souscats = ["Toutes"] + list(dependencies[categorie].keys())
+
+sous_categorie = st.selectbox("Sous-catégorie", souscats)
+
+# --- Visa dynamiques ---
+if categorie == "Toutes" or sous_categorie == "Toutes":
+    visas = ["Tous"]
+else:
+    visas = ["Tous"] + dependencies[categorie][sous_categorie]
+
+visa = st.selectbox("Visa", visas)
+
