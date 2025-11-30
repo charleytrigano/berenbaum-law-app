@@ -29,13 +29,17 @@ st.subheader("🔎 Rechercher un dossier")
 
 search = st.text_input("Recherche (Nom, Dossier, Catégorie…)", "").lower()
 
+df_filtered = df.copy()
+
 if search:
-    df = df[df.apply(lambda row: row.astype(str).str.lower().str.contains(search).any(), axis=1)]
+    df_filtered = df_filtered[
+        df_filtered.apply(lambda row: row.astype(str).str.lower().str.contains(search).any(), axis=1)
+    ]
 
 # ---------------------------------------------------
-# 🎛️ FILTRES DÉPENDANTS
+# 🎛️ FILTRES INTELLIGENTS dépendants
 # ---------------------------------------------------
-st.subheader("🎛️ Filtres avancés (liés entre eux)")
+st.subheader("🎛️ Filtres avancés (intelligents)")
 
 col1, col2, col3 = st.columns(3)
 
@@ -45,52 +49,44 @@ with col1:
     cat_select = st.selectbox("Catégorie", ["Toutes"] + categories)
 
 if cat_select != "Toutes":
-    df = df[df["Catégories"] == cat_select]
+    df_filtered = df_filtered[df_filtered["Catégories"] == cat_select]
 
-# --------- 2️⃣ FILTRE SOUS-CATÉGORIE (dépend de catégorie) ---------
+# --------- 2️⃣ FILTRE SOUS-CATÉGORIE ---------
 with col2:
     if cat_select != "Toutes":
-        souscats = sorted(df["Sous-catégories"].dropna().unique().tolist())
+        souscats = sorted(df_filtered["Sous-catégories"].dropna().unique().tolist())
     else:
         souscats = sorted(df["Sous-catégories"].dropna().unique().tolist())
 
     souscat_select = st.selectbox("Sous-catégorie", ["Toutes"] + souscats)
 
 if souscat_select != "Toutes":
-    df = df[df["Sous-catégories"] == souscat_select]
+    df_filtered = df_filtered[df_filtered["Sous-catégories"] == souscat_select]
 
-# --------- 3️⃣ FILTRE VISA (dépend des 2 précédents) ---------
+# --------- 3️⃣ FILTRE VISA ---------
 with col3:
-    if souscat_select != "Toutes":
-        visas = sorted(df["Visa"].dropna().unique().tolist())
-    elif cat_select != "Toutes":
-        visas = sorted(df["Visa"].dropna().unique().tolist())
-    else:
-        visas = sorted(df["Visa"].dropna().unique().tolist())
-
+    visas = sorted(df_filtered["Visa"].dropna().unique().tolist())
     visa_select = st.selectbox("Visa", ["Tous"] + visas)
 
 if visa_select != "Tous":
-    df = df[df["Visa"] == visa_select]
-
-st.markdown("---")
+    df_filtered = df_filtered[df_filtered["Visa"] == visa_select]
 
 # ---------------------------------------------------
 # 📊 STATISTIQUES
 # ---------------------------------------------------
-st.subheader("📊 Aperçu global")
+st.markdown("---")
+st.subheader("📊 Statistiques")
 
 colA, colB, colC = st.columns(3)
 
-colA.metric("Nombre total de dossiers", len(df))
-colB.metric("Dossiers acceptés", df["Date acceptation"].astype(str).str.len().gt(0).sum())
-colC.metric("Dossiers refusés", df["Date refus"].astype(str).str.len().gt(0).sum())
-
-st.markdown("---")
+colA.metric("Nombre total de dossiers", len(df_filtered))
+colB.metric("Dossiers acceptés", df_filtered["Date acceptation"].astype(str).str.len().gt(0).sum())
+colC.metric("Dossiers refusés", df_filtered["Date refus"].astype(str).str.len().gt(0).sum())
 
 # ---------------------------------------------------
 # 📋 TABLEAU FINAL
 # ---------------------------------------------------
+st.markdown("---")
 st.subheader("📋 Dossiers")
 
 colonnes = [
@@ -104,9 +100,9 @@ colonnes = [
     "Date refus",
 ]
 
-affichage = [c for c in colonnes if c in df.columns]
+cols_aff = [c for c in colonnes if c in df_filtered.columns]
 
-st.dataframe(df[affichage], use_container_width=True, height=500)
+st.dataframe(df_filtered[cols_aff], use_container_width=True, height=500)
 
 # ---------------------------------------------------
 # ✏️ BOUTON MODIFIER
@@ -114,8 +110,7 @@ st.dataframe(df[affichage], use_container_width=True, height=500)
 st.markdown("---")
 st.subheader("✏️ Modifier un dossier")
 
-# Liste des dossiers disponibles
-list_dossiers = [""] + df["Dossier N"].astype(str).unique().tolist()
+list_dossiers = [""] + df_filtered["Dossier N"].astype(str).unique().tolist()
 
 selected_dossier = st.selectbox("Sélectionner un dossier", list_dossiers)
 
