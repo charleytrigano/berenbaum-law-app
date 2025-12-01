@@ -28,6 +28,12 @@ df = pd.DataFrame(clients)
 df_visa = pd.DataFrame(visa_table) if len(visa_table) else pd.DataFrame(
     columns=["Categories", "Sous-categories", "Visa"]
 )
+# -- Nettoyage des colonnes doublons erronées --
+cols_to_remove = ["Catégories", "Sous-catégories"]
+
+for col in cols_to_remove:
+    if col in df_visa.columns:
+        df_visa = df_visa.drop(columns=[col])
 
 # --------------------------------------------------------
 # Normalisation des colonnes VISA
