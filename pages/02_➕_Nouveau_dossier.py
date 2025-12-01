@@ -1,21 +1,49 @@
-
-
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import load_database
+from backend.dropbox_utils import load_database, save_database
 
 st.title("➕ Nouveau dossier")
-st.write("Colonnes Visa.xlsx :", df_visa.columns.tolist())
-# Chargement base
+
+# ----------------------------
+# Charger la base + Visa.xlsx
+# ----------------------------
 db = load_database()
 clients = db.get("clients", [])
-visa_ref = db.get("visa", [])   # 🔥 fichier Visa.xlsx importé
+visa_ref = db.get("visa", [])
 
-# Structure de référence
 df_visa = pd.DataFrame(visa_ref)
 
 # ----------------------------
-# Fonction : numéro dossier
+# DEBUG — Colonnes Visa.xlsx
+# ----------------------------
+st.write("Colonnes trouvées dans Visa.xlsx :", df_visa.columns.tolist())
+
+# ----------------------------
+# Normalisation automatique
+# ----------------------------
+rename_map = {}
+
+for col in df_visa.columns:
+    c = col.lower().replace("-", "").replace("_", "").strip()
+
+    if "categorie" in c and "sous" not in c:
+        rename_map[col] = "Categories"
+    elif "sous" in c:
+        rename_map[col] = "Sous-categories"
+    elif "visa" in c:
+        rename_map[col] = "Visa"
+
+df_visa = df_visa.rename(columns=rename_map)
+
+required_cols = ["Categories", "Sous-categories", "Visa"]
+
+for col in required_cols:
+    if col not in df_visa.columns:
+        st.error(f"❌ Colonne manquante dans Visa.xlsx : {col}")
+        st.stop()
+
+# ----------------------------
+# Fonction : Dossier N
 # ----------------------------
 def nouveau_numero():
     nums = []
@@ -36,18 +64,20 @@ col1, col2 = st.columns(2)
 with col1:
     dossier_num = st.text_input("Dossier N", nouveau_numero())
     nom = st.text_input("Nom")
-    categories = sorted(df_visa["Categories"].unique())
-    categorie = st.selectbox("Categorie", categories)
 
-    sous_cat_list = sorted(df_visa[df_visa["Categories"] == categorie]["Sous-categories"].unique())
-    sous_categorie = st.selectbox("Sous-categorie", sous_cat_list)
+    cat_list = sorted(df_visa["Categories"].dropna().unique())
+    categorie = st.selectbox("Catégorie", cat_list)
+
+    souscat_list = sorted(
+        df_visa[df_visa["Categories"] == categorie]["Sous-categories"].dropna().unique()
+    )
+    sous_categorie = st.selectbox("Sous-catégorie", souscat_list)
 
 with col2:
-    # 🔥 Filtres croisés Category + Sous-category
     visa_list = df_visa[
         (df_visa["Categories"] == categorie) &
         (df_visa["Sous-categories"] == sous_categorie)
-    ]["Visa"].tolist()
+    ]["Visa"].dropna().unique().tolist()
 
     visa = st.selectbox("Visa", visa_list)
 
@@ -57,15 +87,14 @@ with col2:
 commentaires = st.text_area("Commentaires")
 
 # ----------------------------
-# ENREGISTREMENT
+# SAUVEGARDE
 # ----------------------------
 if st.button("Créer le dossier", type="primary"):
-
     new_client = {
         "Dossier N": dossier_num,
         "Nom": nom,
-        "Categories": categorie,
-        "Sous-categories": sous_categorie,
+        "Catégories": categorie,
+        "Sous-catégories": sous_categorie,
         "Visa": visa,
         "Montant honoraires (US $)": montant_hon,
         "Autres frais (US $)": autres_frais,
@@ -74,8 +103,6 @@ if st.button("Créer le dossier", type="primary"):
 
     clients.append(new_client)
     db["clients"] = clients
-
-    from backend.dropbox_utils import save_database
     save_database(db)
 
     st.success("Dossier créé ✔")
