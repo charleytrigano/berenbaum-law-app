@@ -70,7 +70,7 @@ selection = st.selectbox("Choisir un dossier", liste)
 index = liste.index(selection)
 dossier = clients[index]
 
-# Fonction safe pour montants
+# Safe float
 def safe_float(x):
     try:
         return float(str(x).replace(",", "."))
@@ -78,7 +78,7 @@ def safe_float(x):
         return 0.0
 
 # ------------------------------------------------------------
-# FORMULAIRE DE MODIFICATION
+# FORMULAIRE
 # ------------------------------------------------------------
 st.subheader("Modifier les informations du dossier")
 
@@ -88,17 +88,20 @@ with col1:
     num = st.text_input("Dossier N", value=str(dossier.get("Dossier N", "")))
     nom = st.text_input("Nom", value=dossier.get("Nom", ""))
 
-    # ----- Catégorie -----
+    # Catégorie
+    cat_list = list(dependencies.keys())
     categorie_actuelle = dossier.get("Catégories", "")
+
     categorie = st.selectbox(
         "Catégorie",
-        list(dependencies.keys()),
-        index=list(dependencies.keys()).index(categorie_actuelle) if categorie_actuelle in dependencies else 0
+        cat_list,
+        index=cat_list.index(categorie_actuelle) if categorie_actuelle in cat_list else 0
     )
 
-    # ----- Sous-catégorie dépendante -----
+    # Sous-catégorie dépendante
     souscats = list(dependencies[categorie].keys())
     souscat_actuelle = dossier.get("Sous-catégories", "")
+
     sous_categorie = st.selectbox(
         "Sous-catégorie",
         souscats,
@@ -106,9 +109,10 @@ with col1:
     )
 
 with col2:
-    # ----- Visa dépendant -----
+    # Visa dépendant
     visas = dependencies[categorie][sous_categorie]
     visa_actuel = dossier.get("Visa", "")
+
     visa = st.selectbox(
         "Visa",
         visas,
@@ -129,15 +133,16 @@ with col2:
 commentaire = st.text_area("Commentaires", value=dossier.get("Commentaires", ""))
 
 # ------------------------------------------------------------
-# BOUTON ENREGISTRER
+# ENREGISTRER
 # ------------------------------------------------------------
 if st.button("💾 Enregistrer les modifications", type="primary"):
+
     clients[index] = {
         "Dossier N": num,
         "Nom": nom,
         "Catégories": categorie,
         "Sous-catégories": sous_categorie,
-        "Visa": visa,
+        "Visa": visa,  # ✔ ajouté !
         "Montant honoraires (US $)": montant_hono,
         "Autres frais (US $)": autres_frais,
         "Commentaires": commentaire
@@ -145,11 +150,10 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     db["clients"] = clients
     save_database(db)
-
     st.success("Modifications enregistrées ✔")
 
 # ------------------------------------------------------------
-# SUPPRESSION
+# SUPPRIMER
 # ------------------------------------------------------------
 st.markdown("---")
 st.subheader("❌ Supprimer ce dossier")
