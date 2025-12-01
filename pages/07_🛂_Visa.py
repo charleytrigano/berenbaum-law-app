@@ -4,40 +4,52 @@ from backend.dropbox_utils import load_database, save_database
 
 st.title("🛂 Gestion des visas")
 
-# -------------------------------------------------------
-# Chargement base Dropbox
-# -------------------------------------------------------
+# --------------------------------------
+# Chargement JSON
+# --------------------------------------
 try:
     db = load_database()
 except:
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-# Nettoyage des entrées legacy mal formées
-visa_clean = []
-for v in db.get("visa", []):
-    if isinstance(v, dict) and all(k in v for k in ["Categories", "Sous-categories", "Visa"]):
-        visa_clean.append(v)
+raw_visa = db.get("visa", [])
 
-db["visa"] = visa_clean
-visa_list = visa_clean
+# --------------------------------------
+# Normalisation automatique des anciennes colonnes
+# --------------------------------------
+visa_list = []
+for v in raw_visa:
+    if not isinstance(v, dict):
+        continue
 
-# -------------------------------------------------------
-# Tableau des visas
-# -------------------------------------------------------
+    # Correction automatique :
+    cat = v.get("Categories") or v.get("Catégories")
+    souscat = v.get("Sous-categories") or v.get("Sous-categorie") or v.get("Sous-catégories")
+    visa_code = v.get("Visa")
+
+    if cat and souscat and visa_code:
+        visa_list.append({
+            "Categories": str(cat).strip(),
+            "Sous-categories": str(souscat).strip(),
+            "Visa": str(visa_code).strip()
+        })
+
+# Replace bad data
+db["visa"] = visa_list
+
+# --------------------------------------
+# Tableau affichage
+# --------------------------------------
 st.subheader("📋 Référentiel des visas")
 
-if len(visa_list) > 0:
-    df = pd.DataFrame(visa_list)
-else:
-    df = pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
-
+df = pd.DataFrame(visa_list)
 st.dataframe(df, use_container_width=True, height=350)
 
 st.markdown("---")
 
-# -------------------------------------------------------
+# --------------------------------------
 # Ajouter un visa
-# -------------------------------------------------------
+# --------------------------------------
 st.subheader("➕ Ajouter un type de visa")
 
 col1, col2, col3 = st.columns(3)
@@ -51,10 +63,9 @@ with col2:
 with col3:
     new_visa = st.text_input("Visa")
 
-
 if st.button("Ajouter le visa", type="primary"):
-    if new_cat.strip() == "" or new_souscat.strip() == "" or new_visa.strip() == "":
-        st.error("Tous les champs doivent être remplis.")
+    if not new_cat or not new_souscat or not new_visa:
+        st.error("Tous les champs doivent être renseignés.")
     else:
         entry = {
             "Categories": new_cat.strip(),
@@ -66,4 +77,3 @@ if st.button("Ajouter le visa", type="primary"):
         save_database(db)
         st.success("Visa ajouté ✔")
         st.experimental_rerun()
-
