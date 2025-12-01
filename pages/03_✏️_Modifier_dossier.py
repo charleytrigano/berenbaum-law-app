@@ -4,61 +4,109 @@ from backend.dropbox_utils import load_database, save_database
 
 st.title("✏️ Modifier un dossier")
 
+# --------------------------------------------------
+# Chargement base Dropbox
+# --------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-visa_ref = db.get("visa", [])
+df_visa = pd.DataFrame(db.get("visa", []))   # ⚠ issu du fichier Visa.xlsx
 
-df_visa = pd.DataFrame(visa_ref)
+if not clients:
+    st.warning("Aucun dossier à modifier.")
+    st.stop()
 
-# ---------------------------
-# Sélecteur dossier
-# ---------------------------
-liste = [f"{c['Dossier N']} - {c['Nom']}" for c in clients]
-selection = st.selectbox("Choisir un dossier", liste)
-index = liste.index(selection)
-d = clients[index]
+# --------------------------------------------------
+# Sélection du dossier
+# --------------------------------------------------
+liste_dossiers = [
+    f"{c.get('Dossier N', '')} - {c.get('Nom', '')}"
+    for c in clients
+]
 
-# ---------------------------
-# Formulaire
-# ---------------------------
+selection = st.selectbox("Choisir un dossier", liste_dossiers)
+index = liste_dossiers.index(selection)
+dossier = clients[index]
+
+# --------------------------------------------------
+# FORMULAIRE DE MODIFICATION
+# --------------------------------------------------
 col1, col2 = st.columns(2)
 
 with col1:
-    dossier_num = st.text_input("Dossier N", value=str(d["Dossier N"]))
-    nom = st.text_input("Nom", value=d["Nom"])
+    dossier_num = st.text_input("Dossier N", value=str(dossier.get("Dossier N", "")))
+    nom = st.text_input("Nom", value=dossier.get("Nom", ""))
 
-    cat_list = sorted(df_visa["Categories"].unique())
-    categorie = st.selectbox("Catégorie", cat_list, index=cat_list.index(d["Catégories"]))
+    # ---------------- CATEGORIES ----------------
+    categories = [""] + sorted(df_visa["Categories"].dropna().unique().tolist())
+    categorie = st.selectbox(
+        "Catégorie",
+        categories,
+        index=categories.index(dossier.get("Catégories", "")) if dossier.get("Catégories") in categories else 0
+    )
 
-    sous_cat_list = sorted(df_visa[df_visa["Categories"] == categorie]["Sous-categories"].unique())
-    sous_categorie = st.selectbox("Sous-catégorie", sous_cat_list, index=sous_cat_list.index(d["Sous-catégories"]))
+    # ---------------- SOUS-CATEGORIES filtrées ----------------
+    if categorie:
+        sous_categories = df_visa[df_visa["Categories"] == categorie]["Sous-categorie"].dropna().unique().tolist()
+    else:
+        sous_categories = []
+
+    souscat = st.selectbox(
+        "Sous-catégorie",
+        [""] + sous_categories,
+        index=([""] + sous_categories).index(dossier.get("Sous-catégories", "")) 
+        if dossier.get("Sous-catégories", "") in ([""] + sous_categories) else 0
+    )
 
 with col2:
-    visa_list = df_visa[
-        (df_visa["Categories"] == categorie) &
-        (df_visa["Sous-categories"] == sous_categorie)
-    ]["Visa"].tolist()
 
-    visa = st.selectbox("Visa", visa_list, index=visa_list.index(d["Visa"]) if d["Visa"] in visa_list else 0)
+    # ---------------- VISA filtré ----------------
+    if categorie and souscat:
+        visas = df_visa[
+            (df_visa["Categories"] == categorie) &
+            (df_visa["Sous-categorie"] == souscat)
+        ]["Visa"].dropna().unique().tolist()
+    else:
+        visas = []
 
-    montant_hon = st.number_input("Montant honoraires (US $)", value=float(d.get("Montant honoraires (US $)",0)))
-    autres_frais = st.number_input("Autres frais (US $)", value=float(d.get("Autres frais (US $)",0)))
+    visa = st.selectbox(
+        "Visa",
+        [""] + visas,
+        index=([""] + visas).index(dossier.get("Visa", "")) 
+        if dossier.get("Visa", "") in ([""] + visas) else 0
+    )
 
-commentaires = st.text_area("Commentaires", value=d.get("Commentaires",""))
+    montant = st.number_input(
+        "Montant honoraires (US $)",
+        value=float(dossier.get("Montant honoraires (US $)", 0)),
+        min_value=0.0,
+        format="%.2f"
+    )
 
-# ---------------------------
-# Sauvegarde
-# ---------------------------
-if st.button("💾 Enregistrer"):
+    autres = st.number_input(
+        "Autres frais (US $)",
+        value=float(dossier.get("Autres frais (US $)", 0)),
+        min_value=0.0,
+        format="%.2f"
+    )
+
+commentaires = st.text_area(
+    "Commentaires",
+    value=dossier.get("Commentaires", "")
+)
+
+# --------------------------------------------------
+# BOUTON ENREGISTRER
+# --------------------------------------------------
+if st.button("💾 Enregistrer les modifications", type="primary"):
 
     clients[index] = {
         "Dossier N": dossier_num,
         "Nom": nom,
         "Catégories": categorie,
-        "Sous-catégories": sous_categorie,
+        "Sous-catégories": souscat,
         "Visa": visa,
-        "Montant honoraires (US $)": montant_hon,
-        "Autres frais (US $)": autres_frais,
+        "Montant honoraires (US $)": montant,
+        "Autres frais (US $)": autres,
         "Commentaires": commentaires
     }
 
@@ -66,3 +114,17 @@ if st.button("💾 Enregistrer"):
     save_database(db)
 
     st.success("Modifications enregistrées ✔")
+    st.balloons()
+
+# --------------------------------------------------
+# SUPPRESSION
+# --------------------------------------------------
+st.markdown("---")
+st.subheader("❌ Supprimer ce dossier")
+
+if st.button("🗑️ Supprimer définitivement le dossier"):
+    del clients[index]
+    db["clients"] = clients
+    save_database(db)
+    st.success("Dossier supprimé ✔")
+    st.stop()
