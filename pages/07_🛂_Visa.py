@@ -64,35 +64,6 @@ if st.button("Ajouter le visa", type="primary"):
 
 st.markdown("---")
 
-# -----------------------------------------------
-# Modification & suppression
-# -----------------------------------------------
-st.subheader("✏️ Modifier / Supprimer un visa")
-
-if len(visa_list) == 0:
-    st.info("Aucun visa enregistré.")
-    st.stop()
-
-# Liste déroulante
-select_label = [
-    f"{v['Categories']} → {v['Sous-categories']} → {v['Visa']}"
-    for v in visa_list
-]
-selected = st.selectbox("Sélectionner un visa", select_label)
-
-index = select_label.index(selected)
-entry = visa_list[index]
-
-colA, colB, colC = st.columns(3)
-
-with colA:
-    mod_cat = st.text_input("Catégorie", value=entry["Categories"])
-
-with colB:
-    mod_souscat = st.text_input("Sous-catégorie", value=entry["Sous-categories"])
-
-with colC:
-    mod_visa = st.text_input("Visa", value=entry["Visa"])
 
 
 # Bouton enregistrer
@@ -107,10 +78,4 @@ if st.button("💾 Enregistrer les modifications"):
     st.success("Modifications enregistrées ✔")
     st.experimental_rerun()
 
-# Bouton supprimer
-if st.button("🗑️ Supprimer"):
-    del visa_list[index]
-    db["visa"] = visa_list
-    save_database(db)
-    st.success("Visa supprimé ✔")
-    st.experimental_rerun()
+
