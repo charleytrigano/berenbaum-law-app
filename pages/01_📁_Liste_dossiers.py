@@ -30,7 +30,7 @@ df = pd.DataFrame(clients)
 # ---------------------------------------------------
 st.subheader("🔎 Rechercher un dossier")
 
-search = st.text_input("Recherche (Nom, Dossier, Catégorie…)", "").lower()
+search = st.text_input("Recherche (Nom, Dossier, Categorie…)", "").lower()
 
 df_filtered = df.copy()
 
@@ -48,23 +48,23 @@ col1, col2, col3 = st.columns(3)
 
 # --------- 1️⃣ FILTRE CATÉGORIE ---------
 with col1:
-    categories = sorted(df["Catégories"].dropna().unique().tolist())
-    cat_select = st.selectbox("Catégorie", ["Toutes"] + categories)
+    categories = sorted(df["Categories"].dropna().unique().tolist())
+    cat_select = st.selectbox("Categorie", ["Toutes"] + categories)
 
 if cat_select != "Toutes":
-    df_filtered = df_filtered[df_filtered["Catégories"] == cat_select]
+    df_filtered = df_filtered[df_filtered["Categories"] == cat_select]
 
 # --------- 2️⃣ FILTRE SOUS-CATÉGORIE ---------
 with col2:
     if cat_select != "Toutes":
-        souscats = sorted(df_filtered["Sous-catégories"].dropna().unique().tolist())
+        souscats = sorted(df_filtered["Sous-categories"].dropna().unique().tolist())
     else:
-        souscats = sorted(df["Sous-catégories"].dropna().unique().tolist())
+        souscats = sorted(df["Sous-categories"].dropna().unique().tolist())
 
-    souscat_select = st.selectbox("Sous-catégorie", ["Toutes"] + souscats)
+    souscat_select = st.selectbox("Sous-categorie", ["Toutes"] + souscats)
 
 if souscat_select != "Toutes":
-    df_filtered = df_filtered[df_filtered["Sous-catégories"] == souscat_select]
+    df_filtered = df_filtered[df_filtered["Sous-categories"] == souscat_select]
 
 # --------- 3️⃣ FILTRE VISA ---------
 with col3:
@@ -95,8 +95,8 @@ st.subheader("📋 Dossiers")
 colonnes = [
     "Dossier N",
     "Nom",
-    "Catégories",
-    "Sous-catégories",
+    "Categories",
+    "Sous-categories",
     "Visa",
     "Date envoi",
     "Date acceptation",
@@ -126,7 +126,7 @@ if selected_dossier:
 from utils.dependencies import dependencies
 
 # --- Catégorie ---
-categorie = st.selectbox("Catégorie", ["Toutes"] + list(dependencies.keys()))
+categorie = st.selectbox("Categorie", ["Toutes"] + list(dependencies.keys()))
 
 # --- Sous-catégorie dynamiques ---
 if categorie == "Toutes":
@@ -134,7 +134,7 @@ if categorie == "Toutes":
 else:
     souscats = ["Toutes"] + list(dependencies[categorie].keys())
 
-sous_categorie = st.selectbox("Sous-catégorie", souscats)
+sous_categorie = st.selectbox("Sous-categorie", souscats)
 
 # --- Visa dynamiques ---
 if categorie == "Toutes" or sous_categorie == "Toutes":
