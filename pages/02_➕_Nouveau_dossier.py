@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
 st.title("➕ Nouveau dossier")
@@ -62,22 +63,23 @@ except:
 clients = db.get("clients", [])
 
 # ---------------------------------------------------------
-# GENERATEUR AUTOMATIQUE DE NUMÉRO DE DOSSIER
+# GÉNÉRER AUTOMATIQUEMENT LE PROCHAIN NUMÉRO
 # ---------------------------------------------------------
 def nouveau_numero():
     nums = []
 
     for c in clients:
         n = c.get("Dossier N")
+
+        # Cas 1 : numérique (int/float)
         if isinstance(n, (int, float)) and not pd.isna(n):
             nums.append(int(n))
+
+        # Cas 2 : chaîne numérique ("123")
         elif isinstance(n, str) and n.isdigit():
             nums.append(int(n))
 
-    if not nums:
-        return "1"
-
-    return str(max(nums) + 1)
+    return str(max(nums) + 1) if nums else "1"
 
 # ---------------------------------------------------------
 # FORMULAIRE
@@ -92,7 +94,7 @@ with col1:
 
     categorie = st.selectbox("Catégorie", [""] + list(dependencies.keys()))
 
-    # Sous-catégories dépendantes
+    # Sous-catégories dynamiques
     if categorie:
         souscats = [""] + list(dependencies[categorie].keys())
     else:
@@ -101,7 +103,7 @@ with col1:
     sous_categorie = st.selectbox("Sous-catégorie", souscats)
 
 with col2:
-    # Visa dépendant de Catégorie + Sous-catégorie
+    # Visa dépendant de catégorie + sous-catégorie
     if categorie and sous_categorie:
         visas = [""] + dependencies[categorie][sous_categorie]
     else:
