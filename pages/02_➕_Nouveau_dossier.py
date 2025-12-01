@@ -1,11 +1,11 @@
-st.write("Colonnes Visa.xlsx :", df_visa.columns.tolist())
+
 
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
 
 st.title("➕ Nouveau dossier")
-
+st.write("Colonnes Visa.xlsx :", df_visa.columns.tolist())
 # Chargement base
 db = load_database()
 clients = db.get("clients", [])
