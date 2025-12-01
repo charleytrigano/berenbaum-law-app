@@ -110,6 +110,26 @@ def load_database():
         print("❌ Erreur load_database :", e)
         return {"clients": [], "visa": [], "escrow": [], "compta": []}
 
+from backend.clean_json import clean_database
+
+def load_database():
+    try:
+        dbx = get_dbx()
+        metadata, res = dbx.files_download(JSON_PATH)
+
+        # Décodage JSON
+        data = json.loads(res.content.decode("utf-8"))
+
+        # 🧹 Nettoyage automatique
+        data = clean_database(data)
+
+        return data
+
+    except Exception as e:
+        print("❌ Erreur load_database :", e)
+        return {"clients": [], "visa": [], "escrow": [], "compta": []}
+
+
 
 
 # ----------------------------------------------------
