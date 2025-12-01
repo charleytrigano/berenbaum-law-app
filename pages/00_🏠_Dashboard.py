@@ -96,7 +96,7 @@ visa_filter = colC.selectbox("Visa", visa_list)
 # Année
 df["Année"] = pd.to_datetime(df["Date"], errors="coerce").dt.year
 annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
-annee_filter = colD.selectbox("Année", annee_filter)
+annee_filter = colD.selectbox("Année", annee_list)
 
 # Dates
 date_debut = colE.date_input("Date début", value=None)
