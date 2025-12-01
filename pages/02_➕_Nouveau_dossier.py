@@ -12,6 +12,13 @@ clients = db.get("clients", [])
 visa_ref = db.get("visa", [])
 
 df_visa = pd.DataFrame(visa_ref)
+# -- Nettoyage des colonnes doublons erronées --
+cols_to_remove = ["Catégories", "Sous-catégories"]
+
+for col in cols_to_remove:
+    if col in df_visa.columns:
+        df_visa = df_visa.drop(columns=[col])
+
 
 # ----------------------------
 # DEBUG — Colonnes Visa.xlsx
