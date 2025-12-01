@@ -39,23 +39,26 @@ df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + 
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
 # ---------------------------------------------------
-# KPI — MODE SOMBRE, COULEURS + 1 LIGNE
+# ⭐ KPI — Mode sombre + Couleurs + Icônes + Glass
 # ---------------------------------------------------
 
-def kpi_dark(title, value, bg):
+def kpi_glass(title, value, bg, icon):
     st.markdown(f"""
         <div style="
-            background:{bg};
-            padding:18px;
-            border-radius:12px;
-            text-align:center;
-            width:100%;
-            box-shadow:0 0 4px rgba(0,0,0,0.4);
+            background: {bg};
+            backdrop-filter: blur(6px);
+            padding: 18px;
+            border-radius: 16px;
+            text-align: center;
+            width: 100%;
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
         ">
-            <div style="font-size:22px; font-weight:700; color:white;">
+            <div style="font-size: 26px; margin-bottom: 6px;">{icon}</div>
+            <div style="font-size: 22px; font-weight: 700; color: white;">
                 {value}
             </div>
-            <div style="font-size:14px; margin-top:4px; color:#eeeeee;">
+            <div style="font-size: 14px; margin-top: 4px; color: #e0e0e0;">
                 {title}
             </div>
         </div>
@@ -64,19 +67,55 @@ def kpi_dark(title, value, bg):
 
 st.subheader("📌 Indicateurs principaux")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
-    kpi_dark("Nombre de dossiers", len(df), "#1E88E5")      # bleu
+    kpi_glass(
+        "Nombre de dossiers",
+        len(df),
+        "rgba(30,136,229,0.35)",   # bleu transparent
+        "📁"
+    )
 
 with col2:
-    kpi_dark("Total honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}", "#8E24AA")  # violet
+    kpi_glass(
+        "Total honoraires",
+        f"${df['Montant honoraires (US $)'].sum():,.2f}",
+        "rgba(142,36,170,0.35)",   # violet transparent
+        "💼"
+    )
 
 with col3:
-    kpi_dark("Montant encaissé", f"${df['Montant encaissé'].sum():,.2f}", "#2E7D32")  # vert
+    kpi_glass(
+        "Total autres frais",
+        f"${df['Autres frais (US $)'].sum():,.2f}",
+        "rgba(0,150,136,0.35)",     # turquoise
+        "🧾"
+    )
 
 with col4:
-    kpi_dark("Solde restant", f"${df['Solde'].sum():,.2f}", "#FB8C00")  # orange
+    kpi_glass(
+        "Total facturé",
+        f"${df['Total facturé'].sum():,.2f}",
+        "rgba(121,85,72,0.35)",     # marron clair
+        "💰"
+    )
+
+with col5:
+    kpi_glass(
+        "Montant encaissé",
+        f"${df['Montant encaissé'].sum():,.2f}",
+        "rgba(46,125,50,0.35)",     # vert
+        "🏦"
+    )
+
+with col6:
+    kpi_glass(
+        "Solde restant",
+        f"${df['Solde'].sum():,.2f}",
+        "rgba(251,140,0,0.35)",      # orange
+        "📉"
+    )
 
 # --------------------------------------------
 # FILTRES DYNAMIQUES
