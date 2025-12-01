@@ -38,34 +38,45 @@ df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)
 df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
-# --------------------------------------------
-# KPI — version lisible
-# --------------------------------------------
-def kpi(title, value):
+# ---------------------------------------------------
+# KPI — MODE SOMBRE, COULEURS + 1 LIGNE
+# ---------------------------------------------------
+
+def kpi_dark(title, value, bg):
     st.markdown(f"""
         <div style="
-            background:#f1f3f6;
+            background:{bg};
             padding:18px;
-            border-radius:10px;
+            border-radius:12px;
             text-align:center;
             width:100%;
+            box-shadow:0 0 4px rgba(0,0,0,0.4);
         ">
-            <div style="font-size:20px; font-weight:700;">{value}</div>
-            <div style="font-size:13px; color:#555;">{title}</div>
+            <div style="font-size:22px; font-weight:700; color:white;">
+                {value}
+            </div>
+            <div style="font-size:14px; margin-top:4px; color:#eeeeee;">
+                {title}
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
+
 st.subheader("📌 Indicateurs principaux")
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-kpi("Nombre de dossiers", len(df))
-kpi("Total honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}")
-kpi("Total autres frais", f"${df['Autres frais (US $)'].sum():,.2f}")
-kpi("Total facturé", f"${df['Total facturé'].sum():,.2f}")
-kpi("Montant encaissé", f"${df['Montant encaissé'].sum():,.2f}")
-kpi("Solde restant", f"${df['Solde'].sum():,.2f}")
+col1, col2, col3, col4 = st.columns(4)
 
-st.markdown("---")
+with col1:
+    kpi_dark("Nombre de dossiers", len(df), "#1E88E5")      # bleu
+
+with col2:
+    kpi_dark("Total honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}", "#8E24AA")  # violet
+
+with col3:
+    kpi_dark("Montant encaissé", f"${df['Montant encaissé'].sum():,.2f}", "#2E7D32")  # vert
+
+with col4:
+    kpi_dark("Solde restant", f"${df['Solde'].sum():,.2f}", "#FB8C00")  # orange
 
 # --------------------------------------------
 # FILTRES DYNAMIQUES
