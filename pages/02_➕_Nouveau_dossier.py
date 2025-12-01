@@ -35,10 +35,10 @@ with col1:
     dossier_num = st.text_input("Dossier N", nouveau_numero())
     nom = st.text_input("Nom")
     categories = sorted(df_visa["Categories"].unique())
-    categorie = st.selectbox("Catégorie", categories)
+    categorie = st.selectbox("Categorie", categories)
 
     sous_cat_list = sorted(df_visa[df_visa["Categories"] == categorie]["Sous-categories"].unique())
-    sous_categorie = st.selectbox("Sous-catégorie", sous_cat_list)
+    sous_categorie = st.selectbox("Sous-categorie", sous_cat_list)
 
 with col2:
     # 🔥 Filtres croisés Category + Sous-category
@@ -62,8 +62,8 @@ if st.button("Créer le dossier", type="primary"):
     new_client = {
         "Dossier N": dossier_num,
         "Nom": nom,
-        "Catégories": categorie,
-        "Sous-catégories": sous_categorie,
+        "Categories": categorie,
+        "Sous-categories": sous_categorie,
         "Visa": visa,
         "Montant honoraires (US $)": montant_hon,
         "Autres frais (US $)": autres_frais,
