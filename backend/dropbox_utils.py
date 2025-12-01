@@ -93,15 +93,23 @@ def get_dbx():
 # ----------------------------------------------------
 # 📥 Charger le JSON depuis Dropbox
 # ----------------------------------------------------
+from backend.clean_json import clean_database
+
 def load_database():
     try:
         dbx = get_dbx()
-        metadata, res = dbx.files_download(DROPBOX_JSON)
+        metadata, res = dbx.files_download(JSON_PATH)
+
         data = json.loads(res.content.decode("utf-8"))
-        return data
+
+        # 🧹 Nettoyage automatique du JSON
+        clean = clean_database(data)
+        return clean
+
     except Exception as e:
         print("❌ Erreur load_database :", e)
         return {"clients": [], "visa": [], "escrow": [], "compta": []}
+
 
 
 # ----------------------------------------------------
