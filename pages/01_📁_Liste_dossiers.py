@@ -21,6 +21,31 @@ if not clients:
 df = pd.DataFrame(clients)
 df_visa = pd.DataFrame(visa_table) if len(visa_table) else pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
+
+# -------------------------------
+# Normalisation des colonnes Visa
+# -------------------------------
+
+def normalize_columns(df):
+    rename_map = {}
+
+    for col in df.columns:
+        col_clean = col.lower().replace("é", "e").replace("è", "e").replace("_", "-").strip()
+
+        if col_clean in ["categories", "categorie"]:
+            rename_map[col] = "Categories"
+
+        elif col_clean in ["sous-categories", "sous-categorie", "sous-cats", "sous-categ"]:
+            rename_map[col] = "Sous-categories"
+
+        elif col_clean in ["visa", "visas"]:
+            rename_map[col] = "Visa"
+
+    return df.rename(columns=rename_map)
+
+
+df_visa = normalize_columns(df_visa)
+
 # --------------------------------------------------------
 # Conversions & normalisations
 # --------------------------------------------------------
