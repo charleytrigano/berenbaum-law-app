@@ -19,57 +19,52 @@ if not clients:
     st.stop()
 
 df = pd.DataFrame(clients)
-df_visa = pd.DataFrame(visa_table) if len(visa_table) else pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
+# VISA TABLE
+df_visa = pd.DataFrame(visa_table) if len(visa_table) else pd.DataFrame(
+    columns=["Categories", "Sous-categories", "Visa"]
+)
 
-# -------------------------------
-# Normalisation des colonnes Visa
-# -------------------------------
-
+# --------------------------------------------------------
+# Normalisation des colonnes VISA
+# --------------------------------------------------------
 def normalize_columns(df):
     rename_map = {}
-
     for col in df.columns:
-        col_clean = col.lower().replace("é", "e").replace("è", "e").replace("_", "-").strip()
-
-        if col_clean in ["categories", "categorie"]:
+        c = col.lower().strip().replace("é","e").replace("è","e")
+        if c in ["categories", "categorie"]:
             rename_map[col] = "Categories"
-
-        elif col_clean in ["sous-categories", "sous-categorie", "sous-cats", "sous-categ"]:
+        if c in ["sous-categories", "sous-categorie", "sous-categ"]:
             rename_map[col] = "Sous-categories"
-
-        elif col_clean in ["visa", "visas"]:
+        if c == "visa":
             rename_map[col] = "Visa"
-
     return df.rename(columns=rename_map)
-
 
 df_visa = normalize_columns(df_visa)
 
 # --------------------------------------------------------
-# Conversions & normalisations
+# Normalisation colonnes clients
 # --------------------------------------------------------
 df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 df["Montant honoraires (US $)"] = pd.to_numeric(df["Montant honoraires (US $)"], errors="coerce").fillna(0)
 df["Autres frais (US $)"] = pd.to_numeric(df["Autres frais (US $)"], errors="coerce").fillna(0)
 
-# Totaux
-df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Montant encaissé"] = (
-    pd.to_numeric(df.get("Acompte 1", 0), errors="coerce").fillna(0)
-    + pd.to_numeric(df.get("Acompte 2", 0), errors="coerce").fillna(0)
-    + pd.to_numeric(df.get("Acompte 3", 0), errors="coerce").fillna(0)
-    + pd.to_numeric(df.get("Acompte 4", 0), errors="coerce").fillna(0)
+    pd.to_numeric(df.get("Acompte 1", 0), errors="coerce").fillna(0) +
+    pd.to_numeric(df.get("Acompte 2", 0), errors="coerce").fillna(0) +
+    pd.to_numeric(df.get("Acompte 3", 0), errors="coerce").fillna(0) +
+    pd.to_numeric(df.get("Acompte 4", 0), errors="coerce").fillna(0)
 )
+
+df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
 # --------------------------------------------------------
-# ➤ KPI (ligne unique + couleurs)
+# KPI
 # --------------------------------------------------------
 st.subheader("📌 Indicateurs")
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
-
 k1.metric("Dossiers", len(df))
 k2.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}")
 k3.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.2f}")
@@ -80,41 +75,49 @@ k6.metric("Solde", f"${df['Solde'].sum():,.2f}")
 st.markdown("---")
 
 # --------------------------------------------------------
-# 🔍 Filtres intelligents
+# 🔍 FILTRES INTELLIGENTS
 # --------------------------------------------------------
-
 st.subheader("🎛️ Filtres")
 
-colA, colB, colC, colD, colE = st.columns([1,1,1,1,1])
+colA, colB, colC, colD, colE = st.columns(5)
 
-# --- Filtre Catégorie ---
-liste_cat = ["Toutes"] + sorted(df_visa["Sous-categories"].dropna().unique().tolist())
-cat = colA.selectbox("Catégorie", liste_cat)
+# ----- CATEGORIES -----
+cat_list = ["Toutes"] + sorted(df_visa["Categories"].dropna().unique().tolist())
+cat = colA.selectbox("Catégorie", cat_list)
 
-# --- Filtre Sous-catégorie dépendant ---
+# ----- SOUS-CATEGORIES -----
 if cat != "Toutes":
-    souscat_list = ["Toutes"] + df_visa["Sous-categories"] == cat]["Sous-categories"].dropna().unique())
+    souscat_list = (
+        ["Toutes"] +
+        sorted(df_visa[df_visa["Categories"] == cat]["Sous-categories"].dropna().unique())
+    )
 else:
-    souscat_list = ["Toutes"] + df_visa["Sous-categories"].dropna().unique())
+    souscat_list = ["Toutes"] + sorted(df_visa["Sous-categories"].dropna().unique())
 
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
-# --- Filtre Visa dépendant ---
+# ----- VISA -----
 if souscat != "Toutes":
-    visa_list = ["Tous"] + sorted(df_visa["Sous-categories"] == souscat]["Visa"].dropna().unique())
+    visa_list = (
+        ["Tous"] +
+        sorted(df_visa[df_visa["Sous-categories"] == souscat]["Visa"].dropna().unique())
+    )
 elif cat != "Toutes":
-    visa_list = ["Tous"] + sorted(df_visa[df_visa["Sous-categories"] == cat]["Visa"].dropna().unique())
+    visa_list = (
+        ["Tous"] +
+        sorted(df_visa[df_visa["Categories"] == cat]["Visa"].dropna().unique())
+    )
 else:
     visa_list = ["Tous"] + sorted(df_visa["Visa"].dropna().unique())
 
 visa_choice = colC.selectbox("Visa", visa_list)
 
-# --- Filtre Année ---
+# ----- ANNEE -----
 df["Année"] = df["Date"].dt.year
 annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
 annee = colD.selectbox("Année", annee_list)
 
-# --- Filtre date à date ---
+# ----- DATE RANGE -----
 date_debut = colE.date_input("Date début")
 date_fin = colE.date_input("Date fin")
 
@@ -137,12 +140,11 @@ if annee != "Toutes":
 
 if date_debut:
     filtered = filtered[filtered["Date"] >= pd.to_datetime(date_debut)]
-
 if date_fin:
     filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
 
 # --------------------------------------------------------
-# ➤ Tableau final
+# TABLEAU FINAL
 # --------------------------------------------------------
 st.subheader("📋 Dossiers filtrés")
 
