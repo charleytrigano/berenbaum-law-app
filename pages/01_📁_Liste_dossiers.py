@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
+st.subheader("DEBUG VISA COLONNES")
+st.write(df_visa.columns.tolist())
+
+
 
 st.set_page_config(page_title="Liste des dossiers", page_icon="📁", layout="wide")
 
