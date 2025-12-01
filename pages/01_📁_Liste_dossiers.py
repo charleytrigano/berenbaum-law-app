@@ -88,22 +88,22 @@ st.subheader("🎛️ Filtres")
 colA, colB, colC, colD, colE = st.columns([1,1,1,1,1])
 
 # --- Filtre Catégorie ---
-liste_cat = ["Toutes"] + sorted(df_visa["Categories"].dropna().unique().tolist())
+liste_cat = ["Toutes"] + sorted(df_visa["Sous-categories"].dropna().unique().tolist())
 cat = colA.selectbox("Catégorie", liste_cat)
 
 # --- Filtre Sous-catégorie dépendant ---
 if cat != "Toutes":
-    souscat_list = ["Toutes"] + sorted(df_visa[df_visa["Categories"] == cat]["Sous-categories"].dropna().unique())
+    souscat_list = ["Toutes"] + df_visa["Sous-categories"] == cat]["Sous-categories"].dropna().unique())
 else:
-    souscat_list = ["Toutes"] + sorted(df_visa["Sous-categories"].dropna().unique())
+    souscat_list = ["Toutes"] + df_visa["Sous-categories"].dropna().unique())
 
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
 # --- Filtre Visa dépendant ---
 if souscat != "Toutes":
-    visa_list = ["Tous"] + sorted(df_visa[df_visa["Sous-categories"] == souscat]["Visa"].dropna().unique())
+    visa_list = ["Tous"] + sorted(df_visa["Sous-categories"] == souscat]["Visa"].dropna().unique())
 elif cat != "Toutes":
-    visa_list = ["Tous"] + sorted(df_visa[df_visa["Categories"] == cat]["Visa"].dropna().unique())
+    visa_list = ["Tous"] + sorted(df_visa[df_visa["Sous-categories"] == cat]["Visa"].dropna().unique())
 else:
     visa_list = ["Tous"] + sorted(df_visa["Visa"].dropna().unique())
 
