@@ -131,10 +131,10 @@ visa = colC.selectbox("Visa", visas)
 filtered = df.copy()
 
 if categorie != "Toutes":
-    filtered = filtered[filtered["Catégories"] == categorie]
+    filtered = filtered[filtered["Categories"] == categorie]
 
 if sous_categorie != "Toutes":
-    filtered = filtered[filtered["Sous-catégories"] == sous_categorie]
+    filtered = filtered[filtered["Sous-categories"] == sous_categorie]
 
 if visa != "Tous":
     filtered = filtered[filtered["Visa"] == visa]
@@ -147,7 +147,7 @@ st.subheader("📋 Dossiers filtrés")
 st.dataframe(
     filtered[
         [
-            "Dossier N", "Nom", "Catégories", "Sous-catégories",
+            "Dossier N", "Nom", "Categories", "Sous-categories",
             "Visa", "Total facturé", "Montant encaissé", "Solde"
         ]
     ],
