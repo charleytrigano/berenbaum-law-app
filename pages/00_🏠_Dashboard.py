@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
+from utils.visa_filters import clean_visa_df, get_visa_tree, get_filtered_lists
 from utils.visa_filters import (
     clean_visa_df,
     get_souscategories_for_category,
