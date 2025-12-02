@@ -108,6 +108,36 @@ if st.button("🚀 Importer les 4 fichiers Excel maintenant", type="primary"):
 
     db["visa"] = [] if df_visa is None else [normalize_record(r) for _, r in df_visa.iterrows()]
     st.success("✔ Visa importés")
+    def clean_visa_df(dfv):
+    if dfv is None or dfv.empty:
+        return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
+
+    rename_map = {}
+
+    for col in dfv.columns:
+        col_clean = col.lower().replace("é", "e").replace("è", "e").strip()
+
+        if col_clean in ["categories", "categorie"]:
+            rename_map[col] = "Categories"
+        elif col_clean in ["sous-categories", "sous-categorie"]:
+            rename_map[col] = "Sous-categories"
+        elif col_clean == "visa":
+            rename_map[col] = "Visa"
+
+    dfv = dfv.rename(columns=rename_map)
+
+    # Supprimer les anciennes colonnes redondantes
+    for old in ["Catégories", "Sous-catégories"]:
+        if old in dfv.columns:
+            dfv = dfv.drop(columns=[old])
+
+    # Colonnes obligatoires
+    for c in ["Categories", "Sous-categories", "Visa"]:
+        if c not in dfv.columns:
+            dfv[c] = ""
+
+    return dfv
+
 
     db["escrow"] = [] if df_escrow is None else [normalize_record(r) for _, r in df_escrow.iterrows()]
     st.success("✔ Escrow importé")
