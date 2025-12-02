@@ -98,7 +98,9 @@ if st.button("🚀 Importer les 4 fichiers Excel maintenant", type="primary"):
     st.subheader("📥 Lecture des fichiers Excel")
 
     df_clients = read_excel_from_dropbox(PATH_CLIENTS)
-    df_visa = read_excel_from_dropbox(PATH_VISA)
+    df_visa = clean_visa_df(pd.read_excel(...))
+    db["visa"] = df_visa.to_dict(orient="records")
+
     df_escrow = read_excel_from_dropbox(PATH_ESCROW)
     df_compta = read_excel_from_dropbox(PATH_COMPTA)
 
