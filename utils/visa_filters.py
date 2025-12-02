@@ -1,14 +1,12 @@
 import pandas as pd
 
-# ---------------------------------------------------------
-# Nettoyage / normalisation du DataFrame VISA
-# ---------------------------------------------------------
 def clean_visa_df(dfv):
+    """Normalise toutes les colonnes du tableau Visa."""
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    # Normalisation des noms de colonnes
     rename_map = {}
+
     for col in dfv.columns:
         col_clean = col.lower().replace("é", "e").replace("è", "e").strip()
 
@@ -21,11 +19,6 @@ def clean_visa_df(dfv):
 
     dfv = dfv.rename(columns=rename_map)
 
-    # Supprimer les anciennes colonnes
-    for old in ["Catégories", "Sous-catégories"]:
-        if old in dfv.columns:
-            dfv = dfv.drop(columns=[old])
-
     # Colonnes obligatoires
     for c in ["Categories", "Sous-categories", "Visa"]:
         if c not in dfv.columns:
@@ -34,38 +27,29 @@ def clean_visa_df(dfv):
     return dfv
 
 
-# ---------------------------------------------------------
-# Génération des listes de filtres dépendantes
-# ---------------------------------------------------------
-def get_filtered_lists(dfv, cat_selected=None, souscat_selected=None):
-    """Retourne la liste des Catégories, Sous-catégories et Visa filtrées."""
+def get_filtered_lists(dfv, cat=None, souscat=None):
+    """Retourne les listes Catégories, Sous-catégories et Visa selon les filtres actifs."""
+
+    if dfv is None or dfv.empty:
+        return [], [], []
 
     dfv = clean_visa_df(dfv)
 
-    # --- Liste catégories ---
-    cat_list = sorted(dfv["Categories"].dropna().unique().tolist())
+    # Liste catégories
+    categories = sorted(dfv["Categories"].dropna().unique().tolist())
 
-    # --- Liste sous-catégories dépendantes ---
-    if cat_selected and cat_selected != "Toutes":
-        souscat_list = sorted(
-            dfv[dfv["Categories"] == cat_selected]["Sous-categories"]
-            .dropna().unique().tolist()
-        )
+    # Liste sous-catégories dépendante
+    if cat and cat != "Toutes":
+        souscats = sorted(dfv[dfv["Categories"] == cat]["Sous-categories"].dropna().unique().tolist())
     else:
-        souscat_list = sorted(dfv["Sous-categories"].dropna().unique().tolist())
+        souscats = sorted(dfv["Sous-categories"].dropna().unique().tolist())
 
-    # --- Liste visas dépendante ---
-    if souscat_selected and souscat_selected != "Toutes":
-        visa_list = sorted(
-            dfv[dfv["Sous-categories"] == souscat_selected]["Visa"]
-            .dropna().unique().tolist()
-        )
-    elif cat_selected and cat_selected != "Toutes":
-        visa_list = sorted(
-            dfv[dfv["Categories"] == cat_selected]["Visa"]
-            .dropna().unique().tolist()
-        )
+    # Liste Visa dépendante
+    if souscat and souscat != "Toutes":
+        visas = sorted(dfv[dfv["Sous-categories"] == souscat]["Visa"].dropna().unique().tolist())
+    elif cat and cat != "Toutes":
+        visas = sorted(dfv[dfv["Categories"] == cat]["Visa"].dropna().unique().tolist())
     else:
-        visa_list = sorted(dfv["Visa"].dropna().unique().tolist())
+        visas = sorted(dfv["Visa"].dropna().unique().tolist())
 
-    return cat_list, souscat_list, visa_list
+    return categories, souscats, visas
