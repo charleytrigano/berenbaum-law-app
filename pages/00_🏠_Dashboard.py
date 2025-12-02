@@ -108,7 +108,7 @@ colA, colB, colC, colD, colE = st.columns(5)
 
 # ---- CATEGORIE ----
 cat_list = ["Toutes"] + sorted(visa_table["Categories"].dropna().astype(str).unique().tolist())
-cat = colA.selectbox("Catégorie", cat_list)
+cat = colA.selectbox("Categorie", cat_list)
 
 # ---- SOUS-CATEGORIE ----
 if cat != "Toutes":
@@ -116,7 +116,7 @@ if cat != "Toutes":
 else:
     souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].dropna().astype(str).unique().tolist())
 
-souscat = colB.selectbox("Sous-catégorie", souscat_list)
+souscat = colB.selectbox("Sous-categorie", souscat_list)
 
 # ---- VISA ----
 if souscat != "Toutes":
@@ -142,10 +142,10 @@ date_fin   = colE.date_input("Date fin")
 filtered = df.copy()
 
 if cat != "Toutes":
-    filtered = filtered[filtered["Catégories"] == cat]
+    filtered = filtered[filtered["Categories"] == cat]
 
 if souscat != "Toutes":
-    filtered = filtered[filtered["Sous-catégories"] == souscat]
+    filtered = filtered[filtered["Sous-categories"] == souscat]
 
 if visa_choice != "Tous":
     filtered = filtered[filtered["Visa"] == visa_choice]
