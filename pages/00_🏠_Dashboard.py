@@ -71,6 +71,8 @@ cat_list = ["Toutes"] + sorted(visa_table["Categories"].dropna().astype(str).uni
 cat = colA.selectbox("Catégorie", cat_list)
 
 # --- Sous-catégories dépendantes ---
+cat_list = ["Toutes"] + sorted(visa_table["Categories"].dropna().astype(str).unique().tolist())
+
 if cat != "Toutes":
     souscat_list = ["Toutes"] + get_souscategories_for_category(visa_table, cat)
 else:
