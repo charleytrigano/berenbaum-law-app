@@ -1,120 +1,110 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from utils.visa_filters import get_filtered_lists
+from utils.visa_filters import clean_visa_df, get_souscategories_for_category, get_visas_for_souscat
 
-# ---------------------------------------------------
+# --------------------------------------------------------
 # PAGE CONFIG
-# ---------------------------------------------------
-st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
+# --------------------------------------------------------
+st.set_page_config(page_title="Berenbaum Dashboard", page_icon="📊", layout="wide")
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
-# ---------------------------------------------------
+# --------------------------------------------------------
 # LOAD DATABASE
-# ---------------------------------------------------
+# --------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-visa_table = db.get("visa", [])
+visa_table = clean_visa_df(pd.DataFrame(db.get("visa", [])))
 
+# --------------------------------------------------------
+# STOP SI VIDE
+# --------------------------------------------------------
 if not clients:
-    st.warning("Aucun dossier trouvé.")
+    st.warning("Aucun dossier trouvé dans le JSON Dropbox.")
     st.stop()
 
 df = pd.DataFrame(clients)
-df_visa = pd.DataFrame(visa_table)
 
-# ---------------------------------------------------
-# NORMALISATION DES DONNÉES
-# ---------------------------------------------------
-df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
+# --------------------------------------------------------
+# NORMALISATION
+# --------------------------------------------------------
+df["Montant honoraires (US $)"] = pd.to_numeric(df.get("Montant honoraires (US $)", 0), errors="coerce").fillna(0)
+df["Autres frais (US $)"] = pd.to_numeric(df.get("Autres frais (US $)", 0), errors="coerce").fillna(0)
 
-# Numériques nécessaires
-for col in [
-    "Montant honoraires (US $)", "Autres frais (US $)",
-    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
-]:
-    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
+df["Acompte 1"] = pd.to_numeric(df.get("Acompte 1", 0), errors="coerce").fillna(0)
+df["Acompte 2"] = pd.to_numeric(df.get("Acompte 2", 0), errors="coerce").fillna(0)
+df["Acompte 3"] = pd.to_numeric(df.get("Acompte 3", 0), errors="coerce").fillna(0)
+df["Acompte 4"] = pd.to_numeric(df.get("Acompte 4", 0), errors="coerce").fillna(0)
 
-# Calculs
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
+df["Date"] = pd.to_datetime(df.get("Date", None), errors="coerce")
 df["Année"] = df["Date"].dt.year
 
-# ---------------------------------------------------
-# KPIs DESIGN (DARK MODE FRIENDLY)
-# ---------------------------------------------------
-st.subheader("📌 Indicateurs principaux")
-
-def kpi(title, value, color):
-    st.markdown(
-        f"""
-        <div style="
-            background:{color};
-            padding:22px;
-            border-radius:12px;
-            text-align:center;
-            color:white;
-            font-size:23px;
-            font-weight:600;">
-            {value}<br>
-            <span style="font-size:15px; opacity:0.85">{title}</span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+# --------------------------------------------------------
+# KPI – dark mode amélioré
+# --------------------------------------------------------
+st.subheader("📌 Indicateurs")
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
-k1.kpi = kpi("Dossiers", len(df), "#1E88E5")
-k2.kpi = kpi("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}", "#6A1B9A")
-k3.kpi = kpi("Autres frais", f"${df['Autres frais (US $)'].sum():,.2f}", "#00897B")
-k4.kpi = kpi("Facturé", f"${df['Total facturé'].sum():,.2f}", "#F4511E")
-k5.kpi = kpi("Encaissé", f"${df['Montant encaissé'].sum():,.2f}", "#3949AB")
-k6.kpi = kpi("Solde", f"${df['Solde'].sum():,.2f}", "#D81B60")
+k1.metric("Total dossiers", len(df))
+k2.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}")
+k3.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.2f}")
+k4.metric("Total facturé", f"${df['Total facturé'].sum():,.2f}")
+k5.metric("Encaissé", f"${df['Montant encaissé'].sum():,.2f}")
+k6.metric("Solde restant", f"${df['Solde'].sum():,.2f}")
 
 st.markdown("---")
 
-# ---------------------------------------------------
-# 🎛️ FILTRES AVANCÉS
-# ---------------------------------------------------
+# --------------------------------------------------------
+# 🎛️ FILTRES
+# --------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
 colA, colB, colC, colD, colE = st.columns(5)
 
-# Filtres intelligents Visa
-from utils.visa_filters import get_filtered_lists, clean_visa_df
+# Catégorie
+cat_list = ["Toutes"] + sorted(visa_table["Categories"].unique().tolist())
+cat = colA.selectbox("Catégorie", cat_list)
 
-df_visa = clean_visa_df(df_visa)
+# Sous-catégorie dépendante
+if cat != "Toutes":
+    souscat_list = ["Toutes"] + get_souscategories_for_category(visa_table, cat)
+else:
+    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique().tolist())
 
-cat_list, souscat_list, visa_list = get_filtered_lists(df_visa)
+souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
+# Visa dépendant
+if souscat != "Toutes":
+    visa_list = ["Tous"] + get_visas_for_souscat(visa_table, souscat)
+elif cat != "Toutes":
+    visa_list = ["Tous"] + sorted(visa_table[visa_table["Categories"] == cat]["Visa"].unique().tolist())
+else:
+    visa_list = ["Tous"] + sorted(visa_table["Visa"].unique().tolist())
 
-categorie = colA.selectbox("Catégorie", ["Toutes"] + cat_list)
-souscat = colB.selectbox("Sous-catégorie", ["Toutes"] + souscat_list)
-
-# Visa dynamique
-visa_list_filtered = get_filtered_lists(df_visa, categorie, souscat)[2]
-visa_choice = colC.selectbox("Visa", ["Tous"] + visa_list_filtered)
+visa_choice = colC.selectbox("Visa", visa_list)
 
 # Année
-annees = sorted(df["Année"].dropna().unique().tolist())
-annee = colD.selectbox("Année", ["Toutes"] + annees)
+annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
+annee = colD.selectbox("Année", annee_list)
 
-# Date à Date
+# Date
 date_debut = colE.date_input("Date début")
 date_fin = colE.date_input("Date fin")
 
-# ---------------------------------------------------
-# APPLICATION DES FILTRES
-# ---------------------------------------------------
+# --------------------------------------------------------
+# Application des filtres
+# --------------------------------------------------------
 filtered = df.copy()
 
-if categorie != "Toutes":
-    filtered = filtered[filtered["Catégories"] == categorie]
+if cat != "Toutes":
+    filtered = filtered[filtered["Catégories"] == cat]
 
 if souscat != "Toutes":
     filtered = filtered[filtered["Sous-catégories"] == souscat]
@@ -131,9 +121,9 @@ if date_debut:
 if date_fin:
     filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
 
-# ---------------------------------------------------
-# AFFICHAGE TABLEAU
-# ---------------------------------------------------
+# --------------------------------------------------------
+# TABLEAU FINAL
+# --------------------------------------------------------
 st.subheader("📋 Dossiers filtrés")
 
 colonnes = [
@@ -144,4 +134,4 @@ colonnes = [
 
 colonnes = [c for c in colonnes if c in filtered.columns]
 
-st.dataframe(filtered[colonnes], use_container_width=True, height=620)
+st.dataframe(filtered[colonnes], use_container_width=True, height=600)
