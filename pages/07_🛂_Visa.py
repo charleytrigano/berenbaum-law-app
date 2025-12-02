@@ -3,7 +3,7 @@ import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
 st.set_page_config(page_title="Visa – Paramétrage", page_icon="🛂", layout="wide")
-st.title("🛂 Paramétrage des catégories / sous-catégories / visas")
+st.title("🛂 Paramétrage des catégories, sous-catégories et visas")
 
 # ---------------------------------------------------------
 # Charger base Dropbox
@@ -14,16 +14,16 @@ visa_table = db.get("visa", [])
 df = pd.DataFrame(visa_table)
 
 # ---------------------------------------------------------
-# Nettoyage strict : UNIQUEMENT 3 colonnes
+# Nettoyage dur : garder seulement 3 colonnes & enlever doublons
 # ---------------------------------------------------------
 def clean_visa_df(df):
     if df is None or df.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    # normalisation
+    # 1️⃣ Renommage intelligent
     rename_map = {}
     for col in df.columns:
-        col_clean = col.lower().replace("é","e").replace("è","e").strip()
+        col_clean = col.lower().replace("é", "e").replace("è", "e").strip()
 
         if col_clean in ["categories", "categorie"]:
             rename_map[col] = "Categories"
@@ -34,54 +34,50 @@ def clean_visa_df(df):
 
     df = df.rename(columns=rename_map)
 
-    # supprimer toutes les colonnes inutiles
-    for col in list(df.columns):
-        if col not in ["Categories", "Sous-categories", "Visa"]:
-            df = df.drop(columns=[col])
+    # 2️⃣ Suppression des colonnes non désirées
+    df = df[[c for c in df.columns if c in ["Categories", "Sous-categories", "Visa"]]]
 
-    # colonnes manquantes
+    # 3️⃣ Forcer unicité des colonnes
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    # 4️⃣ Colonnes manquantes
     for c in ["Categories", "Sous-categories", "Visa"]:
         if c not in df.columns:
             df[c] = ""
+
+    # 5️⃣ Enlever lignes vides
+    df = df.dropna(how="all")
 
     return df
 
 df = clean_visa_df(df)
 
-
 # ---------------------------------------------------------
-# Affichage de la grille VISA
+# Affichage
 # ---------------------------------------------------------
 st.subheader("📋 Grille Visa")
 
 if df.empty:
-    st.info("Aucun Visa n'est encore enregistré.")
+    st.info("Aucun Visa n'est enregistré.")
 else:
     st.dataframe(df, use_container_width=True, height=400)
-
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# Ajouter un nouveau Visa (SANS édition / suppression)
+# Ajouter un Visa
 # ---------------------------------------------------------
 st.subheader("➕ Ajouter un Visa")
 
 col1, col2, col3 = st.columns(3)
 
-with col1:
-    cat = st.text_input("Catégorie (ex: Affaires / Tourisme)")
-
-with col2:
-    souscat = st.text_input("Sous-catégorie (ex: B-1)")
-
-with col3:
-    visa = st.text_input("Visa (ex: B-1 COS)")
-
+cat = col1.text_input("Catégorie")
+souscat = col2.text_input("Sous-catégorie")
+visa = col3.text_input("Visa")
 
 if st.button("Ajouter", type="primary"):
-    if cat.strip() == "" or souscat.strip() == "" or visa.strip() == "":
-        st.error("Merci de remplir les 3 champs.")
+    if not cat or not souscat or not visa:
+        st.error("Merci de compléter les 3 champs.")
     else:
         new_row = {
             "Categories": cat.strip(),
@@ -91,7 +87,7 @@ if st.button("Ajouter", type="primary"):
 
         df = df.append(new_row, ignore_index=True)
 
-        # Mise à jour base JSON
+        # Sauvegarde JSON
         db["visa"] = df.to_dict(orient="records")
         save_database(db)
 
