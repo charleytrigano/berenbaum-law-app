@@ -2,78 +2,51 @@ import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
-st.title("🛂 Gestion des visas")
+st.set_page_config(page_title="Gestion Visa", page_icon="🛂", layout="wide")
+st.title("🛂 Grille Visa – Catégorie → Sous-catégorie → Visa")
 
-# --------------------------------------
-# Chargement JSON
-# --------------------------------------
-try:
-    db = load_database()
-except:
-    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+db = load_database()
+visa_data = db.get("visa", [])
 
-raw_visa = db.get("visa", [])
+df = pd.DataFrame(visa_data)
 
-# --------------------------------------
-# Normalisation automatique des anciennes colonnes
-# --------------------------------------
-visa_list = []
-for v in raw_visa:
-    if not isinstance(v, dict):
-        continue
+if df.empty:
+    df = pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    # Correction automatique :
-    cat = v.get("Categories") or v.get("Catégories")
-    souscat = v.get("Sous-categories") or v.get("Sous-categorie") or v.get("Sous-catégories")
-    visa_code = v.get("Visa")
-
-    if cat and souscat and visa_code:
-        visa_list.append({
-            "Categories": str(cat).strip(),
-            "Sous-categories": str(souscat).strip(),
-            "Visa": str(visa_code).strip()
-        })
-
-# Replace bad data
-db["visa"] = visa_list
-
-# --------------------------------------
-# Tableau affichage
-# --------------------------------------
-st.subheader("📋 Référentiel des visas")
-
-df = pd.DataFrame(visa_list)
-st.dataframe(df, use_container_width=True, height=350)
+# -------------------------------------------------
+# Affichage grille Visa
+# -------------------------------------------------
+st.subheader("📋 Grille actuelle")
+st.dataframe(df, use_container_width=True, height=500)
 
 st.markdown("---")
 
-# --------------------------------------
-# Ajouter un visa
-# --------------------------------------
-st.subheader("➕ Ajouter un type de visa")
+# -------------------------------------------------
+# Ajouter un Visa
+# -------------------------------------------------
+st.subheader("➕ Ajouter un nouveau Visa")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    new_cat = st.text_input("Catégorie")
+    cat = st.text_input("Catégorie").strip()
 
 with col2:
-    new_souscat = st.text_input("Sous-catégorie")
+    souscat = st.text_input("Sous-catégorie").strip()
 
 with col3:
-    new_visa = st.text_input("Visa")
+    visa = st.text_input("Visa").strip()
 
-if st.button("Ajouter le visa", type="primary"):
-    if not new_cat or not new_souscat or not new_visa:
-        st.error("Tous les champs doivent être renseignés.")
+if st.button("➕ Ajouter", type="primary"):
+    if not cat or not souscat or not visa:
+        st.error("Les trois champs sont obligatoires.")
     else:
-        entry = {
-            "Categories": new_cat.strip(),
-            "Sous-categories": new_souscat.strip(),
-            "Visa": new_visa.strip()
+        df.loc[len(df)] = {
+            "Categories": cat,
+            "Sous-categories": souscat,
+            "Visa": visa
         }
-        visa_list.append(entry)
-        db["visa"] = visa_list
+        db["visa"] = df.to_dict(orient="records")
         save_database(db)
         st.success("Visa ajouté ✔")
-        st.experimental_rerun()
+        st.balloons()
