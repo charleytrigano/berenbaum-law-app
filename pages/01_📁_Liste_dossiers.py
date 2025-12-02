@@ -1,5 +1,9 @@
 import streamlit as st
 import pandas as pd
+import io
+import pandas as pd
+from components.export_pdf import generate_pdf_from_dataframe
+
 from backend.dropbox_utils import load_database
 
 st.set_page_config(page_title="Liste des dossiers", page_icon="📁", layout="wide")
