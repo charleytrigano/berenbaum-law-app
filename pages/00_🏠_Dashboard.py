@@ -1,9 +1,10 @@
+st.write("Colonnes VISA :", visa_table.columns.tolist())
+
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
 from utils.visa_filters import clean_visa_df
 
-st.write("Colonnes VISA :", visa_table.columns.tolist())
 
 
 # ===========================================================
