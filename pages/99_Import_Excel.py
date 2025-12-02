@@ -1,16 +1,26 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import dropbox_download,dropbox_upload_json
-import dropboxdef clean_visa_df(dfv):
-    import pandas as pd
+import dropbox
+import requests
 
+from backend.dropbox_utils import load_database, save_database
+
+
+# --------------------------------------------------------
+# CLEAN VISA DF
+# --------------------------------------------------------
+def clean_visa_df(dfv):
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    # Détection et normalisation des colonnes
     rename_map = {}
     for col in dfv.columns:
-        col_clean = col.lower().replace("é", "e").replace("è", "e").strip()
+        col_clean = (
+            col.lower()
+            .replace("é", "e")
+            .replace("è", "e")
+            .strip()
+        )
 
         if col_clean in ["categories", "categorie"]:
             rename_map[col] = "Categories"
@@ -21,22 +31,17 @@ import dropboxdef clean_visa_df(dfv):
 
     dfv = dfv.rename(columns=rename_map)
 
-    # Suppression des anciennes colonnes
+    # Supprimer anciennes colonnes erronées
     for old in ["Catégories", "Sous-catégories"]:
         if old in dfv.columns:
             dfv = dfv.drop(columns=[old])
 
-    # Colonnes obligatoires
+    # Colonnes garanties
     for c in ["Categories", "Sous-categories", "Visa"]:
         if c not in dfv.columns:
             dfv[c] = ""
 
-    # Enlever lignes totalement vides
-    dfv = dfv.dropna(how="all")
-
     return dfv
-
-
 
 
 # --------------------------------------------------------
@@ -56,11 +61,8 @@ PATH_COMPTA = st.secrets["paths"]["COMPTA_FILE"]
 # Téléchargement fichier depuis Dropbox
 # --------------------------------------------------------
 def read_excel_from_dropbox(path):
-    """Télécharge un fichier Excel Dropbox et retourne un DataFrame."""
     try:
-        import requests
-
-        # Récupération access_token via refresh_token
+        # 1) Obtenir access_token depuis refresh_token
         resp = requests.post(
             "https://api.dropbox.com/oauth2/token",
             data={
@@ -70,11 +72,12 @@ def read_excel_from_dropbox(path):
                 "grant_type": "refresh_token",
             },
         )
-
         access_token = resp.json()["access_token"]
 
+        # 2) Connexion Dropbox
         dbx = dropbox.Dropbox(access_token)
 
+        # 3) Téléchargement fichier
         metadata, res = dbx.files_download(path)
 
         return pd.read_excel(res.content)
@@ -88,31 +91,34 @@ def read_excel_from_dropbox(path):
 # Normalisation JSON
 # --------------------------------------------------------
 def normalize_record(record):
-    """Convertit toutes les valeurs en types compatibles JSON."""
-    import pandas as pd
     import numpy as np
 
     out = {}
     for k, v in record.items():
 
-        if isinstance(v, (pd.Timestamp,)):
+        # Dates
+        if isinstance(v, pd.Timestamp):
             out[k] = v.strftime("%Y-%m-%d")
-
+        # Numpy types
         elif hasattr(v, "item"):
             out[k] = v.item()
-
+        # None → vide
         elif v is None:
             out[k] = ""
-
+        # Types natifs OK
+        elif isinstance(v, (int, float, str, bool)):
+            out[k] = v
+        # Fallback
         else:
-            out[k] = v if isinstance(v, (int, float, str, bool)) else str(v)
+            out[k] = str(v)
 
     return out
 
 
-# --------------------------------------------------------
-# PAGE UI
-# --------------------------------------------------------
+# ========================================================
+# 🖥️ UI STREAMLIT
+# ========================================================
+
 st.title("🔄 Import Excel → Base JSON (Dropbox)")
 st.write("Cette page importe automatiquement les fichiers Excel pour mettre à jour la base JSON.")
 
@@ -130,59 +136,41 @@ st.json(db)
 # Bouton Import
 # --------------------------------------------------------
 if st.button("🚀 Importer les 4 fichiers Excel maintenant", type="primary"):
+
     st.subheader("📥 Lecture des fichiers Excel")
 
     df_clients = read_excel_from_dropbox(PATH_CLIENTS)
-    df_visa = clean_visa_df(pd.read_excel(...))
-    db["visa"] = df_visa.to_dict(orient="records")
+    df_visa_raw = read_excel_from_dropbox(PATH_VISA)
+    df_visa = clean_visa_df(df_visa_raw)
 
     df_escrow = read_excel_from_dropbox(PATH_ESCROW)
     df_compta = read_excel_from_dropbox(PATH_COMPTA)
 
-    # Normalisation
-    db["clients"] = [] if df_clients is None else [normalize_record(r) for _, r in df_clients.iterrows()]
+    # ----------- CLIENTS -----------
+    db["clients"] = [] if df_clients is None else [
+        normalize_record(r) for _, r in df_clients.iterrows()
+    ]
     st.success("✔ Clients importés")
 
-    db["visa"] = [] if df_visa is None else [normalize_record(r) for _, r in df_visa.iterrows()]
+    # ----------- VISA -----------
+    db["visa"] = [] if df_visa is None else [
+        normalize_record(r) for _, r in df_visa.iterrows()
+    ]
     st.success("✔ Visa importés")
-    def clean_visa_df(dfv):
-    if dfv is None or dfv.empty:
-        return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    rename_map = {}
-
-    for col in dfv.columns:
-        col_clean = col.lower().replace("é", "e").replace("è", "e").strip()
-
-        if col_clean in ["categories", "categorie"]:
-            rename_map[col] = "Categories"
-        elif col_clean in ["sous-categories", "sous-categorie"]:
-            rename_map[col] = "Sous-categories"
-        elif col_clean == "visa":
-            rename_map[col] = "Visa"
-
-    dfv = dfv.rename(columns=rename_map)
-
-    # Supprimer les anciennes colonnes redondantes
-    for old in ["Catégories", "Sous-catégories"]:
-        if old in dfv.columns:
-            dfv = dfv.drop(columns=[old])
-
-    # Colonnes obligatoires
-    for c in ["Categories", "Sous-categories", "Visa"]:
-        if c not in dfv.columns:
-            dfv[c] = ""
-
-    return dfv
-
-
-    db["escrow"] = [] if df_escrow is None else [normalize_record(r) for _, r in df_escrow.iterrows()]
+    # ----------- ESCROW -----------
+    db["escrow"] = [] if df_escrow is None else [
+        normalize_record(r) for _, r in df_escrow.iterrows()
+    ]
     st.success("✔ Escrow importé")
 
-    db["compta"] = [] if df_compta is None else [normalize_record(r) for _, r in df_compta.iterrows()]
+    # ----------- COMPTA -----------
+    db["compta"] = [] if df_compta is None else [
+        normalize_record(r) for _, r in df_compta.iterrows()
+    ]
     st.success("✔ Compta importée")
 
-    # Sauvegarde Dropbox
+    # ----------- ENREGISTREMENT -----------
     save_database(db)
 
     st.success("🎉 Mise à jour JSON terminée et synchronisée dans Dropbox ✔")
