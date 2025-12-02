@@ -86,7 +86,12 @@ st.subheader("🎛️ Filtres")
 colA, colB, colC, colD, colE = st.columns(5)
 
 # Filtres intelligents Visa
+from utils.visa_filters import get_filtered_lists, clean_visa_df
+
+df_visa = clean_visa_df(df_visa)
+
 cat_list, souscat_list, visa_list = get_filtered_lists(df_visa)
+
 
 categorie = colA.selectbox("Catégorie", ["Toutes"] + cat_list)
 souscat = colB.selectbox("Sous-catégorie", ["Toutes"] + souscat_list)
