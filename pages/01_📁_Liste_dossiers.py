@@ -99,3 +99,38 @@ colonnes = [
 colonnes = [c for c in colonnes if c in filtered.columns]
 
 st.dataframe(filtered[colonnes], use_container_width=True, height=600)
+
+from components.export_pdf import generate_pdf_from_dataframe
+
+st.markdown("### 📤 Export")
+
+col_exp1, col_exp2, col_exp3 = st.columns(3)
+
+# Export CSV
+csv = filtered.to_csv(index=False).encode("utf-8")
+col_exp1.download_button(
+    "📄 Export CSV",
+    csv,
+    "dossiers.csv",
+    "text/csv"
+)
+
+# Export Excel
+excel_buffer = io.BytesIO()
+with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+    filtered.to_excel(writer, index=False, sheet_name="Dossiers")
+col_exp2.download_button(
+    "📘 Export Excel",
+    excel_buffer.getvalue(),
+    "dossiers.xlsx"
+)
+
+# Export PDF minimal
+pdf_buffer = generate_pdf_from_dataframe(filtered, title="Liste des dossiers filtrés")
+col_exp3.download_button(
+    "📕 Export PDF",
+    pdf_buffer,
+    "dossiers.pdf",
+    "application/pdf"
+)
+
