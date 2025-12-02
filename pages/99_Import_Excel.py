@@ -1,7 +1,42 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import dropbox_download,dropbox_upload_json
-import dropbox
+import dropboxdef clean_visa_df(dfv):
+    import pandas as pd
+
+    if dfv is None or dfv.empty:
+        return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
+
+    # Détection et normalisation des colonnes
+    rename_map = {}
+    for col in dfv.columns:
+        col_clean = col.lower().replace("é", "e").replace("è", "e").strip()
+
+        if col_clean in ["categories", "categorie"]:
+            rename_map[col] = "Categories"
+        elif col_clean in ["sous-categories", "sous-categorie"]:
+            rename_map[col] = "Sous-categories"
+        elif col_clean == "visa":
+            rename_map[col] = "Visa"
+
+    dfv = dfv.rename(columns=rename_map)
+
+    # Suppression des anciennes colonnes
+    for old in ["Catégories", "Sous-catégories"]:
+        if old in dfv.columns:
+            dfv = dfv.drop(columns=[old])
+
+    # Colonnes obligatoires
+    for c in ["Categories", "Sous-categories", "Visa"]:
+        if c not in dfv.columns:
+            dfv[c] = ""
+
+    # Enlever lignes totalement vides
+    dfv = dfv.dropna(how="all")
+
+    return dfv
+
+
 
 
 # --------------------------------------------------------
