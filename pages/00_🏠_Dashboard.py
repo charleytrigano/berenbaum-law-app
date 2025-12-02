@@ -4,24 +4,18 @@ from backend.dropbox_utils import load_database
 from utils.visa_filters import clean_visa_df
 
 # ===========================================================
-# FIX : Fonctions manquantes pour filtres dynamiques
+# Fonctions manquantes
 # ===========================================================
 def get_souscategories_for_category(dfv, category):
     return (
         dfv[dfv["Categories"] == category]["Sous-categories"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
+        .dropna().astype(str).unique().tolist()
     )
 
 def get_visas_for_souscat(dfv, souscat):
     return (
         dfv[dfv["Sous-categories"] == souscat]["Visa"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
+        .dropna().astype(str).unique().tolist()
     )
 
 # ===========================================================
@@ -31,21 +25,21 @@ st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Tableau de bord – Berenbaum Law App")
 
 # ===========================================================
-# LOAD DB
+# LOAD DATA
 # ===========================================================
 db = load_database()
 clients = db.get("clients", [])
 visa_raw = pd.DataFrame(db.get("visa", []))
 
-# Nettoyage VISA
+# Nettoyage Visa
 visa_table = clean_visa_df(visa_raw)
 
-# Forcer colonnes
+# 🔥 FORÇAGE DES COLONNES — ÉLIMINE LE PROBLÈME FINAL
 for col in ["Categories", "Sous-categories", "Visa"]:
     if col not in visa_table.columns:
         visa_table[col] = ""
 
-# Stop si aucun client
+# Stop si pas de clients
 if not clients:
     st.warning("Aucun dossier trouvé dans Dropbox.")
     st.stop()
@@ -53,7 +47,7 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ===========================================================
-# NORMALISATION DES DONNÉES
+# NORMALISATION
 # ===========================================================
 df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
 
@@ -65,10 +59,10 @@ num_cols = [
 for c in num_cols:
     df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
 
-df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
+df["Total facturé"]    = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
-df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
-df["Année"] = df["Date"].dt.year
+df["Solde"]            = df["Total facturé"] - df["Montant encaissé"]
+df["Année"]            = df["Date"].dt.year
 
 # ===========================================================
 # KPI
@@ -91,19 +85,19 @@ st.markdown("---")
 st.subheader("🎛️ Filtres")
 colA, colB, colC, colD, colE = st.columns(5)
 
-# --- Catégorie ---
-cat_list = ["Toutes"] + sorted(visa_table["Categories"].dropna().unique().tolist())
+# ---- CATEGORIE ----
+cat_list = ["Toutes"] + sorted(visa_table["Categories"].dropna().astype(str).unique().tolist())
 cat = colA.selectbox("Catégorie", cat_list)
 
-# --- Sous-catégorie ---
+# ---- SOUS-CATEGORIE ----
 if cat != "Toutes":
     souscat_list = ["Toutes"] + get_souscategories_for_category(visa_table, cat)
 else:
-    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].dropna().unique().tolist())
+    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].dropna().astype(str).unique().tolist())
 
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
-# --- Visa ---
+# ---- VISA ----
 if souscat != "Toutes":
     visa_list = ["Tous"] + get_visas_for_souscat(visa_table, souscat)
 elif cat != "Toutes":
@@ -113,16 +107,16 @@ else:
 
 visa_choice = colC.selectbox("Visa", visa_list)
 
-# --- Année ---
+# ---- ANNÉE ----
 annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
 annee = colD.selectbox("Année", annee_list)
 
-# --- Dates ---
+# ---- DATES ----
 date_debut = colE.date_input("Date début")
 date_fin   = colE.date_input("Date fin")
 
 # ===========================================================
-# APPLICATION DES FILTRES
+# APPLY FILTERS
 # ===========================================================
 filtered = df.copy()
 
