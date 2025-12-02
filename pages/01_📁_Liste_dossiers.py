@@ -66,18 +66,18 @@ st.markdown("---")
 # --------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
-cat = st.selectbox("Catégorie", ["Toutes"] + sorted(df["Catégories"].dropna().unique()))
-souscat = st.selectbox("Sous-catégorie", ["Toutes"] + sorted(df["Sous-catégories"].dropna().unique()))
+cat = st.selectbox("Categorie", ["Toutes"] + sorted(df["Categories"].dropna().unique()))
+souscat = st.selectbox("Sous-categorie", ["Toutes"] + sorted(df["Sous-categories"].dropna().unique()))
 visa = st.selectbox("Visa", ["Tous"] + sorted(df["Visa"].dropna().unique()))
 
 # Application
 filtered = df.copy()
 
 if cat != "Toutes":
-    filtered = filtered[filtered["Catégories"] == cat]
+    filtered = filtered[filtered["Categories"] == cat]
 
 if souscat != "Toutes":
-    filtered = filtered[filtered["Sous-catégories"] == souscat]
+    filtered = filtered[filtered["Sous-categories"] == souscat]
 
 if visa != "Tous":
     filtered = filtered[filtered["Visa"] == visa]
@@ -90,8 +90,8 @@ st.subheader("📋 Dossiers")
 colonnes = [
     "Dossier N",
     "Nom",
-    "Catégories",
-    "Sous-catégories",
+    "Categories",
+    "Sous-categories",
     "Visa",
     "Montant honoraires (US $)",
     "Autres frais (US $)",
