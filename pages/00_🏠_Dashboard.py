@@ -50,6 +50,23 @@ if not clients:
 
 df = pd.DataFrame(clients)
 
+import streamlit as st
+import pandas as pd
+from backend.dropbox_utils import load_database
+
+st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
+
+st.title("📊 Tableau de bord – Berenbaum Law App")
+
+# ---- LOAD DB ----
+db = load_database()
+clients = db.get("clients", [])
+visa_raw = pd.DataFrame(db.get("visa", []))
+
+# 🔍 DEBUG — afficher colonnes VISA réelles
+st.write("Colonnes VISA réelles :", visa_raw.columns.tolist())
+
+
 # ===========================================================
 # NORMALISATION
 # ===========================================================
