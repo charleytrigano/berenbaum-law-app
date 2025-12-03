@@ -1,80 +1,88 @@
 import pandas as pd
 
 # ---------------------------------------------------------
-# Nettoyage complet du tableau VISA
+# 🔧 Nettoyage des colonnes du tableau VISA
 # ---------------------------------------------------------
 def clean_visa_df(dfv):
 
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    # Normalisation intelligente des colonnes
     rename_map = {}
-    for col in dfv.columns:
-        col_clean = (
-            col.lower()
-               .replace("é", "e")
-               .replace("è", "e")
-               .replace("ê", "e")
-               .replace("_", "-")
-               .strip()
-        )
 
-        if "categorie" in col_clean:
-            rename_map[col] = "Categories"
-        elif "sous" in col_clean:
+    for col in dfv.columns:
+        c = col.lower().replace("é", "e").replace("è", "e").replace("ê", "e")
+
+        # IMPORTANT : détecter "sous" AVANT "categorie"
+        if "sous" in c:
             rename_map[col] = "Sous-categories"
-        elif "visa" in col_clean:
+
+        elif c.startswith("categorie") or c == "categories":
+            rename_map[col] = "Categories"
+
+        elif "visa" in c:
             rename_map[col] = "Visa"
 
+    # Appliquer renommage
     dfv = dfv.rename(columns=rename_map)
 
-    # Nettoyage : supprimer les anciennes colonnes
-    for bad in ["Catégories", "Sous-catégories"]:
-        if bad in dfv.columns:
-            dfv = dfv.drop(columns=[bad])
-
-    # Colonnes obligatoires
-    for c in ["Categories", "Sous-categories", "Visa"]:
-        if c not in dfv.columns:
-            dfv[c] = ""
-
-    # Retirer les lignes vides
-    dfv = dfv.dropna(how="all")
+    # Sécurisation : garantir les 3 colonnes
+    for col in ["Categories", "Sous-categories", "Visa"]:
+        if col not in dfv.columns:
+            dfv[col] = ""
 
     return dfv
 
 
 # ---------------------------------------------------------
-# Retourne les sous-catégories d’une catégorie
+# Retourne l’arbre Cat → Sous-cat → Visas
 # ---------------------------------------------------------
-def get_souscats(dfv, categorie):
+def get_visa_tree(dfv):
+
     dfv = clean_visa_df(dfv)
-    return sorted(
-        dfv[dfv["Categories"] == categorie]["Sous-categories"]
-        .dropna().astype(str).unique().tolist()
-    )
+    tree = {}
+
+    for _, row in dfv.iterrows():
+        cat = str(row["Categories"]).strip()
+        sous = str(row["Sous-categories"]).strip()
+        visa = str(row["Visa"]).strip()
+
+        if not cat:
+            continue
+
+        tree.setdefault(cat, {})
+        tree[cat].setdefault(sous, [])
+
+        if visa and visa not in tree[cat][sous]:
+            tree[cat][sous].append(visa)
+
+    return tree
 
 
 # ---------------------------------------------------------
-# Retourne les visas pour une sous-catégorie donnée
-# ---------------------------------------------------------
-def get_visas(dfv, souscat):
-    dfv = clean_visa_df(dfv)
-    return sorted(
-        dfv[dfv["Sous-categories"] == souscat]["Visa"]
-        .dropna().astype(str).unique().tolist()
-    )
-
-
-# ---------------------------------------------------------
-# Retourne les 3 listes complètes (cat / souscat / visa)
+# Listes simples
 # ---------------------------------------------------------
 def get_all_lists(dfv):
     dfv = clean_visa_df(dfv)
+    cat = sorted(dfv["Categories"].dropna().astype(str).unique())
+    sous = sorted(dfv["Sous-categories"].dropna().astype(str).unique())
+    vis = sorted(dfv["Visa"].dropna().astype(str).unique())
+    return cat, sous, vis
 
-    cat_list = sorted(dfv["Categories"].dropna().astype(str).unique().tolist())
-    souscat_list = sorted(dfv["Sous-categories"].dropna().astype(str).unique().tolist())
-    visa_list = sorted(dfv["Visa"].dropna().astype(str).unique().tolist())
 
-    return cat_list, souscat_list, visa_list
+# ---------------------------------------------------------
+# Obtenir sous-catégories pour une catégorie
+# ---------------------------------------------------------
+def get_souscats(dfv, categorie):
+    dfv = clean_visa_df(dfv)
+    return sorted(dfv[dfv["Categories"] == categorie]["Sous-categories"]
+                  .dropna().astype(str).unique().tolist())
+
+
+# ---------------------------------------------------------
+# Obtenir visas pour une sous-catégorie
+# ---------------------------------------------------------
+def get_visas(dfv, souscat):
+    dfv = clean_visa_df(dfv)
+    return sorted(dfv[dfv["Sous-categories"] == souscat]["Visa"]
+                  .dropna().astype(str).unique().tolist())
