@@ -1,75 +1,45 @@
 import pandas as pd
 
 # ---------------------------------------------------------
-# 1️⃣ Nettoyage robuste de la table VISA
+# CLEAN VISA TABLE (VERSION SÉCURISÉE)
 # ---------------------------------------------------------
 def clean_visa_df(dfv):
 
+    # Si vide → retourner structure propre
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    # Normalisation des noms de colonnes
-    new_cols = {}
+    # Nettoyage des noms
+    rename_map = {}
 
     for col in dfv.columns:
-        col_clean = (
-            col.lower()
-               .replace("é", "e")
-               .replace("è", "e")
-               .replace("ê", "e")
-               .replace("-", " ")
-               .replace("_", " ")
-               .strip()
-        )
+        c = col.lower().strip()
+        c = c.replace("é", "e").replace("è", "e").replace("ê", "e")
 
-        if "categorie" in col_clean:
-            new_cols[col] = "Categories"
+        if "categorie" in c and "sous" not in c:
+            rename_map[col] = "Categories"
 
-        elif "sous" in col_clean:
-            new_cols[col] = "Sous-categories"
+        elif "sous" in c:
+            rename_map[col] = "Sous-categories"
 
-        elif "visa" in col_clean:
-            new_cols[col] = "Visa"
+        elif "visa" in c:
+            rename_map[col] = "Visa"
 
-    dfv = dfv.rename(columns=new_cols)
+    # Renommage possible
+    dfv = dfv.rename(columns=rename_map)
 
-    # 🔥 Supprimer toutes les colonnes non reconnues
+    # Sécuriser → si une colonne manque, la créer vide
+    for col in ["Categories", "Sous-categories", "Visa"]:
+        if col not in dfv.columns:
+            dfv[col] = ""
+
+    # Ne garder QUE les 3 colonnes attendues
     dfv = dfv[["Categories", "Sous-categories", "Visa"]]
 
-    # Nettoyage textuel
-    for c in ["Categories", "Sous-categories", "Visa"]:
-        dfv[c] = dfv[c].astype(str).str.strip()
+    # Suppression lignes vides
+    dfv = dfv.dropna(how="all")
 
-    dfv = dfv[dfv["Categories"] != ""]
-    dfv = dfv[dfv["Visa"] != ""]
+    # Tout convertir en texte propre
+    dfv = dfv.fillna("").astype(str).applymap(str.strip)
 
     return dfv
-
-
-# ---------------------------------------------------------
-# 2️⃣ Retourne toutes les listes
-# ---------------------------------------------------------
-def get_all_lists(dfv):
-    dfv = clean_visa_df(dfv)
-
-    cats = sorted(dfv["Categories"].unique().tolist())
-    souscats = sorted(dfv["Sous-categories"].unique().tolist())
-    visas = sorted(dfv["Visa"].unique().tolist())
-
-    return cats, souscats, visas
-
-
-# ---------------------------------------------------------
-# 3️⃣ Sous-catégories pour une catégorie donnée
-# ---------------------------------------------------------
-def get_souscats(dfv, cat):
-    dfv = clean_visa_df(dfv)
-    return sorted(dfv[dfv["Categories"] == cat]["Sous-categories"].unique().tolist())
-
-
-# ---------------------------------------------------------
-# 4️⃣ Visas pour une sous-catégorie donnée
-# ---------------------------------------------------------
-def get_visas(dfv, souscat):
-    dfv = clean_visa_df(dfv)
-    return sorted(dfv[dfv["Sous-categories"] == souscat]["Visa"].unique().tolist())
