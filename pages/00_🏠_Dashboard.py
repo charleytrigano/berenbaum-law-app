@@ -22,8 +22,8 @@ df = pd.DataFrame(clients)
 # ---------------------------------------------------------
 # NORMALISATION VISA TABLE
 # ---------------------------------------------------------
-def clean_visa_df(dfv):
-    dfv = dfv.copy()
+from utils.visa_filters import clean_visa_df
+
 
     # Normalisation des noms de colonnes
     rename_map = {}
