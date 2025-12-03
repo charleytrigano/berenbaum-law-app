@@ -1,75 +1,51 @@
 import pandas as pd
 
-# ---------------------------------------------------------
-# 🔧 Nettoyage du tableau VISA
-# ---------------------------------------------------------
 def clean_visa_df(dfv):
+    """
+    Nettoie le tableau VISA sans jamais écraser les colonnes existantes.
+    Garantie :
+    - Les colonnes 'Categories', 'Sous-categories', 'Visa' existent toujours.
+    - On supprime toutes les colonnes parasites ('Catégories', 'Sous-catégories', etc.)
+    """
 
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    dfv = dfv.copy()
+    # 1️⃣ Normaliser les noms de colonnes existants
+    def normalize(col):
+        col = col.strip().lower()
+        col = col.replace("é", "e").replace("è", "e").replace("ê", "e")
+        col = col.replace("_", "-")
+        return col
 
-    # Normalisation des colonnes
-    rename_map = {}
-
+    rename = {}
     for col in dfv.columns:
-        c = col.lower().strip()
-        c = c.replace("é", "e").replace("è", "e").replace("ê", "e")
+        col_norm = normalize(col)
 
-        if "categorie" in c and "sous" not in c:
-            rename_map[col] = "Categories"
-        elif "sous" in c:
-            rename_map[col] = "Sous-categories"
-        elif "visa" in c:
-            rename_map[col] = "Visa"
+        if col_norm == "categories":
+            rename[col] = "Categories"
+        elif col_norm == "category":
+            rename[col] = "Categories"
+        elif col_norm in ["sous-categories", "sous-categorie"]:
+            rename[col] = "Sous-categories"
+        elif col_norm == "visa":
+            rename[col] = "Visa"
 
-    dfv = dfv.rename(columns=rename_map)
+    dfv = dfv.rename(columns=rename)
 
-    # Colonnes obligatoires
-    for col in ["Categories", "Sous-categories", "Visa"]:
-        if col not in dfv.columns:
-            dfv[col] = ""
+    # 2️⃣ Supprimer les colonnes parasites SI elles existent
+    for bad in ["Catégories", "Sous-catégories", "Categorie", "Sous-categorie"]:
+        if bad in dfv.columns:
+            dfv = dfv.drop(columns=[bad])
 
-    # Nettoyage des valeurs
+    # 3️⃣ Ajouter colonnes manquantes
+    for needed in ["Categories", "Sous-categories", "Visa"]:
+        if needed not in dfv.columns:
+            dfv[needed] = ""
+
+    # 4️⃣ Nettoyage valeurs
     dfv["Categories"] = dfv["Categories"].astype(str).str.strip()
     dfv["Sous-categories"] = dfv["Sous-categories"].astype(str).str.strip()
     dfv["Visa"] = dfv["Visa"].astype(str).str.strip()
 
-    # Suppression lignes vides
-    dfv = dfv[
-        (dfv["Categories"] != "") |
-        (dfv["Sous-categories"] != "") |
-        (dfv["Visa"] != "")
-    ]
-
     return dfv
-
-
-# ---------------------------------------------------------
-# 🔧 Générer listes simples
-# ---------------------------------------------------------
-def get_all_lists(dfv):
-    dfv = clean_visa_df(dfv)
-
-    cats = sorted(dfv["Categories"].unique())
-    sous = sorted(dfv["Sous-categories"].unique())
-    visas = sorted(dfv["Visa"].unique())
-
-    return cats, sous, visas
-
-
-# ---------------------------------------------------------
-# 🔧 Sous-catégories d'une catégorie
-# ---------------------------------------------------------
-def get_souscats(dfv, category):
-    dfv = clean_visa_df(dfv)
-    return sorted(dfv[dfv["Categories"] == category]["Sous-categories"].unique())
-
-
-# ---------------------------------------------------------
-# 🔧 Visas d'une sous-catégorie
-# ---------------------------------------------------------
-def get_visas(dfv, souscat):
-    dfv = clean_visa_df(dfv)
-    return sorted(dfv[dfv["Sous-categories"] == souscat]["Visa"].unique())
