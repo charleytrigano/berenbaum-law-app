@@ -6,10 +6,16 @@ from utils.visa_filters import clean_visa_df, get_souscats, get_visas, get_all_l
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Tableau de bord – Berenbaum Law App")
 
+
+
 # ---------------- LOAD DB ----------------
 db = load_database()
 df = pd.DataFrame(db.get("clients", []))
 visa_raw = pd.DataFrame(db.get("visa", []))
+st.error("DEBUG VISA RAW COLUMNS → " + str(list(visa_raw.columns)))
+st.dataframe(visa_raw.head(), use_container_width=True)
+st.stop()
+
 
 # Nettoyage Visa
 visa_table = clean_visa_df(visa_raw)
