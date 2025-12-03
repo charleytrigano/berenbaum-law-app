@@ -13,6 +13,11 @@ st.title("📊 Tableau de bord – Berenbaum Law App")
 db = load_database()
 clients = db.get("clients", [])
 visa_raw = pd.DataFrame(db.get("visa", []))
+st.write("===== DEBUG VISA RAW =====")
+st.write(visa_raw.columns.tolist())
+st.dataframe(visa_raw.head())
+
+
 
 # Nettoyage du tableau Visa
 visa_table = clean_visa_df(visa_raw)
