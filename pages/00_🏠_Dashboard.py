@@ -1,4 +1,3 @@
-visa_raw = pd.DataFrame(db.get("visa", []))
 
 visa_table = clean_visa_df(visa_raw)
 
