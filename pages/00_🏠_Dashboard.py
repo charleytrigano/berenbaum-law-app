@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from utils.visa_filters import clean_visa_df, get_souscats, get_visas, get_all_lists
+from utils.visa_filters import clean_visa_df
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
