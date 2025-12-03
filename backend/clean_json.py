@@ -1,45 +1,51 @@
 import pandas as pd
 
-COLUMN_RENAMES = {
-    "Cat\u00e9gories": "Catégories",
-    "Sous-cat\u00e9gories": "Sous-catégories",
-    "Categorie": "Catégories",
-    "Sous categorie": "Sous-catégories",
-    "Visa ": "Visa",
-    " visa": "Visa",
-}
+# ---------------------------------------------------------
+# Nettoyage léger et sécurisé du JSON
+# ---------------------------------------------------------
+def clean_database(db):
+    """
+    Nettoie en sécurité la base JSON sans jamais casser la structure.
+    Remplace NaN par "", force les types simples.
+    """
 
-def clean_record(rec: dict):
-    """Corrige les noms de colonnes mal encodés dans un dossier."""
-    new = {}
+    new_db = {}
 
-    for k, v in rec.items():
-        # Renommage intelligent
-        key = COLUMN_RENAMES.get(k, k)
+    for key, value in db.items():
 
-        # Remplacement NaN → ""
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            v = ""
+        # --- Si c’est une liste de dictionnaires ---
+        if isinstance(value, list):
 
-        new[key] = v
+            cleaned_list = []
 
-    # Colonnes obligatoires
-    for col in ["Catégories", "Sous-catégories", "Visa"]:
-        if col not in new:
-            new[col] = ""
+            for item in value:
+                if isinstance(item, dict):
+                    # Nettoyage léger des valeurs
+                    clean_item = {}
+                    for k, v in item.items():
 
-    return new
+                        # Dates
+                        if isinstance(v, pd.Timestamp):
+                            clean_item[k] = v.strftime("%Y-%m-%d")
 
+                        # NaN, None → ""
+                        elif v is None or (isinstance(v, float) and pd.isna(v)):
+                            clean_item[k] = ""
 
-def clean_database(db: dict):
-    """Applique la correction à toute la base JSON."""
-    for section in ["clients", "visa", "escrow", "compta"]:
-        if section in db:
-            db[section] = [clean_record(r) for r in db[section]]
-    return db
+                        # Nombre
+                        elif isinstance(v, (int, float)):
+                            clean_item[k] = v
 
-# Enlever anciennes colonnes avec accents
-for old in ["Catégories", "Sous-catégories"]:
-    if old in dfv.columns:
-        dfv = dfv.drop(columns=[old])
+                        # Texte
+                        else:
+                            clean_item[k] = str(v)
 
+                    cleaned_list.append(clean_item)
+
+            new_db[key] = cleaned_list
+
+        else:
+            # Tout autre format est simplement copié
+            new_db[key] = value
+
+    return new_db
