@@ -71,8 +71,8 @@ st.subheader("➕ Ajouter un Visa")
 
 col1, col2, col3 = st.columns(3)
 
-cat = col1.text_input("Catégorie")
-souscat = col2.text_input("Sous-catégorie")
+cat = col1.text_input("Categorie")
+souscat = col2.text_input("Sous-categorie")
 visa = col3.text_input("Visa")
 
 if st.button("Ajouter", type="primary"):
