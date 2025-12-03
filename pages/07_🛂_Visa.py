@@ -51,6 +51,47 @@ def clean_visa_df(df):
     return df
 
 df = clean_visa_df(df)
+import pandas as pd
+
+def clean_visa_df(dfv):
+
+    if dfv is None or dfv.empty:
+        return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
+
+    rename_map = {}
+
+    for col in dfv.columns:
+        col_clean = (
+            col.lower()
+               .replace("é", "e")
+               .replace("è", "e")
+               .replace("ê", "e")
+               .strip()
+        )
+
+        if "categorie" in col_clean and "sous" not in col_clean:
+            rename_map[col] = "Categories"
+
+        elif "sous" in col_clean:
+            rename_map[col] = "Sous-categories"
+
+        elif col_clean == "visa":
+            rename_map[col] = "Visa"
+
+    dfv = dfv.rename(columns=rename_map)
+
+    # Colonnes obligatoires
+    for col in ["Categories", "Sous-categories", "Visa"]:
+        if col not in dfv.columns:
+            dfv[col] = ""
+
+    # Supprimer anciennes colonnes non normalisées
+    for bad in ["Catégories", "Sous-catégories", "Sous-categorie"]:
+        if bad in dfv.columns:
+            dfv = dfv.drop(columns=[bad])
+
+    return dfv
+
 
 # ---------------------------------------------------------
 # Affichage
