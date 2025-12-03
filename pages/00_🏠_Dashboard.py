@@ -1,116 +1,125 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from utils.visa_filters import clean_visa_df, get_all_lists, get_souscats, get_visas
+from utils.visa_filters import clean_visa_df, get_souscats, get_visas
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
 
 # ---------------------------------------------------------
-# LOAD DATABASE
+# 🔹 Load DB
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
 visa_raw = pd.DataFrame(db.get("visa", []))
 
 if not clients:
-    st.error("Aucun dossier client trouvé dans Dropbox.")
+    st.warning("Aucun dossier trouvé dans la base Dropbox.")
     st.stop()
 
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# CLEAN VISA TABLE
+# 🔹 Nettoyage VISA
 # ---------------------------------------------------------
 visa_table = clean_visa_df(visa_raw)
 
-# Debug éventuel (à désactiver après tests)
-# st.warning(f"DEBUG VISA RAW COLUMNS → {list(visa_raw.columns)}")
-# st.dataframe(visa_table, use_container_width=True, height=200)
-
 # ---------------------------------------------------------
-# NORMALISATION CLIENTS
+# 🔹 Formatage du DataFrame client
 # ---------------------------------------------------------
 df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-df["Année"] = df["Date"].dt.year
 
-# Convertir montants
-for col in [
-    "Montant honoraires (US $)",
-    "Autres frais (US $)",
+num_cols = [
+    "Montant honoraires (US $)", "Autres frais (US $)",
     "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
-]:
-    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
+]
+
+for col in num_cols:
+    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
+df["Année"] = df["Date"].dt.year
 
 # ---------------------------------------------------------
-# KPI
+# 🎯 KPI (textee réduit + couleurs dark mode)
 # ---------------------------------------------------------
 st.subheader("📌 Indicateurs")
+
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
 k1.metric("Dossiers", len(df))
-k2.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}")
-k3.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.2f}")
-k4.metric("Facturé", f"${df['Total facturé'].sum():,.2f}")
-k5.metric("Encaissé", f"${df['Montant encaissé'].sum():,.2f}")
-k6.metric("Solde", f"${df['Solde'].sum():,.2f}")
+k2.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}")
+k3.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.0f}")
+k4.metric("Facturé", f"${df['Total facturé'].sum():,.0f}")
+k5.metric("Encaissé", f"${df['Montant encaissé'].sum():,.0f}")
+k6.metric("Solde", f"${df['Solde'].sum():,.0f}")
+
+# Réduit la taille des nombres des KPI
+st.markdown("""
+<style>
+[data-testid="stMetricValue"] {
+    font-size: 18px !important;
+    color: #4FC3F7;           /* Bleu clair pour dark mode */
+}
+[data-testid="stMetricLabel"] {
+    font-size: 11px !important;
+    color: #BBBBBB;
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# FILTRES
+# 🎛️ FILTRES SUR UNE SEULE LIGNE
 # ---------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
-colA, colB, colC, colD, colE = st.columns(5)
+colA, colB, colC, colD, colE, colF = st.columns(6)
 
-# ---- Catégories disponibles ----
-cat_list, souscat_list_total, visa_list_total = get_all_lists(visa_table)
-cat = colA.selectbox("Catégorie", ["Toutes"] + cat_list)
+# --- Catégories ---
+cat_list = ["Toutes"] + sorted(visa_table["Categories"].dropna().unique().tolist())
+cat = colA.selectbox("Catégorie", cat_list)
 
-# ---- Sous-catégories dépendantes ----
+# --- Sous-catégories ---
 if cat != "Toutes":
     souscat_list = ["Toutes"] + get_souscats(visa_table, cat)
 else:
-    souscat_list = ["Toutes"] + souscat_list_total
+    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].dropna().unique().tolist())
 
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
-# ---- Visa dépendant ----
+# --- Visa ---
 if souscat != "Toutes":
     visa_list = ["Tous"] + get_visas(visa_table, souscat)
 elif cat != "Toutes":
     visa_list = ["Tous"] + sorted(visa_table[visa_table["Categories"] == cat]["Visa"].dropna().unique())
 else:
-    visa_list = ["Tous"] + visa_list_total
+    visa_list = ["Tous"] + sorted(visa_table["Visa"].dropna().unique())
 
 visa_choice = colC.selectbox("Visa", visa_list)
 
-# ---- Année ----
-annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
-annee = colD.selectbox("Année", annees)
+# --- Année ---
+annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
+annee = colD.selectbox("Année", annee_list)
 
-# ---- Dates ----
-date_debut = colE.date_input("Date début")
-date_fin = colE.date_input("Date fin")
+# --- Dates (sur une seule ligne) ---
+date_debut = colE.date_input("Date début", value=df["Date"].min())
+date_fin   = colF.date_input("Date fin", value=df["Date"].max())
 
 # ---------------------------------------------------------
-# APPLY FILTERS
+# 🔎 Application des filtres
 # ---------------------------------------------------------
-st.write("DATAFRAME AVANT FILTRES :", df.head(50))
-
 filtered = df.copy()
 
 if cat != "Toutes":
-    filtered = filtered[filtered["Catégories"] == cat]
+    filtered = filtered[filtered["Categories"] == cat]
 
 if souscat != "Toutes":
-    filtered = filtered[filtered["Sous-catégories"] == souscat]
+    filtered = filtered[filtered["Sous-categories"] == souscat]
 
 if visa_choice != "Tous":
     filtered = filtered[filtered["Visa"] == visa_choice]
@@ -118,19 +127,22 @@ if visa_choice != "Tous":
 if annee != "Toutes":
     filtered = filtered[filtered["Année"] == annee]
 
-date_debut = colE.date_input(
-    "Date début",
-    value=df["Date"].min(),  # date la plus ancienne
-)
-
-date_fin = colE.date_input(
-    "Date fin",
-    value=df["Date"].max(),  # date la plus récente
-)
-
+filtered = filtered[
+    (filtered["Date"] >= pd.to_datetime(date_debut)) &
+    (filtered["Date"] <= pd.to_datetime(date_fin))
+]
 
 # ---------------------------------------------------------
-# TABLEAU FINAL
+# 📋 TABLEAU FINAL
 # ---------------------------------------------------------
 st.subheader("📋 Dossiers filtrés")
-st.dataframe(filtered, use_container_width=True, height=600)
+
+colonnes = [
+    "Dossier N", "Nom", "Date", "Categories", "Sous-categories", "Visa",
+    "Montant honoraires (US $)", "Autres frais (US $)",
+    "Total facturé", "Montant encaissé", "Solde"
+]
+
+colonnes = [c for c in colonnes if c in filtered.columns]
+
+st.dataframe(filtered[colonnes], use_container_width=True, height=600)
