@@ -23,6 +23,8 @@ df = pd.DataFrame(clients)
 # NORMALISATION VISA TABLE
 # ---------------------------------------------------------
 from utils.visa_filters import clean_visa_df
+visa_table = clean_visa_df(visa_raw)
+
 
 
     # Normalisation des noms de colonnes
