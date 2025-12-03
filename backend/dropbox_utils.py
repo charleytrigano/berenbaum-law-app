@@ -3,6 +3,10 @@ import dropbox
 import streamlit as st
 from backend.clean_json import clean_database
 
+data = clean_database(data)
+
+from backend.clean_json import clean_database
+
 # ----------------------------------------------------
 # 🔐 Chargement des secrets
 # ----------------------------------------------------
