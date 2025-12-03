@@ -1,9 +1,4 @@
 
-visa_table = clean_visa_df(visa_raw)
-
-# debug facultatif
-st.write("Colonnes VISA :", visa_table.columns.tolist())
-
 
 import streamlit as st
 import pandas as pd
