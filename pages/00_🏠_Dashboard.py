@@ -102,6 +102,8 @@ date_fin = colE.date_input("Date fin")
 # ---------------------------------------------------------
 # APPLY FILTERS
 # ---------------------------------------------------------
+st.write("DATAFRAME AVANT FILTRES :", df.head(50))
+
 filtered = df.copy()
 
 if cat != "Toutes":
