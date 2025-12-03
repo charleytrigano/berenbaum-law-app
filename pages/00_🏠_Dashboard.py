@@ -12,6 +12,10 @@ db = load_database()
 clients = db.get("clients", [])
 visa_raw = pd.DataFrame(db.get("visa", []))
 
+st.write("VISA RAW COLUMNS =", visa_raw.columns.tolist())
+st.dataframe(visa_raw.head())
+
+
 # ---- DEBUG ----
 st.write("===== DEBUG VISA RAW COLS =====", visa_raw.columns.tolist())
 st.dataframe(visa_raw.head())
