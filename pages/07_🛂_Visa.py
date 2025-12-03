@@ -3,7 +3,7 @@ import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
 st.set_page_config(page_title="Visa – Paramétrage", page_icon="🛂", layout="wide")
-st.title("🛂 Paramétrage des catégories, sous-catégories et visas")
+st.title("🛂 Paramétrage des categories, sous-categories et visas")
 
 # ---------------------------------------------------------
 # Charger base Dropbox
