@@ -20,9 +20,7 @@ def clean_visa_df(df):
     if df is None or df.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    st.write("VISA COLUMNS :", visa_table.columns.tolist())
-st.write(visa_table.head())
-
+   
 
     # 1️⃣ Renommage intelligent
     rename_map = {}
