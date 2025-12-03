@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
+from utils.visa_filters import clean_visa_df
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
-
 st.title("📊 Tableau de bord – Berenbaum Law App")
 
 # ---------------------------------------------------------
@@ -22,38 +22,6 @@ df = pd.DataFrame(clients)
 # ---------------------------------------------------------
 # NORMALISATION VISA TABLE
 # ---------------------------------------------------------
-from utils.visa_filters import clean_visa_df
-visa_table = clean_visa_df(visa_raw)
-
-
-
-    # Normalisation des noms de colonnes
-    rename_map = {}
-    for col in dfv.columns:
-        col_clean = col.lower().replace("é", "e").replace("è", "e").replace("ê", "e")
-
-        if "categorie" in col_clean:
-            rename_map[col] = "Categories"
-        elif "sous" in col_clean:
-            rename_map[col] = "Sous-categories"
-        elif "visa" in col_clean:
-            rename_map[col] = "Visa"
-
-    dfv = dfv.rename(columns=rename_map)
-
-    # Colonnes obligatoires
-    for col in ["Categories", "Sous-categories", "Visa"]:
-        if col not in dfv.columns:
-            dfv[col] = ""
-
-    # Nettoyage valeurs
-    dfv["Categories"] = dfv["Categories"].astype(str).str.strip()
-    dfv["Sous-categories"] = dfv["Sous-categories"].astype(str).str.strip()
-    dfv["Visa"] = dfv["Visa"].astype(str).str.strip()
-
-    return dfv
-
-
 visa_table = clean_visa_df(visa_raw)
 
 # ---------------------------------------------------------
@@ -75,11 +43,11 @@ df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 df["Année"] = df["Date"].dt.year
 
 # ---------------------------------------------------------
-# KPI (COULEUR + TEXTE PETIT)
+# KPI (COULEURS + TEXTE RÉDUIT)
 # ---------------------------------------------------------
 st.markdown("""
 <style>
-.big-metric div[data-testid="stMetricValue"] {
+div[data-testid="stMetricValue"] {
     font-size: 18px !important;
 }
 </style>
@@ -88,44 +56,31 @@ st.markdown("""
 st.subheader("📌 Indicateurs")
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
-
-with k1:
-    st.metric("Dossiers", len(df))
-
-with k2:
-    st.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}")
-
-with k3:
-    st.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.0f}")
-
-with k4:
-    st.metric("Facturé", f"${df['Total facturé'].sum():,.0f}")
-
-with k5:
-    st.metric("Encaissé", f"${df['Montant encaissé'].sum():,.0f}")
-
-with k6:
-    st.metric("Solde", f"${df['Solde'].sum():,.0f}")
+k1.metric("Dossiers", len(df))
+k2.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}")
+k3.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.0f}")
+k4.metric("Facturé", f"${df['Total facturé'].sum():,.0f}")
+k5.metric("Encaissé", f"${df['Montant encaissé'].sum():,.0f}")
+k6.metric("Solde", f"${df['Solde'].sum():,.0f}")
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# FILTRES INTELLIGENTS
+# FILTRES
 # ---------------------------------------------------------
 st.subheader("🧩 Filtres")
 
 colA, colB, colC, colD, colE, colF = st.columns([1,1,1,1,1,1])
 
-# ---------------- CATÉGORIES réelles --------------------
+# Catégories (uniquement vraies catégories)
 real_categories = sorted(
     set(visa_table["Categories"].dropna().astype(str))
     - set(visa_table["Sous-categories"].dropna().astype(str))
 )
-
 cat_list = ["Toutes"] + real_categories
 cat = colA.selectbox("Catégorie", cat_list)
 
-# ---------------- SOUS-CATÉGORIES dépendantes ----------
+# Sous-catégories
 if cat != "Toutes":
     souscat_list = ["Toutes"] + sorted(
         visa_table.loc[visa_table["Categories"] == cat, "Sous-categories"]
@@ -135,10 +90,9 @@ else:
     souscat_list = ["Toutes"] + sorted(
         visa_table["Sous-categories"].dropna().unique().tolist()
     )
-
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
-# ---------------- VISA dépendant ------------------------
+# Visa dépendant
 if souscat != "Toutes":
     visa_list = ["Tous"] + sorted(
         visa_table.loc[visa_table["Sous-categories"] == souscat, "Visa"]
@@ -154,11 +108,11 @@ else:
 
 visa_choice = colC.selectbox("Visa", visa_list)
 
-# ---------------- ANNÉE ------------------------
-annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
-annee = colD.selectbox("Année", annees)
+# Année
+annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
+annee = colD.selectbox("Année", annee_list)
 
-# ---------------- DATES (alignées) ---------------
+# Date à date
 date_debut = colE.date_input("Date début")
 date_fin = colF.date_input("Date fin")
 
@@ -181,7 +135,6 @@ if annee != "Toutes":
 
 if date_debut:
     filtered = filtered[filtered["Date"] >= pd.to_datetime(date_debut)]
-
 if date_fin:
     filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
 
@@ -189,9 +142,4 @@ if date_fin:
 # TABLEAU FINAL
 # ---------------------------------------------------------
 st.subheader("📋 Dossiers filtrés")
-
-st.dataframe(
-    filtered,
-    use_container_width=True,
-    height=600
-)
+st.dataframe(filtered, use_container_width=True, height=600)
