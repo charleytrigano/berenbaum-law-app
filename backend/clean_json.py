@@ -37,3 +37,9 @@ def clean_database(db: dict):
         if section in db:
             db[section] = [clean_record(r) for r in db[section]]
     return db
+
+# Enlever anciennes colonnes avec accents
+for old in ["Catégories", "Sous-catégories"]:
+    if old in dfv.columns:
+        dfv = dfv.drop(columns=[old])
+
