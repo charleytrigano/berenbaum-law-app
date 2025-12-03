@@ -94,6 +94,9 @@ def clean_visa_df(dfv):
 
     return dfv
 
+st.write("Colonnes Visa détectées :", df.columns.tolist())
+
+
 
 # ---------------------------------------------------------
 # Affichage
