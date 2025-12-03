@@ -1,57 +1,31 @@
-import pandas as pd
-
-# ---------------------------------------------------------
-# Nettoyage BASIC du tableau VISA
-# ---------------------------------------------------------
 def clean_visa_df(dfv):
+    dfv = dfv.copy()
 
-    if dfv is None or dfv.empty:
-        return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
+    # Normaliser noms de colonnes
+    new_cols = []
+    for col in dfv.columns:
+        c = col.lower()
+        c = c.replace("é","e").replace("è","e").replace("ê","e")
+        c = c.replace("categorie","categories")
+        c = c.replace("sous-categorie","sous-categories")
+        c = c.replace("visa","visa")
+        new_cols.append(c)
 
-    # On force seulement l’existence et l’ordre des colonnes
-    cols = ["Categories", "Sous-categories", "Visa"]
-    df = dfv.copy()
+    dfv.columns = new_cols
 
-    # Ajoute une colonne manquante si nécessaire
-    for c in cols:
-        if c not in df.columns:
-            df[c] = ""
+    # Colonnes obligatoires
+    for col in ["categories", "sous-categories", "visa"]:
+        if col not in dfv.columns:
+            dfv[col] = ""
 
-    # Réduit le tableau aux colonnes correctes
-    df = df[cols]
+    # Nettoyage valeurs
+    dfv["categories"] = dfv["categories"].astype(str).str.strip()
+    dfv["sous-categories"] = dfv["sous-categories"].astype(str).str.strip()
+    dfv["visa"] = dfv["visa"].astype(str).str.strip()
 
-    # Nettoyage simple des espaces
-    df["Categories"] = df["Categories"].astype(str).str.strip()
-    df["Sous-categories"] = df["Sous-categories"].astype(str).str.strip()
-    df["Visa"] = df["Visa"].astype(str).str.strip()
-
-    return df
-
-
-# ---------------------------------------------------------
-# Listes CAT / SOUS-CAT / VISA
-# ---------------------------------------------------------
-def get_all_lists(dfv):
-    df = clean_visa_df(dfv)
-
-    cat_list = sorted(df["Categories"].dropna().unique().tolist())
-    souscat_list = sorted(df["Sous-categories"].dropna().unique().tolist())
-    visa_list = sorted(df["Visa"].dropna().unique().tolist())
-
-    return cat_list, souscat_list, visa_list
-
-
-# ---------------------------------------------------------
-# Récupérer sous-catégories selon une catégorie
-# ---------------------------------------------------------
-def get_souscats(dfv, cat):
-    df = clean_visa_df(dfv)
-    return sorted(df[df["Categories"] == cat]["Sous-categories"].dropna().unique().tolist())
-
-
-# ---------------------------------------------------------
-# Récupérer visas selon une sous-catégorie
-# ---------------------------------------------------------
-def get_visas(dfv, souscat):
-    df = clean_visa_df(dfv)
-    return sorted(df[df["Sous-categories"] == souscat]["Visa"].dropna().unique().tolist())
+    # On renvoie les colonnes standardisées
+    return dfv.rename(columns={
+        "categories": "Categories",
+        "sous-categories": "Sous-categories",
+        "visa": "Visa"
+    })
