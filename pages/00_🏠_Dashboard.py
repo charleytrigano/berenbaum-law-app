@@ -106,7 +106,10 @@ st.subheader("🎛️ Filtres")
 colA, colB, colC, colD, colE = st.columns(5)
 
 # ---- CATEGORIE ----
-cat_list = ["Toutes"] + sorted(visa_table["Categories"].dropna().astype(str).unique().tolist())
+cat_list = ["Toutes"] + sorted(
+    visa_table["Categories"].fillna("").astype(str).unique().tolist()
+)
+
 cat = colA.selectbox("Categorie", cat_list)
 
 # ---- SOUS-CATEGORIE ----
