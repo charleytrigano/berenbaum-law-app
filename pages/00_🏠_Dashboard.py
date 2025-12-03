@@ -56,7 +56,6 @@ from backend.dropbox_utils import load_database
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
-st.title("📊 Tableau de bord – Berenbaum Law App")
 
 # ---- LOAD DB ----
 db = load_database()
