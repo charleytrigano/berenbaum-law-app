@@ -118,11 +118,16 @@ if visa_choice != "Tous":
 if annee != "Toutes":
     filtered = filtered[filtered["Année"] == annee]
 
-if date_debut:
-    filtered = filtered[filtered["Date"] >= pd.to_datetime(date_debut)]
+date_debut = colE.date_input(
+    "Date début",
+    value=df["Date"].min(),  # date la plus ancienne
+)
 
-if date_fin:
-    filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
+date_fin = colE.date_input(
+    "Date fin",
+    value=df["Date"].max(),  # date la plus récente
+)
+
 
 # ---------------------------------------------------------
 # TABLEAU FINAL
