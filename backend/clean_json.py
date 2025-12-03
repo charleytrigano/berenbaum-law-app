@@ -2,27 +2,28 @@
 import pandas as pd
 
 def clean_database(db):
+    """ Nettoie complètement la base JSON pour assurer cohérence totale """
 
-    # Nettoyage des dossiers clients
+    # ------------ CLEAN CLIENTS ------------
     cleaned_clients = []
     for c in db.get("clients", []):
         c = c.copy()
 
-        # Renommage automatique
+        # Renommage des anciennes colonnes françaises
         if "Catégories" in c:
             c["Categories"] = c.pop("Catégories")
 
         if "Sous-catégories" in c:
             c["Sous-categories"] = c.pop("Sous-catégories")
 
-        # Valeurs vides → ""
-        for k, v in c.items():
-            if pd.isna(v):
+        # Remplacer NaN / None par ""
+        for k, v in list(c.items()):
+            if pd.isna(v) or v is None:
                 c[k] = ""
 
         cleaned_clients.append(c)
 
-    # Nettoyage de la table VISA
+    # ------------ CLEAN VISA ------------
     cleaned_visa = []
     for v in db.get("visa", []):
         v = v.copy()
