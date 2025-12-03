@@ -1,51 +1,43 @@
+# backend/clean_json.py
 import pandas as pd
 
-# ---------------------------------------------------------
-# Nettoyage léger et sécurisé du JSON
-# ---------------------------------------------------------
 def clean_database(db):
-    """
-    Nettoie en sécurité la base JSON sans jamais casser la structure.
-    Remplace NaN par "", force les types simples.
-    """
 
-    new_db = {}
+    # Nettoyage des dossiers clients
+    cleaned_clients = []
+    for c in db.get("clients", []):
+        c = c.copy()
 
-    for key, value in db.items():
+        # Renommage automatique
+        if "Catégories" in c:
+            c["Categories"] = c.pop("Catégories")
 
-        # --- Si c’est une liste de dictionnaires ---
-        if isinstance(value, list):
+        if "Sous-catégories" in c:
+            c["Sous-categories"] = c.pop("Sous-catégories")
 
-            cleaned_list = []
+        # Valeurs vides → ""
+        for k, v in c.items():
+            if pd.isna(v):
+                c[k] = ""
 
-            for item in value:
-                if isinstance(item, dict):
-                    # Nettoyage léger des valeurs
-                    clean_item = {}
-                    for k, v in item.items():
+        cleaned_clients.append(c)
 
-                        # Dates
-                        if isinstance(v, pd.Timestamp):
-                            clean_item[k] = v.strftime("%Y-%m-%d")
+    # Nettoyage de la table VISA
+    cleaned_visa = []
+    for v in db.get("visa", []):
+        v = v.copy()
 
-                        # NaN, None → ""
-                        elif v is None or (isinstance(v, float) and pd.isna(v)):
-                            clean_item[k] = ""
+        if "Catégories" in v:
+            v["Categories"] = v.pop("Catégories")
 
-                        # Nombre
-                        elif isinstance(v, (int, float)):
-                            clean_item[k] = v
+        if "Sous-catégories" in v:
+            v["Sous-categories"] = v.pop("Sous-catégories")
 
-                        # Texte
-                        else:
-                            clean_item[k] = str(v)
+        cleaned_visa.append(v)
 
-                    cleaned_list.append(clean_item)
-
-            new_db[key] = cleaned_list
-
-        else:
-            # Tout autre format est simplement copié
-            new_db[key] = value
-
-    return new_db
+    return {
+        "clients": cleaned_clients,
+        "visa": cleaned_visa,
+        "escrow": db.get("escrow", []),
+        "compta": db.get("compta", [])
+    }
