@@ -84,7 +84,7 @@ st.subheader("🎛️ Filtres")
 colA, colB, colC, colD, colE = st.columns(5)
 
 # --- Catégories ---
-cat_list, souscat_all, visa_all = get_all_lists(visa_table)
+
 cat = colA.selectbox("Catégorie", ["Toutes"] + cat_list)
 
 # --- Sous-catégories ---
