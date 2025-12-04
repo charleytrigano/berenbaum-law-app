@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from utils.visa_filters import clean_visa_df, get_all_lists
+from utils.visa_filters import clean_visa_df
 
 # ---------------------------------------------------------
-# CONFIG
+# PAGE CONFIG
 # ---------------------------------------------------------
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Tableau de bord – Berenbaum Law App")
@@ -23,7 +23,7 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# CLEAN VISA TABLE
+# NORMALISATION VISA
 # ---------------------------------------------------------
 visa_table = clean_visa_df(visa_raw)
 
@@ -32,12 +32,14 @@ visa_table = clean_visa_df(visa_raw)
 # ---------------------------------------------------------
 df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
 
-num_cols = [
-    "Montant honoraires (US $)", "Autres frais (US $)",
+numeric_cols = [
+    "Montant honoraires (US $)",
+    "Autres frais (US $)",
     "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
 ]
-for c in num_cols:
-    df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
+
+for col in numeric_cols:
+    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
 
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
@@ -45,73 +47,70 @@ df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 df["Année"] = df["Date"].dt.year
 
 # ---------------------------------------------------------
-# STYLE KPI
+# KPI (valeurs filtrées)
 # ---------------------------------------------------------
-st.markdown("""
-<style>
-div[data-testid="stMetricValue"] {
-    font-size: 18px !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# KPI ZONE
-# ---------------------------------------------------------
+def display_kpis(data):
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    k1.metric("Dossiers", len(data))
+    k2.metric("Honoraires", f"${data['Montant honoraires (US $)'].sum():,.0f}")
+    k3.metric("Autres frais", f"${data['Autres frais (US $)'].sum():,.0f}")
+    k4.metric("Facturé", f"${data['Total facturé'].sum():,.0f}")
+    k5.metric("Encaissé", f"${data['Montant encaissé'].sum():,.0f}")
+    k6.metric("Solde", f"${data['Solde'].sum():,.0f}")
+
 st.subheader("📌 Indicateurs")
-
-k1, k2, k3, k4, k5, k6 = st.columns(6)
-k1.metric("Dossiers", len(df))
-k2.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}")
-k3.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.0f}")
-k4.metric("Facturé", f"${df['Total facturé'].sum():,.0f}")
-k5.metric("Encaissé", f"${df['Montant encaissé'].sum():,.0f}")
-k6.metric("Solde", f"${df['Solde'].sum():,.0f}")
+display_kpis(df)
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# FILTRES INTELLIGENTS CATEGORIE → SOUS-CATEGORIE → VISA
+# FILTRES
 # ---------------------------------------------------------
-st.subheader("🧩 Filtres")
+st.subheader("🎛️ Filtres")
 
 colA, colB, colC, colD, colE, colF = st.columns(6)
 
-# --- 1️⃣ CATEGORIES ---
-cat_list, souscat_all, visa_all = get_all_lists(visa_table)
-cat = colA.selectbox("Catégorie", ["Toutes"] + cat_list)
+# Catégories réelles (pas les sous-catégories)
+real_categories = sorted(
+    set(visa_table["Categories"]) -
+    set(visa_table["Sous-categories"])
+)
 
-# --- 2️⃣ SOUS-CATEGORIES dépendantes ---
+cat_list = ["Toutes"] + real_categories
+cat = colA.selectbox("Catégorie", cat_list)
+
+# Sous-catégories
 if cat != "Toutes":
     souscat_list = ["Toutes"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat, "Sous-categories"].dropna().unique()
+        visa_table.loc[visa_table["Categories"] == cat, "Sous-categories"].unique()
     )
 else:
-    souscat_list = ["Toutes"] + souscat_all
+    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique())
 
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
-# --- 3️⃣ VISA dépendant ---
+# Visa dépendant
 if souscat != "Toutes":
     visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Sous-categories"] == souscat, "Visa"].dropna().unique()
+        visa_table.loc[visa_table["Sous-categories"] == souscat, "Visa"].unique()
     )
 elif cat != "Toutes":
     visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat, "Visa"].dropna().unique()
+        visa_table.loc[visa_table["Categories"] == cat, "Visa"].unique()
     )
 else:
-    visa_list = ["Tous"] + visa_all
+    visa_list = ["Tous"] + sorted(visa_table["Visa"].unique())
 
 visa_choice = colC.selectbox("Visa", visa_list)
 
-# --- 4️⃣ ANNÉE ---
+# Année
 annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
 annee = colD.selectbox("Année", annees)
 
-# --- 5️⃣ DATE À DATE ---
-date_debut = colE.date_input("Date début")
-date_fin   = colF.date_input("Date fin")
+# Dates
+date_debut = colE.date_input("Date début", value=None)
+date_fin = colF.date_input("Date fin", value=None)
 
 # ---------------------------------------------------------
 # APPLY FILTERS
@@ -137,21 +136,15 @@ if date_fin:
     filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
 
 # ---------------------------------------------------------
-# KPI MIS À JOUR AVEC LES FILTRES
+# KPI après filtres
 # ---------------------------------------------------------
-st.subheader("📈 KPI après filtres")
-
-fk1, fk2, fk3, fk4, fk5, fk6 = st.columns(6)
-fk1.metric("Dossiers", len(filtered))
-fk2.metric("Honoraires", f"${filtered['Montant honoraires (US $)'].sum():,.0f}")
-fk3.metric("Autres frais", f"${filtered['Autres frais (US $)'].sum():,.0f}")
-fk4.metric("Facturé", f"${filtered['Total facturé'].sum():,.0f}")
-fk5.metric("Encaissé", f"${filtered['Montant encaissé'].sum():,.0f}")
-fk6.metric("Solde", f"${filtered['Solde'].sum():,.0f}")
+st.markdown("### 🔎 Indicateurs après filtres")
+display_kpis(filtered)
 
 # ---------------------------------------------------------
 # TABLEAU FINAL
 # ---------------------------------------------------------
+st.markdown("---")
 st.subheader("📋 Dossiers filtrés")
 
 st.dataframe(filtered, use_container_width=True, height=600)
