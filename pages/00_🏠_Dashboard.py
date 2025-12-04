@@ -1,169 +1,88 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import load_database
-from utils.visa_filters import clean_visa_df   # ✔️ seule version valide
+from backend.dropbox_utils import load_database, save_database
 
-# ---------------------------------------------------------
+
+# ---------------------------------------------------
 # PAGE CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
+# ---------------------------------------------------
+st.set_page_config(
+    page_title="Berenbaum Law App",
+    page_icon="📁",
+    layout="wide"
+)
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
+st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
-# ---------------------------------------------------------
-# LOAD DATABASE
-# ---------------------------------------------------------
-db = load_database()
+# ---------------------------------------------------
+# LOAD DATABASE (Dropbox)
+# ---------------------------------------------------
+try:
+    db = load_database()
+    st.success("Base de données chargée depuis Dropbox ✔")
+except Exception as e:
+    st.error(f"Erreur lors du chargement de Dropbox : {e}")
+    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+
+# ---------------------------------------------------
+# KPI FUNCTIONS
+# ---------------------------------------------------
+def kpi_card(title, value, color):
+    st.markdown(f"""
+        <div style="
+            background:{color};
+            padding:20px;
+            border-radius:10px;
+            text-align:center;
+            color:white;
+            font-size:22px;
+            font-weight:700;">
+            {value}<br>
+            <span style="font-size:15px; font-weight:400;">{title}</span>
+        </div>
+    """, unsafe_allow_html=True)
+
+# ---------------------------------------------------
+# KPI CALCULATIONS
+# ---------------------------------------------------
 clients = db.get("clients", [])
-visa_raw = pd.DataFrame(db.get("visa", []))
+visa = db.get("visa", [])
+escrow = db.get("escrow", [])
+compta = db.get("compta", [])
 
-if not clients:
-    st.warning("Aucun dossier trouvé dans Dropbox.")
-    st.stop()
+nb_clients = len(clients)
+nb_visa = len(visa)
+nb_escrow = len(escrow)
 
-df = pd.DataFrame(clients)
+escrow_total = sum(float(x.get("Montant", 0)) for x in escrow)
 
-# ---------------------------------------------------------
-# NORMALISATION VISA (corrigée)
-# ---------------------------------------------------------
-visa_table = clean_visa_df(visa_raw)  # ✔️ version stable depuis utils/visa_filters.py
-
-# ---------------------------------------------------------
-# NORMALISATION CLIENTS
-# ---------------------------------------------------------
-df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
-
-num_cols = [
-    "Montant honoraires (US $)", "Autres frais (US $)",
-    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
-]
-
-for c in num_cols:
-    df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
-
-df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
-df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
-df["Année"] = df["Date"].dt.year
-
-# ---------------------------------------------------------
-# KPI (avec taille de texte réduite)
-# ---------------------------------------------------------
-st.markdown("""
-<style>
-div[data-testid="stMetricValue"] {
-    font-size: 18px !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.subheader("📌 Indicateurs")
-
-k1, k2, k3, k4, k5, k6 = st.columns(6)
-
-with k1:
-    st.metric("Dossiers", len(df))
-
-with k2:
-    st.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}")
-
-with k3:
-    st.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.0f}")
-
-with k4:
-    st.metric("Facturé", f"${df['Total facturé'].sum():,.0f}")
-
-with k5:
-    st.metric("Encaissé", f"${df['Montant encaissé'].sum():,.0f}")
-
-with k6:
-    st.metric("Solde", f"${df['Solde'].sum():,.0f}")
+# ---------------------------------------------------
+# KPI DISPLAY
+# ---------------------------------------------------
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    kpi_card("Clients actifs", nb_clients, "#1E88E5")
+with col2:
+    kpi_card("Dossiers Visa", nb_visa, "#6A1B9A")
+with col3:
+    kpi_card("Mouvements Escrow", nb_escrow, "#00897B")
+with col4:
+    kpi_card("Total Escrow ($)", f"${escrow_total:,.2f}", "#E65100")
 
 st.markdown("---")
 
-# ---------------------------------------------------------
-# FILTRES
-# ---------------------------------------------------------
-st.subheader("🧩 Filtres")
+# ---------------------------------------------------
+# APERÇU DES CLIENTS
+# ---------------------------------------------------
+st.subheader("🗂️ Aperçu des dossiers")
 
-colA, colB, colC, colD, colE, colF = st.columns([1,1,1,1,1,1])
+if len(clients) > 0:
+    df_clients = pd.DataFrame(clients)
 
-# ---------------- CATÉGORIES réelles (plus de mélange avec Sous-cat)
-real_categories = sorted(
-    set(visa_table["Categories"].dropna())
-)
+    # colonnes utiles si présentes
+    cols = [c for c in ["Dossier N", "Nom", "Catégories", "Visa", "Date envoi"] if c in df_clients.columns]
 
-cat_list = ["Toutes"] + real_categories
-cat = colA.selectbox("Catégorie", cat_list)
-
-# ---------------- SOUS-CATÉGORIES dépendantes ----------
-if cat != "Toutes":
-    souscat_list = (
-        ["Toutes"] +
-        sorted(
-            visa_table.loc[
-                visa_table["Categories"] == cat, "Sous-categories"
-            ].dropna().unique().tolist()
-        )
-    )
+    st.dataframe(df_clients[cols], use_container_width=True, height=350)
 else:
-    souscat_list = ["Toutes"] + sorted(
-        visa_table["Sous-categories"].dropna().unique().tolist()
-    )
-
-souscat = colB.selectbox("Sous-catégorie", souscat_list)
-
-# ---------------- VISA dépendant ------------------------
-if souscat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table.loc[
-            visa_table["Sous-categories"] == souscat, "Visa"
-        ].dropna().unique().tolist()
-    )
-elif cat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table.loc[
-            visa_table["Categories"] == cat, "Visa"
-        ].dropna().unique().tolist()
-    )
-else:
-    visa_list = ["Tous"] + sorted(visa_table["Visa"].dropna().unique().tolist())
-
-visa_choice = colC.selectbox("Visa", visa_list)
-
-# ---------------- ANNÉE ------------------------
-annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
-annee = colD.selectbox("Année", annees)
-
-# ---------------- DATES ------------------------
-date_debut = colE.date_input("Date début")
-date_fin   = colF.date_input("Date fin")
-
-# ---------------------------------------------------------
-# APPLY FILTERS
-# ---------------------------------------------------------
-filtered = df.copy()
-
-if cat != "Toutes":
-    filtered = filtered[filtered["Categories"] == cat]
-
-if souscat != "Toutes":
-    filtered = filtered[filtered["Sous-categories"] == souscat]
-
-if visa_choice != "Tous":
-    filtered = filtered[filtered["Visa"] == visa_choice]
-
-if annee != "Toutes":
-    filtered = filtered[filtered["Année"] == annee]
-
-if date_debut:
-    filtered = filtered[filtered["Date"] >= pd.to_datetime(date_debut)]
-
-if date_fin:
-    filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
-
-# ---------------------------------------------------------
-# TABLEAU FINAL
-# ---------------------------------------------------------
-st.subheader("📋 Dossiers filtrés")
-st.dataframe(filtered, use_container_width=True, height=600)
+    st.info("Aucun dossier client enregistré.")
