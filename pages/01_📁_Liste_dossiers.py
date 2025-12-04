@@ -163,11 +163,16 @@ st.subheader("📤 Export & Actions")
 
 colX, colY = st.columns(2)
 
+from io import BytesIO
+
 # ---- EXPORT EXCEL ----
-excel_data = filtered.to_excel(index=False, engine="openpyxl")
+excel_buffer = BytesIO()
+filtered.to_excel(excel_buffer, index=False, engine="openpyxl")
+excel_buffer.seek(0)
+
 colX.download_button(
     label="📥 Export Excel",
-    data=excel_data,
+    data=excel_buffer,
     file_name="Liste_dossiers.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
