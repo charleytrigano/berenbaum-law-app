@@ -48,16 +48,17 @@ colH1, colH2, colH3 = st.columns(3)
 
 honoraires = colH1.number_input(
     "Montant honoraires (US $)",
-    value=float(dossier.get("Montant honoraires (US $)", 0))
+    value=float(dossier.get("Montant honoraires (US $)", 0) or 0)
 )
 
 autres_frais = colH2.number_input(
     "Autres frais (US $)",
-    value=float(dossier.get("Autres frais (US $)", 0))
+    value=float(dossier.get("Autres frais (US $)", 0) or 0)
 )
 
 facture = honoraires + autres_frais
 colH3.number_input("Total facturé (US $)", value=facture, disabled=True)
+
 
 # ---------------------------------------------------------
 # LIGNE 3 — Acomptes + Solde
