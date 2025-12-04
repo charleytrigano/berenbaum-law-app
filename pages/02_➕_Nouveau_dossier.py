@@ -1,121 +1,147 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
-from utils.visa_filters import clean_visa_df
+from utils.visa_filters import clean_visa_df, get_souscats, get_visas
 
 st.set_page_config(page_title="Nouveau dossier", page_icon="➕", layout="wide")
-
 st.title("➕ Nouveau dossier")
 
-# ---------------------------------------------------
-# Charger la base Dropbox
-# ---------------------------------------------------
+# ---------------------------------------------------------
+# LOAD DATABASE
+# ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-
 visa_raw = pd.DataFrame(db.get("visa", []))
 visa_table = clean_visa_df(visa_raw)
 
-# ---------------------------------------------------
-# Fonction pour générer un nouveau numéro
-# ---------------------------------------------------
-def nouveau_numero():
-    if not clients:
-        return 12001
-    nums = [c.get("Dossier N", 0) for c in clients if isinstance(c.get("Dossier N"), (int, float))]
-    return int(max(nums) + 1)
+df_clients = pd.DataFrame(clients)
 
-# ---------------------------------------------------
-# LIGNE 1 — Infos principales
-# ---------------------------------------------------
-st.subheader("Informations principales")
+# ---------------------------------------------------------
+# GENERATE NEXT DOSSIER NUMBER
+# ---------------------------------------------------------
+def nouveau_numero():
+    if df_clients.empty:
+        return 12000
+    nums = pd.to_numeric(df_clients["Dossier N"], errors="coerce")
+    nums = nums.dropna()
+    return int(nums.max()) + 1 if len(nums) else 12000
+
+dossier_num = nouveau_numero()
+
+# ---------------------------------------------------------
+# UI – LIGNE 1 : DOSSIER / NOM / DATE
+# ---------------------------------------------------------
+st.subheader("🧾 Informations générales")
 
 col1, col2, col3 = st.columns(3)
 
-dossier_num = col1.number_input("Dossier N", value=nouveau_numero(), step=1)
-nom = col2.text_input("Nom du client")
-date_dossier = col3.date_input("Date du dossier")
+with col1:
+    dossier = st.number_input("Dossier N", value=dossier_num, step=1)
 
-# ---------------------------------------------------
-# LIGNE 2 — Catégorie / Sous-catégorie / Visa
-# ---------------------------------------------------
-st.subheader("Type de dossier")
+with col2:
+    nom = st.text_input("Nom du client")
+
+with col3:
+    date_creation = st.date_input("Date de création")
+
+# ---------------------------------------------------------
+# UI – LIGNE 2 : CATEGORIE / SOUS-CATEGORIE / VISA
+# ---------------------------------------------------------
+st.subheader("🗂️ Classification")
+
+all_categories = sorted(visa_table["Categories"].dropna().unique().tolist())
+categorie = st.selectbox("Catégorie", [""] + all_categories)
+
+if categorie:
+    souscats = get_souscats(visa_table, categorie)
+else:
+    souscats = []
+
+souscategorie = st.selectbox("Sous-catégorie", [""] + souscats)
+
+if souscategorie:
+    visas = get_visas(visa_table, souscategorie)
+else:
+    visas = []
+
+visa = st.selectbox("Visa", [""] + visas)
+
+# ---------------------------------------------------------
+# UI – LIGNE 3 : FEES
+# ---------------------------------------------------------
+st.subheader("💵 Honoraires")
 
 colA, colB, colC = st.columns(3)
 
-# Catégories
-cat_list = sorted(visa_table["Categories"].dropna().unique().tolist())
-categorie = colA.selectbox("Catégorie", cat_list)
+with colA:
+    honoraires = st.number_input("Montant honoraires (US $)", min_value=0.0, step=100.0)
 
-# Sous-catégories filtrées
-souscat_list = sorted(
-    visa_table.loc[visa_table["Categories"] == categorie, "Sous-categories"]
-    .dropna().unique().tolist()
-)
-souscat = colB.selectbox("Sous-catégorie", souscat_list)
+with colB:
+    autres_frais = st.number_input("Autres frais (US $)", min_value=0.0, step=10.0)
 
-# Visa filtré
-visa_list = sorted(
-    visa_table.loc[visa_table["Sous-categories"] == souscat, "Visa"]
-    .dropna().unique().tolist()
-)
-visa_choice = colC.selectbox("Visa", visa_list)
+with colC:
+    total_facture = honoraires + autres_frais
+    st.number_input("Total facturé", value=total_facture, disabled=True)
 
-# ---------------------------------------------------
-# LIGNE 3 — Honoraires / Frais / Total
-# ---------------------------------------------------
-st.subheader("Montants")
+# ---------------------------------------------------------
+# UI – LIGNE 4 : ACOMPTE + PAYEMENT + ESCROW
+# ---------------------------------------------------------
+st.subheader("💳 Paiements")
 
-colH1, colH2, colH3 = st.columns(3)
+colX, colY, colZ = st.columns(3)
 
-honoraires = colH1.number_input("Montant honoraires (US $)", min_value=0.0, step=100.0)
-autres_frais = colH2.number_input("Autres frais (US $)", min_value=0.0, step=50.0)
+with colX:
+    acompte1 = st.number_input("Acompte 1", min_value=0.0, step=50.0)
 
-total_facture = honoraires + autres_frais
-colH3.number_input("Total facturé (US $)", value=total_facture, disabled=True)
+with colY:
+    mode_paiement = st.selectbox(
+        "Mode de paiement",
+        ["", "Chèque", "CB", "Virement", "Venmo"]
+    )
 
-# ---------------------------------------------------
-# LIGNE 4 — Paiement & Escrow
-# ---------------------------------------------------
-st.subheader("Paiement")
+with colZ:
+    escrow = st.checkbox("Escrow ?")
 
-colP1, colP2, colP3 = st.columns(3)
+# ---------------------------------------------------------
+# SAVE BUTTON
+# ---------------------------------------------------------
+if st.button("💾 Enregistrer le dossier", type="primary"):
 
-acompte1 = colP1.number_input("Acompte 1 (US $)", min_value=0.0, step=50.0)
-
-mode_reglement = colP2.selectbox(
-    "Mode de règlement",
-    ["Chèque", "CB", "Virement", "Venmo"]
-)
-
-escrow = colP3.checkbox("Escrow ?")
-
-# ---------------------------------------------------
-# VALIDATION
-# ---------------------------------------------------
-if st.button("💾 Ajouter le dossier", type="primary"):
-
-    new_entry = {
-        "Dossier N": dossier_num,
+    nouveau = {
+        "Dossier N": dossier,
         "Nom": nom,
-        "Date": str(date_dossier),
-
-        "Catégories": categorie,
-        "Sous-catégories": souscat,
-        "Visa": visa_choice,
-
+        "Date": str(date_creation),
+        "Categories": categorie,
+        "Sous-categories": souscategorie,
+        "Visa": visa,
         "Montant honoraires (US $)": honoraires,
         "Autres frais (US $)": autres_frais,
         "Total facturé": total_facture,
-
         "Acompte 1": acompte1,
-        "mode de paiement": mode_reglement,
+        "mode de paiement": mode_paiement,
         "Escrow": escrow,
+        "Acompte 2": 0,
+        "Acompte 3": 0,
+        "Acompte 4": 0,
+        "Commentaires": "",
+        "Dossier envoye": "",
+        "Dossier accepte": "",
+        "Dossier refuse": "",
+        "Dossier Annule": "",
+        "RFE": "",
+        "Date envoi": "",
+        "Date acceptation": "",
+        "Date refus": "",
+        "Date annulation": "",
+        "Date Acompte 1": "",
+        "Date Acompte 2": "",
+        "Date Acompte 3": "",
+        "Date Acompte 4": "",
     }
 
-    clients.append(new_entry)
+    clients.append(nouveau)
     db["clients"] = clients
     save_database(db)
 
-    st.success("✔ Nouveau dossier ajouté avec succès !")
+    st.success("🎉 Dossier enregistré avec succès !")
     st.balloons()
