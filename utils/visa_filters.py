@@ -1,32 +1,40 @@
-import pandas as pd
-
-# ---------------------------------------------------------
-# Nettoyage du tableau VISA
-# ---------------------------------------------------------
 def clean_visa_df(dfv):
+    import pandas as pd
+
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    rename_map = {}
-
-    for col in dfv.columns:
-        col_clean = (
-            col.lower()
-               .replace("é", "e")
-               .replace("è", "e")
-               .replace("ê", "e")
-               .strip()
+    # --- Normalisation brute des noms de colonnes ---
+    new_cols = []
+    for c in dfv.columns:
+        c_norm = (
+            c.lower()
+             .strip()
+             .replace("é", "e")
+             .replace("è", "e")
+             .replace("ê", "e")
+             .replace("à", "a")
+             .replace("â", "a")
+             .replace("ô", "o")
+             .replace("î", "i")
+             .replace("ï", "i")
+             .replace("_", "")
+             .replace("-", "")
+             .replace(" ", "")
         )
+        new_cols.append(c_norm)
 
-        # Détection des colonnes correctes
-        if "categorie" in col_clean and "sous" not in col_clean:
-            rename_map[col] = "Categories"
+    dfv.columns = new_cols
 
-        elif "sous" in col_clean:
-            rename_map[col] = "Sous-categories"
-
-        elif "visa" in col_clean:
-            rename_map[col] = "Visa"
+    # Mapping intelligent
+    rename_map = {}
+    for c in dfv.columns:
+        if "categorie" in c:
+            rename_map[c] = "Categories"
+        elif "sous" in c:
+            rename_map[c] = "Sous-categories"
+        elif "visa" in c:
+            rename_map[c] = "Visa"
 
     dfv = dfv.rename(columns=rename_map)
 
@@ -35,22 +43,9 @@ def clean_visa_df(dfv):
         if col not in dfv.columns:
             dfv[col] = ""
 
-    # Nettoyage valeurs
+    # Nettoyer valeurs
     dfv["Categories"] = dfv["Categories"].astype(str).str.strip()
     dfv["Sous-categories"] = dfv["Sous-categories"].astype(str).str.strip()
     dfv["Visa"] = dfv["Visa"].astype(str).str.strip()
 
     return dfv
-
-
-# ---------------------------------------------------------
-# Retourner listes simples
-# ---------------------------------------------------------
-def get_all_lists(dfv):
-    dfv = clean_visa_df(dfv)
-
-    cat = sorted(dfv["Categories"].unique().tolist())
-    sous = sorted(dfv["Sous-categories"].unique().tolist())
-    visa = sorted(dfv["Visa"].unique().tolist())
-
-    return cat, sous, visa
