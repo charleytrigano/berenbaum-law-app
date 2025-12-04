@@ -2,44 +2,37 @@ import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
 
-
-# =====================================================================
-# PAGE SETUP
-# =====================================================================
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Tableau de bord – Berenbaum Law App")
 
-
-# =====================================================================
-# LOAD DATABASE
-# =====================================================================
+# ======================================================
+# 🔹 LOAD DATABASE
+# ======================================================
 db = load_database()
 clients = db.get("clients", [])
 visa_raw = pd.DataFrame(db.get("visa", []))
 
 if not clients:
-    st.warning("Aucun dossier trouvé.")
+    st.warning("Aucun dossier trouvé dans Dropbox.")
     st.stop()
 
 df = pd.DataFrame(clients)
 
-
-# =====================================================================
-# NORMALISATION VISA (TRÈS IMPORTANT)
-# =====================================================================
+# ======================================================
+# 🔹 CLEAN VISA TABLE (robuste)
+# ======================================================
 def clean_visa_df(dfv):
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
     rename_map = {}
     for col in dfv.columns:
-        col_clean = col.lower().replace("é", "e").replace("è", "e").replace("ê", "e")
-
-        if "categorie" in col_clean:
+        c = col.lower().replace("é", "e").replace("è", "e").replace("ê", "e")
+        if "categorie" in c:
             rename_map[col] = "Categories"
-        elif "sous" in col_clean:
+        elif "sous" in c:
             rename_map[col] = "Sous-categories"
-        elif "visa" in col_clean:
+        elif "visa" in c:
             rename_map[col] = "Visa"
 
     dfv = dfv.rename(columns=rename_map)
@@ -54,21 +47,18 @@ def clean_visa_df(dfv):
 
     return dfv
 
-
 visa_table = clean_visa_df(visa_raw)
 
-
-# =====================================================================
-# NORMALISATION CLIENTS
-# =====================================================================
+# ======================================================
+# 🔹 CLEAN CLIENT TABLE
+# ======================================================
 df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
 
-num_cols = [
+money_cols = [
     "Montant honoraires (US $)", "Autres frais (US $)",
     "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
 ]
-
-for c in num_cols:
+for c in money_cols:
     df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
 
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
@@ -76,19 +66,33 @@ df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + 
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 df["Année"] = df["Date"].dt.year
 
+# Helper colonne "Statut"
+def compute_status(row):
+    if row.get("Dossier accepte"):
+        return "Accepté"
+    if row.get("Dossier refuse"):
+        return "Refusé"
+    if row.get("Dossier Annule"):
+        return "Annulé"
+    if row.get("RFE"):
+        return "RFE"
+    if row.get("Dossier envoye"):
+        return "Envoyé"
+    return "En cours"
 
-# =====================================================================
-# KPI DESIGN
-# =====================================================================
-st.markdown("""
+df["Statut"] = df.apply(compute_status, axis=1)
+
+# ======================================================
+# 🔹 KPI (style minimal + dynamique)
+# ======================================================
+kpi_style = """
 <style>
-.big-metric div[data-testid="stMetricValue"] {
-    font-size: 18px !important;
-}
+div[data-testid="stMetricValue"] { font-size:20px !important; }
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(kpi_style, unsafe_allow_html=True)
 
-st.subheader("📌 Indicateurs globaux")
+st.subheader("📌 Indicateurs")
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
@@ -101,93 +105,71 @@ k6.metric("Solde", f"${df['Solde'].sum():,.0f}")
 
 st.markdown("---")
 
-
-# =====================================================================
-# FILTRES
-# =====================================================================
-st.subheader("🎛️ Filtres")
+# ======================================================
+# 🔹 FILTERS
+# ======================================================
+st.subheader("🧩 Filtres")
 
 colA, colB, colC, colD, colE, colF, colG = st.columns([1,1,1,1,1,1,1])
 
-# -------------------- CATÉGORIES --------------------
-real_cats = sorted(
-    set(visa_table["Categories"]) - set(visa_table["Sous-categories"])
-)
-cat_list = ["Toutes"] + real_cats
+# Category
+cat_list = ["Toutes"] + sorted(visa_table["Categories"].unique().tolist())
 cat = colA.selectbox("Catégorie", cat_list)
 
-# -------------------- SOUS-CATÉGORIES --------------------
+# Sous-cat
 if cat != "Toutes":
     souscat_list = ["Toutes"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat]["Sous-categories"].unique()
+        visa_table[visa_table["Categories"] == cat]["Sous-categories"].unique().tolist()
     )
 else:
-    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique())
+    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique().tolist())
 
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
-# -------------------- VISA --------------------
+# Visa
 if souscat != "Toutes":
     visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Sous-categories"] == souscat]["Visa"].unique()
+        visa_table[visa_table["Sous-categories"] == souscat]["Visa"].unique().tolist()
     )
 elif cat != "Toutes":
     visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat]["Visa"].unique()
+        visa_table[visa_table["Categories"] == cat]["Visa"].unique().tolist()
     )
 else:
-    visa_list = ["Tous"] + sorted(visa_table["Visa"].unique())
+    visa_list = ["Tous"] + sorted(visa_table["Visa"].unique().tolist())
 
 visa_choice = colC.selectbox("Visa", visa_list)
 
-# -------------------- STATUT --------------------
+# Année
+annee = colD.selectbox("Année", ["Toutes"] + sorted(df["Année"].unique().tolist()))
+
+# Dates
+date_debut = colE.date_input("Date début")
+date_fin = colF.date_input("Date fin")
+
+# Statuts
 statuts = ["Tous", "En cours", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
-statut = colD.selectbox("Statut dossier", statuts)
+statut_choice = colG.selectbox("Statut", statuts)
 
-# -------------------- ANNÉE --------------------
-annee_list = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
-annee = colE.selectbox("Année", annee_list)
-
-# -------------------- DATES --------------------
-date_debut = colF.date_input("Date début")
-date_fin = colG.date_input("Date fin")
-
-
-# =====================================================================
-# APPLICATION DES FILTRES
-# =====================================================================
+# ======================================================
+# 🔹 APPLY FILTERS
+# ======================================================
 filtered = df.copy()
 
 if cat != "Toutes":
-    filtered = filtered[filtered["Catégories"] == cat]
+    filtered = filtered[filtered["Categories"] == cat]
 
 if souscat != "Toutes":
-    filtered = filtered[filtered["Sous-catégories"] == souscat]
+    filtered = filtered[filtered["Sous-categories"] == souscat]
 
 if visa_choice != "Tous":
     filtered = filtered[filtered["Visa"] == visa_choice]
 
-if statut != "Tous":
-    if statut == "En cours":
-        filtered = filtered[
-            (filtered["Envoye"] != True) &
-            (filtered["Accepte"] != True) &
-            (filtered["Refuse"] != True) &
-            (filtered["Annule"] != True)
-        ]
-    elif statut == "Envoyé":
-        filtered = filtered[filtered["Envoye"] == True]
-    elif statut == "Accepté":
-        filtered = filtered[filtered["Accepte"] == True]
-    elif statut == "Refusé":
-        filtered = filtered[filtered["Refuse"] == True]
-    elif statut == "Annulé":
-        filtered = filtered[filtered["Annule"] == True]
-    elif statut == "RFE":
-        filtered = filtered[filtered["RFE"] == True]
-
 if annee != "Toutes":
     filtered = filtered[filtered["Année"] == annee]
+
+if statut_choice != "Tous":
+    filtered = filtered[filtered["Statut"] == statut_choice]
 
 if date_debut:
     filtered = filtered[filtered["Date"] >= pd.to_datetime(date_debut)]
@@ -195,25 +177,8 @@ if date_debut:
 if date_fin:
     filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
 
-
-# =====================================================================
-# KPI FILTRÉS
-# =====================================================================
-st.subheader("📌 Indicateurs après filtres")
-
-f1, f2, f3, f4, f5, f6 = st.columns(6)
-f1.metric("Dossiers", len(filtered))
-f2.metric("Honoraires", f"${filtered['Montant honoraires (US $)'].sum():,.0f}")
-f3.metric("Autres frais", f"${filtered['Autres frais (US $)'].sum():,.0f}")
-f4.metric("Facturé", f"${filtered['Total facturé'].sum():,.0f}")
-f5.metric("Encaissé", f"${filtered['Montant encaissé'].sum():,.0f}")
-f6.metric("Solde", f"${filtered['Solde'].sum():,.0f}")
-
-st.markdown("---")
-
-
-# =====================================================================
-# TABLEAU FINAL
-# =====================================================================
+# ======================================================
+# 🔹 TABLE
+# ======================================================
 st.subheader("📋 Dossiers filtrés")
-st.dataframe(filtered, use_container_width=True, height=700)
+st.dataframe(filtered, use_container_width=True, height=600)
