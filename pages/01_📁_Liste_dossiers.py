@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
 from utils.visa_filters import clean_visa_df
+from components.export_pdf import generate_pdf_from_dataframe
 
 st.set_page_config(page_title="Liste des dossiers", page_icon="📁", layout="wide")
 
@@ -22,49 +23,43 @@ df = pd.DataFrame(clients)
 visa_table = clean_visa_df(visa_raw)
 
 # ---------------------------------------------------------
-# NORMALISATION DES DONNÉES CLIENTS
+# NORMALISATIONS CLIENTS
 # ---------------------------------------------------------
 df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
 
 num_cols = [
-    "Montant honoraires (US $)",
-    "Autres frais (US $)",
-    "Acompte 1",
-    "Acompte 2",
-    "Acompte 3",
-    "Acompte 4"
+    "Montant honoraires (US $)", "Autres frais (US $)",
+    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
 ]
 
 for c in num_cols:
     df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
 
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-df["Montant encaissé"] = (
-    df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
-)
+df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 df["Année"] = df["Date"].dt.year
 
 # ---------------------------------------------------------
-# CALCUL STATUT DOSSIER
+# STATUT DOSSIER
 # ---------------------------------------------------------
 def compute_status(row):
-    if str(row.get("RFE", "")).strip() not in ["", "nan", "None"]:
+    if str(row.get("RFE", "")).strip() not in ["", "None", "nan"]:
         return "RFE"
-    if str(row.get("Date annulation", "")).strip() not in ["", "nan", "None"]:
+    if str(row.get("Date annulation", "")).strip():
         return "Annulé"
-    if str(row.get("Date refus", "")).strip() not in ["", "nan", "None"]:
+    if str(row.get("Date refus", "")).strip():
         return "Refusé"
-    if str(row.get("Date acceptation", "")).strip() not in ["", "nan", "None"]:
+    if str(row.get("Date acceptation", "")).strip():
         return "Accepté"
-    if str(row.get("Date envoi", "")).strip() not in ["", "nan", "None"]:
+    if str(row.get("Date envoi", "")).strip():
         return "Envoyé"
     return "En cours"
 
 df["Statut"] = df.apply(compute_status, axis=1)
 
 # ---------------------------------------------------------
-# STYLE KPI
+# KPI STYLE
 # ---------------------------------------------------------
 st.markdown("""
 <style>
@@ -75,7 +70,7 @@ div[data-testid="stMetricValue"] {
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# KPI (Dynamiques selon filtres)
+# KPI FUNCTION
 # ---------------------------------------------------------
 def show_kpis(df_local):
     c1, c2, c3, c4, c5, c6 = st.columns(6)
@@ -89,20 +84,19 @@ def show_kpis(df_local):
 st.subheader("📌 Indicateurs (Filtres actifs)")
 show_kpis(df)
 
+# ---------------------------------------------------------
+# FILTRES
+# ---------------------------------------------------------
 st.markdown("---")
-
-# ---------------------------------------------------------
-# 🧩 FILTRES
-# ---------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
 colA, colB, colC, colD, colE = st.columns(5)
 
-# ---- FILTRE CATÉGORIE ----
+# Catégories
 cat_list = ["Toutes"] + sorted(visa_table["Categories"].unique())
 cat = colA.selectbox("Catégorie", cat_list)
 
-# ---- FILTRE SOUS-CAT ----
+# Sous-catégories
 if cat != "Toutes":
     souscat_list = ["Toutes"] + sorted(
         visa_table.loc[visa_table["Categories"] == cat]["Sous-categories"].unique()
@@ -112,7 +106,7 @@ else:
 
 souscat = colB.selectbox("Sous-catégorie", souscat_list)
 
-# ---- FILTRE VISA ----
+# Visa
 if souscat != "Toutes":
     visa_list = ["Tous"] + sorted(
         visa_table.loc[visa_table["Sous-categories"] == souscat]["Visa"].unique()
@@ -126,18 +120,18 @@ else:
 
 visa_choice = colC.selectbox("Visa", visa_list)
 
-# ---- FILTRE ANNÉE ----
+# Année
 annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
 annee = colD.selectbox("Année", annees)
 
-# ---- FILTRE STATUT ----
+# Statut
 status_filter = colE.selectbox(
     "Statut dossier",
     ["Tous", "En cours", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
 )
 
 # ---------------------------------------------------------
-# APPLICATION DES FILTRES
+# APPLICATION FILTRES
 # ---------------------------------------------------------
 filtered = df.copy()
 
@@ -156,26 +150,55 @@ if annee != "Toutes":
 if status_filter != "Tous":
     filtered = filtered[filtered["Statut"] == status_filter]
 
-# ---------------------------------------------------------
-# KPI MIS À JOUR
-# ---------------------------------------------------------
-st.subheader("📌 Indicateurs avec filtres")
+# KPI avec filtres
+st.subheader("📌 Indicateurs filtrés")
 show_kpis(filtered)
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# TABLEAU FINAL
+# ACTIONS : EXPORTS & MODIFICATION DOSSIER
+# ---------------------------------------------------------
+st.subheader("📤 Export & Actions")
+
+colX, colY = st.columns(2)
+
+# ---- EXPORT EXCEL ----
+excel_data = filtered.to_excel(index=False, engine="openpyxl")
+colX.download_button(
+    label="📥 Export Excel",
+    data=excel_data,
+    file_name="Liste_dossiers.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
+
+# ---- EXPORT PDF ----
+pdf_buffer = generate_pdf_from_dataframe(filtered)
+colY.download_button(
+    label="📄 Export PDF",
+    data=pdf_buffer,
+    file_name="Liste_dossiers.pdf",
+    mime="application/pdf",
+)
+
+st.markdown("---")
+
+# ---------------------------------------------------------
+# TABLEAU AVEC BOUTON "MODIFIER"
 # ---------------------------------------------------------
 st.subheader("📋 Dossiers filtrés")
 
-colonnes = [
-    "Dossier N", "Nom", "Categories", "Sous-categories", "Visa",
-    "Date", "Statut",
-    "Montant honoraires (US $)", "Autres frais (US $)",
-    "Total facturé", "Montant encaissé", "Solde"
-]
+def add_actions(df_local):
+    df_out = df_local.copy()
+    df_out["Action"] = ""
+    for idx, row in df_out.iterrows():
+        if st.button("✏️ Modifier", key=f"edit_{idx}"):
+            st.session_state["edit_dossier"] = row["Dossier N"]
+            st.switch_page("pages/03_✏️_Modifier_dossier.py")
+    return df_out
 
-affichage = [c for c in colonnes if c in filtered.columns]
-
-st.dataframe(filtered[affichage], use_container_width=True, height=650)
+st.dataframe(
+    filtered,
+    use_container_width=True,
+    height=650
+)
