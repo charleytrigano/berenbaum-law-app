@@ -1,59 +1,61 @@
 import pandas as pd
 
+# ---------------------------------------------------------
+# Nettoyage des colonnes du tableau VISA
+# ---------------------------------------------------------
 def clean_visa_df(dfv):
-    """Nettoie et homogénéise la table VISA sans jamais provoquer de KeyError."""
 
     if dfv is None or dfv.empty:
         return pd.DataFrame(columns=["Categories", "Sous-categories", "Visa"])
 
-    df = dfv.copy()
+    rename_map = {}
 
-    # 1️⃣ On convertit tout en string dès le début
-    df.columns = df.columns.astype(str)
+    for col in dfv.columns:
+        col_clean = (
+            col.lower()
+               .replace("é", "e")
+               .replace("è", "e")
+               .replace("ê", "e")
+               .strip()
+        )
 
-    # 2️⃣ Détection automatique des colonnes
-    col_map = {
-        "Categories": None,
-        "Sous-categories": None,
-        "Visa": None
-    }
+        if "categorie" in col_clean:
+            rename_map[col] = "Categories"
+        elif "sous" in col_clean:
+            rename_map[col] = "Sous-categories"
+        elif "visa" in col_clean:
+            rename_map[col] = "Visa"
 
-    for col in df.columns:
-        col_clean = col.lower().replace("é", "e").replace("è", "e").replace("ê", "e")
+    dfv = dfv.rename(columns=rename_map)
 
-        if "categorie" in col_clean and col_map["Categories"] is None:
-            col_map["Categories"] = col
-        elif "sous" in col_clean and col_map["Sous-categories"] is None:
-            col_map["Sous-categories"] = col
-        elif "visa" in col_clean and col_map["Visa"] is None:
-            col_map["Visa"] = col
+    # Colonnes obligatoires
+    for col in ["Categories", "Sous-categories", "Visa"]:
+        if col not in dfv.columns:
+            dfv[col] = ""
 
-    # 3️⃣ Créer les colonnes manquantes
-    for key in col_map:
-        if col_map[key] is None:
-            df[key] = ""
-            col_map[key] = key
+    # Nettoyage valeurs
+    dfv["Categories"] = dfv["Categories"].astype(str).str.strip()
+    dfv["Sous-categories"] = dfv["Sous-categories"].astype(str).str.strip()
+    dfv["Visa"] = dfv["Visa"].astype(str).str.strip()
 
-    # 4️⃣ Extraction et nettoyage final
-    df_clean = pd.DataFrame({
-        "Categories": df[col_map["Categories"]].astype(str).str.strip(),
-        "Sous-categories": df[col_map["Sous-categories"]].astype(str).str.strip(),
-        "Visa": df[col_map["Visa"]].astype(str).str.strip(),
-    })
-
-    # 5️⃣ Supprimer lignes vides
-    df_clean = df_clean.replace({"nan": "", "None": ""}).fillna("")
-    df_clean = df_clean[df_clean["Categories"] != ""]
-
-    return df_clean
+    return dfv
 
 
-def get_all_lists(dfv):
-    """Retourne les trois listes uniques triées."""
-    df = clean_visa_df(dfv)
+# ---------------------------------------------------------
+# Retourne les sous-catégories d'une catégorie donnée
+# ---------------------------------------------------------
+def get_souscats(dfv, categorie):
+    if categorie is None or categorie == "":
+        return []
+    df2 = dfv[dfv["Categories"] == categorie]
+    return sorted(df2["Sous-categories"].dropna().unique().tolist())
 
-    cat = sorted(df["Categories"].dropna().unique().tolist())
-    sous = sorted(df["Sous-categories"].dropna().unique().tolist())
-    visas = sorted(df["Visa"].dropna().unique().tolist())
 
-    return cat, sous, visas
+# ---------------------------------------------------------
+# Retourne les visas d'une sous-catégorie donnée
+# ---------------------------------------------------------
+def get_visas(dfv, souscat):
+    if souscat is None or souscat == "":
+        return []
+    df2 = dfv[dfv["Sous-categories"] == souscat]
+    return sorted(df2["Visa"].dropna().unique().tolist())
