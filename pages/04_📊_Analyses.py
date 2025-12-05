@@ -1,104 +1,73 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from backend.dropbox_utils import load_database
-from utils.visa_filters import clean_visa_df
+from components.export_pdf import generate_pdf_from_dataframe
 
-
-# ---------------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------------
 st.set_page_config(page_title="Analyses", page_icon="📊", layout="wide")
-st.title("📊 Analyses & Statistiques – Berenbaum Law App")
-
+st.title("📊 Analyses des dossiers")
 
 # ---------------------------------------------------------
 # LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-visa_raw = pd.DataFrame(db.get("visa", []))
+df = pd.DataFrame(clients)
 
-if not clients:
+if df.empty:
     st.warning("Aucun dossier trouvé.")
     st.stop()
-
-df = pd.DataFrame(clients)
-visa_table = clean_visa_df(visa_raw)
 
 # ---------------------------------------------------------
 # NORMALISATION
 # ---------------------------------------------------------
 df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
 df["Année"] = df["Date"].dt.year
-df["Mois"] = df["Date"].dt.to_period("M").astype(str)
 
 num_cols = [
     "Montant honoraires (US $)", "Autres frais (US $)",
     "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
 ]
-
-for c in num_cols:
-    df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
+for col in num_cols:
+    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
 
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
 df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
+# Nettoyage statuts
+status_cols = ["Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"]
+for c in status_cols:
+    df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0).astype(int)
 
 # ---------------------------------------------------------
 # FILTRES
 # ---------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
-colA, colB, colC, colD, colE, colF = st.columns(6)
+colA, colB, colC, colD = st.columns(4)
 
-# Catégories
-cat_list = ["Toutes"] + sorted(
-    set(visa_table["Categories"]) - set(visa_table["Sous-categories"])
-)
-cat = colA.selectbox("Catégorie", cat_list)
+categories = ["Toutes"] + sorted(df["Categories"].fillna("").unique().tolist())
+cat = colA.selectbox("Catégorie", categories)
 
-# Sous-catégories
-if cat != "Toutes":
-    souscat_list = ["Toutes"] + sorted(
-        visa_table[visa_table["Categories"] == cat]["Sous-categories"].unique()
-    )
-else:
-    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique())
+souscats = ["Toutes"] + sorted(df["Sous-categories"].fillna("").unique().tolist())
+souscat = colB.selectbox("Sous-catégorie", souscats)
 
-souscat = colB.selectbox("Sous-catégorie", souscat_list)
+visas = ["Tous"] + sorted(df["Visa"].fillna("").unique().tolist())
+visa = colC.selectbox("Visa", visas)
 
-# Visa
-if souscat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table[visa_table["Sous-categories"] == souscat]["Visa"].unique()
-    )
-elif cat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table[visa_table["Categories"] == cat]["Visa"].unique()
-    )
-else:
-    visa_list = ["Tous"] + sorted(visa_table["Visa"].unique())
-
-visa_choice = colC.selectbox("Visa", visa_list)
-
-# Année
 annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
 annee = colD.selectbox("Année", annees)
 
-# Date range
-date_debut = colE.date_input("Date début")
-date_fin = colF.date_input("Date fin")
+# Filtre dates
+colD1, colD2 = st.columns(2)
+date_debut = colD1.date_input("Date début", value=None)
+date_fin = colD2.date_input("Date fin", value=None)
 
-# Statut dossier
-colS1, colS2, colS3, colS4, colS5 = st.columns(5)
-f_envoye = colS1.checkbox("Envoyé")
-f_accepte = colS2.checkbox("Accepté")
-f_refuse = colS3.checkbox("Refusé")
-f_annule = colS4.checkbox("Annulé")
-f_rfe = colS5.checkbox("RFE")
-
+# Période 2 (comparaison)
+st.markdown("### 📅 Comparaison de période")
+colP1, colP2 = st.columns(2)
+period2_start = colP1.date_input("Période 2 – début", value=None)
+period2_end = colP2.date_input("Période 2 – fin", value=None)
 
 # ---------------------------------------------------------
 # APPLY FILTERS
@@ -111,35 +80,21 @@ if cat != "Toutes":
 if souscat != "Toutes":
     filtered = filtered[filtered["Sous-categories"] == souscat]
 
-if visa_choice != "Tous":
-    filtered = filtered[filtered["Visa"] == visa_choice]
+if visa != "Tous":
+    filtered = filtered[filtered["Visa"] == visa]
 
 if annee != "Toutes":
     filtered = filtered[filtered["Année"] == annee]
 
 if date_debut:
     filtered = filtered[filtered["Date"] >= pd.to_datetime(date_debut)]
-
 if date_fin:
     filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
 
-# Statuts
-if f_envoye:
-    filtered = filtered[filtered["Dossier envoye"] == True]
-if f_accepte:
-    filtered = filtered[filtered["Dossier accepte"] == True]
-if f_refuse:
-    filtered = filtered[filtered["Dossier refuse"] == True]
-if f_annule:
-    filtered = filtered[filtered["Dossier Annule"] == True]
-if f_rfe:
-    filtered = filtered[filtered["RFE"] == True]
-
-
 # ---------------------------------------------------------
-# KPI APRES FILTRE
+# KPI DYNAMIQUES
 # ---------------------------------------------------------
-st.subheader("📌 Indicateurs après filtres")
+st.subheader("📌 Indicateurs")
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("Dossiers", len(filtered))
@@ -149,65 +104,76 @@ k4.metric("Facturé", f"${filtered['Total facturé'].sum():,.0f}")
 k5.metric("Encaissé", f"${filtered['Montant encaissé'].sum():,.0f}")
 k6.metric("Solde", f"${filtered['Solde'].sum():,.0f}")
 
+# ---------------------------------------------------------
+# STATUTS
+# ---------------------------------------------------------
+st.markdown("### 📌 Statuts")
+
+stat_df = pd.DataFrame({
+    "Statut": ["Envoyé", "Accepté", "Refusé", "Annulé", "RFE"],
+    "Total": [
+        filtered["Dossier envoye"].sum(),
+        filtered["Dossier accepte"].sum(),
+        filtered["Dossier refuse"].sum(),
+        filtered["Dossier Annule"].sum(),
+        filtered["RFE"].sum()
+    ]
+})
+
+st.dataframe(stat_df, use_container_width=True, height=200)
 
 # ---------------------------------------------------------
-# GRAPHIQUES
+# COMPARAISON PÉRIODE 1 vs PÉRIODE 2
+# ---------------------------------------------------------
+if period2_start and period2_end:
+    st.markdown("### 📊 Comparaison de périodes")
+
+    df1 = df[(df["Date"] >= pd.to_datetime(date_debut)) & (df["Date"] <= pd.to_datetime(date_fin))]
+    df2 = df[(df["Date"] >= pd.to_datetime(period2_start)) & (df["Date"] <= pd.to_datetime(period2_end))]
+
+    comp = pd.DataFrame({
+        "Indicateur": ["Dossiers", "Honoraires", "Autres frais", "Facturé", "Encaissé", "Solde"],
+        "Période 1": [
+            len(df1),
+            df1["Montant honoraires (US $)"].sum(),
+            df1["Autres frais (US $)"].sum(),
+            df1["Total facturé"].sum(),
+            df1["Montant encaissé"].sum(),
+            df1["Solde"].sum()
+        ],
+        "Période 2": [
+            len(df2),
+            df2["Montant honoraires (US $)"].sum(),
+            df2["Autres frais (US $)"].sum(),
+            df2["Total facturé"].sum(),
+            df2["Montant encaissé"].sum(),
+            df2["Solde"].sum()
+        ]
+    })
+
+    st.dataframe(comp, use_container_width=True, height=300)
+
+# ---------------------------------------------------------
+# EXPORTS
 # ---------------------------------------------------------
 st.markdown("---")
-st.subheader("📈 Analyses graphiques")
+st.subheader("📤 Export")
 
-if len(filtered) == 0:
-    st.info("Aucun dossier ne correspond aux filtres.")
-    st.stop()
+colExp1, colExp2 = st.columns(2)
 
-# 📌 Honoraires par mois
-fig1 = px.bar(
-    filtered.groupby("Mois")["Montant honoraires (US $)"].sum().reset_index(),
-    x="Mois", y="Montant honoraires (US $)",
-    title="Honoraires par mois"
-)
-st.plotly_chart(fig1, use_container_width=True)
+with colExp1:
+    st.download_button(
+        "📥 Télécharger Excel",
+        data=filtered.to_excel(index=False, engine="openpyxl"),
+        file_name="analyses.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
-# 📌 Répartition catégories
-fig2 = px.pie(
-    filtered,
-    names="Categories",
-    title="Répartition par catégories"
-)
-st.plotly_chart(fig2, use_container_width=True)
-
-# 📌 Répartition Visa
-fig3 = px.pie(
-    filtered,
-    names="Visa",
-    title="Répartition par type de visa"
-)
-st.plotly_chart(fig3, use_container_width=True)
-
-# 📌 Statuts dossiers
-fig4 = px.bar(
-    pd.DataFrame({
-        "Envoyé": [filtered["Dossier envoye"].sum()],
-        "Accepté": [filtered["Dossier accepte"].sum()],
-        "Refusé": [filtered["Dossier refuse"].sum()],
-        "Annulé": [filtered["Dossier Annule"].sum()],
-        "RFE": [filtered["RFE"].sum()],
-    }).T.reset_index().rename(columns={"index": "Statut", 0: "Total"}),
-    x="Statut", y="Total",
-    title="Statut des dossiers"
-)
-st.plotly_chart(fig4, use_container_width=True)
-
-# ---------------------------------------------------------
-# TABLEAU PIVOT ANALYTIQUE
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📊 Tableau analytique")
-
-pivot = filtered.pivot_table(
-    index="Categories",
-    values=["Montant honoraires (US $)", "Autres frais (US $)", "Total facturé", "Montant encaissé", "Solde"],
-    aggfunc="sum"
-)
-
-st.dataframe(pivot, use_container_width=True)
+with colExp2:
+    pdf_bytes = generate_pdf_from_dataframe(filtered)
+    st.download_button(
+        "📄 Télécharger PDF",
+        data=pdf_bytes,
+        file_name="analyses.pdf",
+        mime="application/pdf"
+    )
