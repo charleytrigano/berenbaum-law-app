@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from io import BytesIO
 from backend.dropbox_utils import load_database
 from components.export_pdf import generate_pdf_from_dataframe
 
@@ -23,7 +24,7 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# CLEANING
+# NORMALISATION
 # ---------------------------------------------------------
 df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 df["Année"] = df["Date"].dt.year
@@ -37,15 +38,17 @@ for c in num_cols:
     df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
 
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
+df["Montant encaissé"] = (
+    df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
+)
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
 # ---------------------------------------------------------
-# GLOBAL KPIs
+# KPIs GLOBAUX
 # ---------------------------------------------------------
 st.subheader("📌 Indicateurs globaux")
-col1, col2, col3, col4, col5, col6 = st.columns(6)
 
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 col1.metric("Total dossiers", len(df))
 col2.metric("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}")
 col3.metric("Autres frais", f"${df['Autres frais (US $)'].sum():,.0f}")
@@ -56,7 +59,7 @@ col6.metric("Solde", f"${df['Solde'].sum():,.0f}")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# FILTERS
+# FILTRES
 # ---------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
@@ -67,9 +70,7 @@ souscat = colB.selectbox("Sous-catégorie", ["Toutes"] + sorted(df["Sous-categor
 visa_choice = colC.selectbox("Visa", ["Tous"] + sorted(df["Visa"].dropna().unique()))
 annee = colD.selectbox("Année", ["Toutes"] + sorted(df["Année"].dropna().unique()))
 
-# ---------------------------------------------------------
-# APPLY FILTERS
-# ---------------------------------------------------------
+# ---------------- APPLY FILTERS ----------------
 filtered = df.copy()
 
 if cat != "Toutes":
@@ -82,7 +83,7 @@ if annee != "Toutes":
     filtered = filtered[filtered["Année"] == annee]
 
 # ---------------------------------------------------------
-# FILTERED KPIs
+# KPIs FILTRÉS
 # ---------------------------------------------------------
 st.subheader("📌 Indicateurs après filtres")
 
@@ -97,46 +98,30 @@ col6.metric("Solde", f"${filtered['Solde'].sum():,.0f}")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# GRAPHICS
+# 📊 GRAPHIQUES
 # ---------------------------------------------------------
 
-# -------- YEARLY --------
+# -------- 1. Evolution par année --------
 st.subheader("📈 Évolution annuelle")
-
 yearly = filtered.groupby("Année")["Total facturé"].sum().reset_index()
+fig = px.bar(yearly, x="Année", y="Total facturé", title="Facturation annuelle")
+st.plotly_chart(fig, use_container_width=True)
 
-if not yearly.empty:
-    fig = px.bar(yearly, x="Année", y="Total facturé", title="Facturation annuelle")
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Aucune donnée pour ce filtre.")
-
-# -------- MONTHLY --------
-st.subheader("📅 Évolution mensuelle")
-
+# -------- 2. Evolution mensuelle --------
+st.subheader("📆 Évolution mensuelle")
 monthly = filtered.groupby("Mois")["Total facturé"].sum().reset_index()
+fig = px.line(monthly, x="Mois", y="Total facturé", markers=True, title="Facturation mensuelle")
+st.plotly_chart(fig, use_container_width=True)
 
-if not monthly.empty:
-    fig = px.line(monthly, x="Mois", y="Total facturé", title="Facturation mensuelle")
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Aucune donnée pour ce filtre.")
-
-# -------- CAT PIE --------
+# -------- 3. Répartition catégorie --------
 st.subheader("📊 Répartition par catégorie")
-
 cat_count = filtered["Categories"].value_counts().reset_index()
 cat_count.columns = ["Catégorie", "Nb"]
+fig = px.pie(cat_count, names="Catégorie", values="Nb", title="Répartition par catégorie")
+st.plotly_chart(fig, use_container_width=True)
 
-if not cat_count.empty:
-    fig = px.pie(cat_count, names="Catégorie", values="Nb", title="Répartition par catégorie")
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Aucune donnée pour ce filtre.")
-
-# -------- HEATMAP CAT × ANNEE --------
+# -------- 4. Heatmap catégorie × année --------
 st.subheader("🔥 Heatmap Catégorie × Année")
-
 cat_heat = pd.pivot_table(
     filtered,
     values="Dossier N",
@@ -145,16 +130,11 @@ cat_heat = pd.pivot_table(
     aggfunc="count",
     fill_value=0
 )
+fig = px.imshow(cat_heat, text_auto=True, title="Heatmap Catégorie × Année")
+st.plotly_chart(fig, use_container_width=True)
 
-if not cat_heat.empty:
-    fig = px.imshow(cat_heat.astype(float), text_auto=True, title="Heatmap Catégorie × Année")
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Aucune donnée pour ce filtre.")
-
-# -------- HEATMAP VISA × ANNEE --------
+# -------- 5. Heatmap visa × année --------
 st.subheader("🔥 Heatmap Visa × Année")
-
 visa_heat = pd.pivot_table(
     filtered,
     values="Dossier N",
@@ -163,32 +143,33 @@ visa_heat = pd.pivot_table(
     aggfunc="count",
     fill_value=0
 )
-
-if not visa_heat.empty:
-    fig = px.imshow(visa_heat.astype(float), text_auto=True, title="Heatmap Visa × Année")
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Aucune donnée pour ce filtre.")
+fig = px.imshow(visa_heat, text_auto=True, title="Heatmap Visa × Année")
+st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# EXPORT
+# 📤 EXPORTS — FIX EXCEL ERROR
 # ---------------------------------------------------------
+
 st.subheader("📤 Export des données filtrées")
 
 col1, col2, col3 = st.columns(3)
 
-# Excel
+# -------- Excel --------
+excel_buffer = BytesIO()
+filtered.to_excel(excel_buffer, index=False, engine="openpyxl")
+excel_buffer.seek(0)
+
 with col1:
     st.download_button(
         "📄 Export Excel",
-        data=filtered.to_excel(index=False, engine="openpyxl"),
+        data=excel_buffer,
         file_name="analyse.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# CSV
+# -------- CSV --------
 with col2:
     st.download_button(
         "📄 Export CSV",
@@ -197,7 +178,7 @@ with col2:
         mime="text/csv"
     )
 
-# PDF
+# -------- PDF --------
 with col3:
     pdf_bytes = generate_pdf_from_dataframe(filtered)
     st.download_button(
