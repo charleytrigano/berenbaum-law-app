@@ -1,99 +1,76 @@
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import cm
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+import pandas as pd
 import tempfile
-import plotly.io as pio
+import os
 
-def build_pdf_report(df, charts, kpis):
+# =====================================================================
+#  PDF BUILDER WITHOUT KALEIDO (SAFE MODE)
+# =====================================================================
+
+def build_pdf_report(df: pd.DataFrame, charts=None, kpis=None):
     """
-    Génère un PDF complet avec :
-    - Page de garde
-    - KPI
-    - Graphiques (PNG depuis Plotly)
-    - Tableau final
+    Génère un PDF sans graphiques (compatibilité Streamlit Cloud).
+    Ajoute :
+    - Titre
+    - KPIs
+    - Tableau des données
     """
 
     styles = getSampleStyleSheet()
-    title_style = styles["Title"]
-    normal = styles["BodyText"]
-
-    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    doc = SimpleDocTemplate(temp.name, pagesize=A4, rightMargin=20, leftMargin=20)
-
     story = []
 
-    # -----------------------------
-    # PAGE DE GARDE
-    # -----------------------------
-    story.append(Paragraph("Berenbaum Law – Analyse complète", title_style))
-    story.append(Spacer(1, 20))
-
-    story.append(Paragraph("Rapport généré automatiquement à partir des données de votre base Dropbox.", normal))
-    story.append(Spacer(1, 40))
-
-    # -----------------------------
-    # KPI
-    # -----------------------------
-    story.append(Paragraph("<b>Indicateurs principaux :</b>", normal))
+    # ---------------------------------------------------------
+    # TITRE
+    # ---------------------------------------------------------
+    story.append(Paragraph("<b>Berenbaum Law — Rapport Analytique</b>", styles["Title"]))
     story.append(Spacer(1, 12))
 
-    kpi_table = [
-        ["Dossiers", kpis["dossiers"]],
-        ["Honoraires", kpis["honoraires"]],
-        ["Autres frais", kpis["autres_frais"]],
-        ["Facturé", kpis["facture"]],
-        ["Encaissé", kpis["encaisse"]],
-        ["Solde", kpis["solde"]],
-    ]
+    # ---------------------------------------------------------
+    # KPIs
+    # ---------------------------------------------------------
+    if kpis:
+        story.append(Paragraph("<b>Indicateurs</b>", styles["Heading2"]))
+        for key, value in kpis.items():
+            story.append(Paragraph(f"{key} : <b>{value}</b>", styles["Normal"]))
+        story.append(Spacer(1, 12))
 
-    t = Table(kpi_table, colWidths=[5 * cm, 8 * cm])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#003366")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke)
-    ]))
+    # ---------------------------------------------------------
+    # TABLEAU DES DONNÉES
+    # ---------------------------------------------------------
+    if df is not None and not df.empty:
+        story.append(Paragraph("<b>Données filtrées</b>", styles["Heading2"]))
+        story.append(Spacer(1, 8))
 
-    story.append(t)
-    story.append(Spacer(1, 24))
+        # Convertir dataframe en liste pour ReportLab
+        data = [df.columns.tolist()] + df.astype(str).values.tolist()
 
-    # -----------------------------
-    # GRAPHIQUES
-    # -----------------------------
-    story.append(Paragraph("<b>Graphiques :</b>", normal))
-    story.append(Spacer(1, 12))
-
-    for fig in charts:
-        img_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        fig.write_image(img_temp.name, width=600, height=350, scale=2)
-
-        story.append(Image(img_temp.name, width=16*cm, height=9*cm))
-        story.append(Spacer(1, 20))
-
-    # -----------------------------
-    # TABLEAU FINAL
-    # -----------------------------
-    story.append(Paragraph("<b>Données filtrées :</b>", normal))
-    story.append(Spacer(1, 12))
-
-    if len(df) > 0:
-        table_data = [list(df.columns)] + df.values.tolist()
-        table = Table(table_data, repeatRows=1)
-
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#003366")),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
-        ]))
-
+        table = Table(data, repeatRows=1)
+        table.setStyle(
+            TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 0.3, colors.grey),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ])
+        )
         story.append(table)
-    else:
-        story.append(Paragraph("Aucune donnée après filtre.", normal))
 
+    # ---------------------------------------------------------
+    # BUILD FILE
+    # ---------------------------------------------------------
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        pdf_path = tmp.name
+
+    doc = SimpleDocTemplate(pdf_path, pagesize=letter)
     doc.build(story)
 
-    return temp.name
+    with open(pdf_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    os.remove(pdf_path)
+    return pdf_bytes
