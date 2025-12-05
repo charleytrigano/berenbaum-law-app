@@ -23,7 +23,7 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# NORMALISATION VISA
+# NORMALISATION VISA VIA FONCTION OFFICIELLE
 # ---------------------------------------------------------
 visa_table = clean_visa_df(visa_raw)
 
@@ -47,9 +47,8 @@ df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 df["Année"] = df["Date"].dt.year
 
 # ---------------------------------------------------------
-# KPI (valeurs filtrées)
+# KPI FUNCTION
 # ---------------------------------------------------------
-
 def display_kpis(data):
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     k1.metric("Dossiers", len(data))
@@ -59,9 +58,11 @@ def display_kpis(data):
     k5.metric("Encaissé", f"${data['Montant encaissé'].sum():,.0f}")
     k6.metric("Solde", f"${data['Solde'].sum():,.0f}")
 
+# ---------------------------------------------------------
+# KPI (non filtrés)
+# ---------------------------------------------------------
 st.subheader("📌 Indicateurs")
 display_kpis(df)
-
 st.markdown("---")
 
 # ---------------------------------------------------------
@@ -71,7 +72,7 @@ st.subheader("🎛️ Filtres")
 
 colA, colB, colC, colD, colE, colF = st.columns(6)
 
-# Catégories réelles (pas les sous-catégories)
+# Liste réelle de catégories (sans les sous-catégories)
 real_categories = sorted(
     set(visa_table["Categories"]) -
     set(visa_table["Sous-categories"])
@@ -80,7 +81,7 @@ real_categories = sorted(
 cat_list = ["Toutes"] + real_categories
 cat = colA.selectbox("Catégorie", cat_list)
 
-# Sous-catégories
+# Sous-catégories dépendantes
 if cat != "Toutes":
     souscat_list = ["Toutes"] + sorted(
         visa_table.loc[visa_table["Categories"] == cat, "Sous-categories"].unique()
@@ -146,5 +147,4 @@ display_kpis(filtered)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📋 Dossiers filtrés")
-
 st.dataframe(filtered, use_container_width=True, height=600)
