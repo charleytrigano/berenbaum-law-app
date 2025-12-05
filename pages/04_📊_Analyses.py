@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
+
 from backend.dropbox_utils import load_database
-from components.export_pdf import generate_pdf_from_dataframe
+from components.report_builder import build_pdf_report
 
 # ---------------------------------------------------------
 # PAGE CONFIG
@@ -34,13 +35,11 @@ num_cols = [
     "Montant honoraires (US $)", "Autres frais (US $)",
     "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
 ]
-for c in num_cols:
-    df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
+for col in num_cols:
+    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
 
 df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-df["Montant encaissé"] = (
-    df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
-)
+df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
 # ---------------------------------------------------------
@@ -65,20 +64,38 @@ st.subheader("🎛️ Filtres")
 
 colA, colB, colC, colD = st.columns(4)
 
-cat = colA.selectbox("Catégorie", ["Toutes"] + sorted(df["Categories"].dropna().unique()))
-souscat = colB.selectbox("Sous-catégorie", ["Toutes"] + sorted(df["Sous-categories"].dropna().unique()))
-visa_choice = colC.selectbox("Visa", ["Tous"] + sorted(df["Visa"].dropna().unique()))
-annee = colD.selectbox("Année", ["Toutes"] + sorted(df["Année"].dropna().unique()))
+cat = colA.selectbox(
+    "Catégorie", 
+    ["Toutes"] + sorted(df["Categories"].fillna("").unique())
+)
+
+souscat = colB.selectbox(
+    "Sous-catégorie",
+    ["Toutes"] + sorted(df["Sous-categories"].fillna("").unique())
+)
+
+visa_choice = colC.selectbox(
+    "Visa",
+    ["Tous"] + sorted(df["Visa"].fillna("").unique())
+)
+
+annee = colD.selectbox(
+    "Année",
+    ["Toutes"] + sorted(df["Année"].dropna().unique())
+)
 
 # ---------------- APPLY FILTERS ----------------
 filtered = df.copy()
 
 if cat != "Toutes":
     filtered = filtered[filtered["Categories"] == cat]
+
 if souscat != "Toutes":
     filtered = filtered[filtered["Sous-categories"] == souscat]
+
 if visa_choice != "Tous":
     filtered = filtered[filtered["Visa"] == visa_choice]
+
 if annee != "Toutes":
     filtered = filtered[filtered["Année"] == annee]
 
@@ -101,27 +118,32 @@ st.markdown("---")
 # 📊 GRAPHIQUES
 # ---------------------------------------------------------
 
-# -------- 1. Evolution par année --------
+# -------- 1. Évolution annuelle --------
 st.subheader("📈 Évolution annuelle")
 yearly = filtered.groupby("Année")["Total facturé"].sum().reset_index()
-fig = px.bar(yearly, x="Année", y="Total facturé", title="Facturation annuelle")
-st.plotly_chart(fig, use_container_width=True)
 
-# -------- 2. Evolution mensuelle --------
+fig_yearly = px.bar(yearly, x="Année", y="Total facturé", title="Facturation annuelle")
+st.plotly_chart(fig_yearly, use_container_width=True)
+
+# -------- 2. Évolution mensuelle --------
 st.subheader("📆 Évolution mensuelle")
 monthly = filtered.groupby("Mois")["Total facturé"].sum().reset_index()
-fig = px.line(monthly, x="Mois", y="Total facturé", markers=True, title="Facturation mensuelle")
-st.plotly_chart(fig, use_container_width=True)
+
+fig_monthly = px.line(monthly, x="Mois", y="Total facturé", markers=True, title="Facturation mensuelle")
+st.plotly_chart(fig_monthly, use_container_width=True)
 
 # -------- 3. Répartition catégorie --------
 st.subheader("📊 Répartition par catégorie")
+
 cat_count = filtered["Categories"].value_counts().reset_index()
 cat_count.columns = ["Catégorie", "Nb"]
-fig = px.pie(cat_count, names="Catégorie", values="Nb", title="Répartition par catégorie")
-st.plotly_chart(fig, use_container_width=True)
+
+fig_cat = px.pie(cat_count, names="Catégorie", values="Nb", title="Répartition par catégorie")
+st.plotly_chart(fig_cat, use_container_width=True)
 
 # -------- 4. Heatmap catégorie × année --------
 st.subheader("🔥 Heatmap Catégorie × Année")
+
 cat_heat = pd.pivot_table(
     filtered,
     values="Dossier N",
@@ -130,11 +152,13 @@ cat_heat = pd.pivot_table(
     aggfunc="count",
     fill_value=0
 )
-fig = px.imshow(cat_heat, text_auto=True, title="Heatmap Catégorie × Année")
-st.plotly_chart(fig, use_container_width=True)
+
+fig_heat_cat = px.imshow(cat_heat, text_auto=True, title="Heatmap Catégorie × Année")
+st.plotly_chart(fig_heat_cat, use_container_width=True)
 
 # -------- 5. Heatmap visa × année --------
 st.subheader("🔥 Heatmap Visa × Année")
+
 visa_heat = pd.pivot_table(
     filtered,
     values="Dossier N",
@@ -143,23 +167,23 @@ visa_heat = pd.pivot_table(
     aggfunc="count",
     fill_value=0
 )
-fig = px.imshow(visa_heat, text_auto=True, title="Heatmap Visa × Année")
-st.plotly_chart(fig, use_container_width=True)
+
+fig_heat_visa = px.imshow(visa_heat, text_auto=True, title="Heatmap Visa × Année")
+st.plotly_chart(fig_heat_visa, use_container_width=True)
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 📤 EXPORTS — FIX EXCEL ERROR
+# 📤 EXPORTS (Excel, CSV, PDF)
 # ---------------------------------------------------------
-
 st.subheader("📤 Export des données filtrées")
-
-col1, col2, col3 = st.columns(3)
 
 # -------- Excel --------
 excel_buffer = BytesIO()
 filtered.to_excel(excel_buffer, index=False, engine="openpyxl")
 excel_buffer.seek(0)
+
+col1, col2, col3 = st.columns(3)
 
 with col1:
     st.download_button(
@@ -178,9 +202,9 @@ with col2:
         mime="text/csv"
     )
 
-from components.report_builder import build_pdf_report
+# -------- PDF --------
+charts = [fig_yearly, fig_monthly, fig_cat, fig_heat_cat, fig_heat_visa]
 
-# KPI pour PDF
 kpis_dict = {
     "dossiers": len(filtered),
     "honoraires": f"{filtered['Montant honoraires (US $)'].sum():,.0f} $",
@@ -190,15 +214,12 @@ kpis_dict = {
     "solde": f"{filtered['Solde'].sum():,.0f} $",
 }
 
-charts = [fig]  # tu ajoutes tous les figs que tu veux dans cette liste
+pdf_bytes = build_pdf_report(filtered, charts, kpis_dict)
 
-pdf_path = build_pdf_report(filtered, charts, kpis_dict)
-
-with open(pdf_path, "rb") as pdf_file:
+with col3:
     st.download_button(
         "📕 Export PDF Professionnel",
-        data=pdf_file,
+        data=pdf_bytes,
         file_name="rapport_berenbaum.pdf",
         mime="application/pdf"
     )
-
