@@ -105,10 +105,16 @@ with tabs[1]:
     yearly = filtered.groupby("Année")["Total facturé"].sum().reset_index()
     st.plotly_chart(px.bar(yearly, x="Année", y="Total facturé"), use_container_width=True)
 
-    st.subheader("📅 Évolution mensuelle")
-    df["Mois"] = df["Date"].dt.to_period("M").astype(str)
-    monthly = filtered.groupby("Mois")["Total facturé"].sum().reset_index()
-    st.plotly_chart(px.line(monthly, x="Mois", y="Total facturé"), use_container_width=True)
+    # -------- 2. Évolution mensuelle --------
+st.subheader("📅 Évolution mensuelle")
+
+# Sécurisation colonne Mois dans filtered
+filtered["Mois"] = filtered["Date"].dt.to_period("M").astype(str)
+
+monthly = filtered.groupby("Mois")["Total facturé"].sum().reset_index()
+
+fig = px.line(monthly, x="Mois", y="Total facturé", title="Facturation mensuelle")
+st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("🔥 Heatmap Catégorie × Année")
     heat1 = pd.pivot_table(filtered, values="Dossier N", index="Categories",
@@ -129,6 +135,7 @@ with tabs[1]:
 with tabs[2]:
 
     st.subheader("💰 Total facturé par année")
+    filtered["Mois"] = filtered["Date"].dt.to_period("M").astype(str)
     st.plotly_chart(
         px.bar(df.groupby("Année")["Total facturé"].sum().reset_index(),
                x="Année", y="Total facturé"),
