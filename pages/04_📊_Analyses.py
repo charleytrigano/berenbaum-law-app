@@ -178,12 +178,27 @@ with col2:
         mime="text/csv"
     )
 
-# -------- PDF --------
-with col3:
-    pdf_bytes = generate_pdf_from_dataframe(filtered)
+from components.report_builder import build_pdf_report
+
+# KPI pour PDF
+kpis_dict = {
+    "dossiers": len(filtered),
+    "honoraires": f"{filtered['Montant honoraires (US $)'].sum():,.0f} $",
+    "autres_frais": f"{filtered['Autres frais (US $)'].sum():,.0f} $",
+    "facture": f"{filtered['Total facturé'].sum():,.0f} $",
+    "encaisse": f"{filtered['Montant encaissé'].sum():,.0f} $",
+    "solde": f"{filtered['Solde'].sum():,.0f} $",
+}
+
+charts = [fig]  # tu ajoutes tous les figs que tu veux dans cette liste
+
+pdf_path = build_pdf_report(filtered, charts, kpis_dict)
+
+with open(pdf_path, "rb") as pdf_file:
     st.download_button(
-        "📕 Export PDF",
-        data=pdf_bytes,
-        file_name="analyse.pdf",
+        "📕 Export PDF Professionnel",
+        data=pdf_file,
+        file_name="rapport_berenbaum.pdf",
         mime="application/pdf"
     )
+
