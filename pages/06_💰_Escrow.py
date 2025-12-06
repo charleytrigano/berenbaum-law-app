@@ -1,155 +1,91 @@
 import streamlit as st
 import pandas as pd
+from datetime import date
 from backend.dropbox_utils import load_database, save_database
 
-st.title("💰 Escrow – Suivi des mouvements")
+st.set_page_config(page_title="Escrow", page_icon="💰", layout="wide")
+st.title("💰 Gestion des Escrow")
 
 # ---------------------------------------------------------
-# Safe conversion pour éviter float("") et autres erreurs
+# LOAD DATABASE
 # ---------------------------------------------------------
-def safe_float(x, default=0.0):
-    try:
-        if x is None:
-            return default
-        if isinstance(x, (int, float)):
-            return float(x)
-        x = str(x).replace(",", ".").strip()
-        return float(x) if x != "" else default
-    except:
-        return default
+db = load_database()
+clients = db.get("clients", [])
 
+df = pd.DataFrame(clients)
 
-# ---------------------------------------------------------
-# Chargement de la base depuis Dropbox
-# ---------------------------------------------------------
-try:
-    db = load_database()
-except:
-    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
+# Normalisation
+df["Acompte 1"] = pd.to_numeric(df.get("Acompte 1", 0), errors="coerce").fillna(0)
+df["Dossier envoye"] = df["Dossier envoye"].fillna(0).astype(float)
+df["Escrow"] = df["Escrow"].fillna(False)
 
-escrow = db.get("escrow", [])
+# Réclamé existe ?
+if "Escrow_reclame" not in df.columns:
+    df["Escrow_reclame"] = False
 
+if "Date_reclamation" not in df.columns:
+    df["Date_reclamation"] = ""
 
 # ---------------------------------------------------------
-# Tableau Escrow
+# TABLEAU 1 — ESCROW EN COURS
 # ---------------------------------------------------------
-st.subheader("📊 Mouvements Escrow")
+st.subheader("📌 Escrow en cours")
 
-if escrow:
-    df = pd.DataFrame(escrow)
-else:
-    df = pd.DataFrame(columns=["Dossier N", "Nom", "Montant", "Date envoi", "État", "Date réclamation"])
+escrow_en_cours = df[(df["Escrow"] == True) & (df["Dossier envoye"] == 0)]
 
-st.dataframe(df, use_container_width=True, height=350)
-
-st.markdown("---")
-
+st.dataframe(
+    escrow_en_cours[["Dossier N", "Nom", "Acompte 1"]],
+    use_container_width=True
+)
 
 # ---------------------------------------------------------
-# AJOUTER UN NOUVEAU MOUVEMENT
+# AUTOMATISME :
+# Si dossier envoyé → Escrow à réclamer + décoche le Escrow
 # ---------------------------------------------------------
-st.subheader("➕ Ajouter un mouvement Escrow")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    dossier_num = st.text_input("Dossier N")
-    nom = st.text_input("Nom")
-    montant = st.number_input("Montant (USD)", min_value=0.0, format="%.2f")
-
-with col2:
-    date_envoi = st.date_input("Date envoi", format="YYYY-MM-DD")
-    etats = ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"]
-    etat = st.selectbox("État", etats)
-    date_reclamation = st.date_input("Date réclamation", format="YYYY-MM-DD")
-
-if st.button("Ajouter à Escrow", type="primary"):
-    nouveau = {
-        "Dossier N": dossier_num,
-        "Nom": nom,
-        "Montant": montant,
-        "Date envoi": str(date_envoi),
-        "État": etat,
-        "Date réclamation": str(date_reclamation)
-    }
-    escrow.append(nouveau)
-    db["escrow"] = escrow
-    save_database(db)
-    st.success("Mouvement ajouté ✔")
-    st.balloons()
-
-st.markdown("---")
+df.loc[(df["Dossier envoye"] == 1) & (df["Escrow"] == True), "Escrow"] = False
 
 
 # ---------------------------------------------------------
-# MODIFIER / SUPPRIMER UN MOUVEMENT
+# TABLEAU 2 — ESCROW À RÉCLAMER
 # ---------------------------------------------------------
-st.subheader("✏️ Modifier un mouvement existant")
+st.subheader("📌 Escrow à réclamer")
 
-if not escrow:
-    st.info("Aucun mouvement à modifier.")
-    st.stop()
-
-liste = [
-    f"{e.get('Dossier N', '')} - {e.get('Nom', '')} - {safe_float(e.get('Montant', 0))}$"
-    for e in escrow
+escrow_a_reclamer = df[
+    (df["Dossier envoye"] == 1) &
+    (df["Escrow_reclame"] == False)
 ]
-selection = st.selectbox("Choisir un mouvement", liste)
 
-index = liste.index(selection)
-entry = escrow[index]
+# Affichage
+for idx, row in escrow_a_reclamer.iterrows():
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
 
+    col1.write(f"**{row['Dossier N']}** – {row['Nom']}")
+    col2.write(f"Montant : **${row['Acompte 1']:,.2f}**")
+    col3.write("Prêt à réclamer")
 
-# ---------------------------------------------------------
-# Formulaire de modification
-# ---------------------------------------------------------
-colA, colB = st.columns(2)
+    # Bouton réclamer
+    action = col4.button("Réclamer", key=f"reclamer_{idx}")
 
-with colA:
-    mod_dossier = st.text_input("Dossier N", value=str(entry.get("Dossier N", "")))
-    mod_nom = st.text_input("Nom", value=str(entry.get("Nom", "")))
-    mod_montant = st.number_input(
-        "Montant (USD)",
-        min_value=0.0,
-        value=safe_float(entry.get("Montant")),
-        format="%.2f"
-    )
-
-with colB:
-    mod_date_envoi = st.text_input("Date envoi", value=str(entry.get("Date envoi", "")))
-
-    etats = ["Envoyé", "Reçu", "En attente", "Accepté", "Refusé"]
-    etat_actuel = entry.get("État", "Envoyé")
-
-    # Sélection propre avec fallback
-    index_etat = etats.index(etat_actuel) if etat_actuel in etats else 0
-    mod_etat = st.selectbox("État", etats, index=index_etat)
-
-    mod_date_reclam = st.text_input("Date réclamation", value=str(entry.get("Date réclamation", "")))
-
+    if action:
+        df.at[idx, "Escrow_reclame"] = True
+        df.at[idx, "Date_reclamation"] = str(date.today())
+        st.success(f"Escrow réclamé pour dossier {row['Dossier N']} ✔")
+        save_database({"clients": df.to_dict(orient="records")})
+        st.experimental_rerun()
 
 # ---------------------------------------------------------
-# Enregistrer modification
+# TABLEAU 3 — ESCROW RÉCLAMÉ
 # ---------------------------------------------------------
-if st.button("💾 Enregistrer les modifications"):
-    escrow[index] = {
-        "Dossier N": mod_dossier,
-        "Nom": mod_nom,
-        "Montant": mod_montant,
-        "Date envoi": mod_date_envoi,
-        "État": mod_etat,
-        "Date réclamation": mod_date_reclam
-    }
-    db["escrow"] = escrow
-    save_database(db)
-    st.success("Modification enregistrée ✔")
+st.subheader("📌 Escrow réclamé")
 
+escrow_reclame = df[df["Escrow_reclame"] == True]
+
+st.dataframe(
+    escrow_reclame[["Dossier N", "Nom", "Acompte 1", "Date_reclamation"]],
+    use_container_width=True
+)
 
 # ---------------------------------------------------------
-# SUPPRESSION
+# SAVE
 # ---------------------------------------------------------
-if st.button("🗑️ Supprimer ce mouvement"):
-    del escrow[index]
-    db["escrow"] = escrow
-    save_database(db)
-    st.success("Mouvement supprimé ✔")
+save_database({"clients": df.to_dict(orient="records")})
