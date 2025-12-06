@@ -25,14 +25,12 @@ DOSSIER_COL = "Dossier N"
 # Outils robustes
 # ---------------------------------------------------------
 def safe_int(x):
-    """Convertit proprement un numéro même s'il est string / float / vide."""
     try:
         return int(str(x).strip())
     except:
         return None
 
 def to_float(x):
-    """Convertit proprement n'importe quoi en float ("" → 0)."""
     try:
         return float(x)
     except:
@@ -47,12 +45,11 @@ def clean_date(x):
         return None
 
 # ---------------------------------------------------------
-# Normalisation de tous les numéros
+# Normalisation
 # ---------------------------------------------------------
 df[DOSSIER_COL] = df[DOSSIER_COL].apply(safe_int)
 df = df.dropna(subset=[DOSSIER_COL])
 
-# Liste triée
 liste_dossiers = sorted(df[DOSSIER_COL].unique().tolist())
 
 selected_num = st.selectbox("Sélectionner un dossier", liste_dossiers)
@@ -60,9 +57,9 @@ selected_num = st.selectbox("Sélectionner un dossier", liste_dossiers)
 dossier = df[df[DOSSIER_COL] == selected_num].iloc[0].copy()
 
 # ---------------------------------------------------------
-# Formulaire modification
+# Formulaire
 # ---------------------------------------------------------
-st.subheader("Informations principales")
+st.subheader("🗂 Informations principales")
 
 col1, col2, col3 = st.columns(3)
 nom = col1.text_input("Nom", value=dossier.get("Nom", ""))
@@ -95,7 +92,7 @@ colC.metric("Total facturé", f"{total_facture:,.0f} $")
 # ---------------------------------------------------------
 # Acomptes
 # ---------------------------------------------------------
-st.subheader("Acomptes")
+st.subheader("💵 Acomptes")
 
 colA1, colA2, colA3, colA4 = st.columns(4)
 a1 = colA1.number_input("Acompte 1", value=to_float(dossier.get("Acompte 1")))
@@ -112,7 +109,7 @@ da4 = colD4.date_input("Date Acompte 4", value=clean_date(dossier.get("Date Acom
 # ---------------------------------------------------------
 # Statuts
 # ---------------------------------------------------------
-st.subheader("📌 Statuts dossier")
+st.subheader("📌 Statuts")
 
 colS1, colS2, colS3, colS4, colS5 = st.columns(5)
 
@@ -129,6 +126,7 @@ escrow = st.checkbox("Escrow activé", value=bool(dossier.get("Escrow", False)))
 # ENREGISTRER
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications"):
+
     idx = df.index[df[DOSSIER_COL] == selected_num][0]
 
     df.at[idx, "Nom"] = nom
@@ -160,8 +158,8 @@ if st.button("💾 Enregistrer les modifications"):
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
-    st.success("✅ Dossier mis à jour avec succès.")
-    st.experimental_rerun()
+    st.success("✅ Dossier mis à jour.")
+    st.rerun()
 
 # ---------------------------------------------------------
 # SUPPRESSION
@@ -171,7 +169,7 @@ st.subheader("🗑️ Supprimer ce dossier")
 
 if st.button("❌ Supprimer définitivement"):
     deleted = dossier.copy()
-    deleted["supprimé_le"] = datetime.now().isoformat()
+    deleted["supprime_le"] = datetime.now().isoformat()
 
     historique.append(deleted)
     db["historique_suppressions"] = historique
@@ -181,7 +179,7 @@ if st.button("❌ Supprimer définitivement"):
     save_database(db)
 
     st.success("🚮 Dossier supprimé et archivé.")
-    st.experimental_rerun()
+    st.rerun()
 
 # ---------------------------------------------------------
 # HISTORIQUE
