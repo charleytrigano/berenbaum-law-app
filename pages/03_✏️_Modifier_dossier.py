@@ -22,46 +22,42 @@ if df.empty:
 DOSSIER_COL = "Dossier N"
 
 # ---------------------------------------------------------
-# Fonction sécurisée de conversion numéro de dossier
+# Outils robustes
 # ---------------------------------------------------------
-def safe_int(value):
-    """Convertit proprement un numéro de dossier quel que soit son format."""
+def safe_int(x):
+    """Convertit proprement un numéro même s'il est string / float / vide."""
     try:
-        return int(str(value).strip())
+        return int(str(x).strip())
     except:
         return None
 
-# Nettoyage complet des numéros
-df[DOSSIER_COL] = df[DOSSIER_COL].apply(safe_int)
+def to_float(x):
+    """Convertit proprement n'importe quoi en float ("" → 0)."""
+    try:
+        return float(x)
+    except:
+        return 0.0
 
-# Suppression des lignes invalides
+def clean_date(x):
+    if not x:
+        return None
+    try:
+        return pd.to_datetime(x).date()
+    except:
+        return None
+
+# ---------------------------------------------------------
+# Normalisation de tous les numéros
+# ---------------------------------------------------------
+df[DOSSIER_COL] = df[DOSSIER_COL].apply(safe_int)
 df = df.dropna(subset=[DOSSIER_COL])
 
-# ---------------------------------------------------------
-# Liste triée des numéros de dossiers
-# ---------------------------------------------------------
-liste_dossiers = sorted(df[DOSSIER_COL].astype(int).unique().tolist())
+# Liste triée
+liste_dossiers = sorted(df[DOSSIER_COL].unique().tolist())
 
-if not liste_dossiers:
-    st.error("❌ Aucun numéro de dossier valide détecté.")
-    st.stop()
-
-# Sélecteur principal
 selected_num = st.selectbox("Sélectionner un dossier", liste_dossiers)
 
-# Charger dossier sélectionné
 dossier = df[df[DOSSIER_COL] == selected_num].iloc[0].copy()
-
-# ---------------------------------------------------------
-# Fonction date propre
-# ---------------------------------------------------------
-def clean_date(v):
-    if not v:
-        return None
-    try:
-        return pd.to_datetime(v).date()
-    except:
-        return None
 
 # ---------------------------------------------------------
 # Formulaire modification
@@ -71,31 +67,41 @@ st.subheader("Informations principales")
 col1, col2, col3 = st.columns(3)
 nom = col1.text_input("Nom", value=dossier.get("Nom", ""))
 date_dossier = col2.date_input("Date", value=clean_date(dossier.get("Date")) or date.today())
+visa = col3.text_input("Visa", value=dossier.get("Visa", ""))
 
 cat = col1.text_input("Catégorie", value=dossier.get("Categories", ""))
 souscat = col2.text_input("Sous-catégorie", value=dossier.get("Sous-categories", ""))
-visa = col3.text_input("Visa", value=dossier.get("Visa", ""))
 
+# ---------------------------------------------------------
+# Finances
+# ---------------------------------------------------------
 st.subheader("💰 Finances")
 
 colA, colB, colC = st.columns(3)
-honoraires = colA.number_input("Honoraires (US $)", value=float(dossier.get("Montant honoraires (US $)", 0)))
-frais = colB.number_input("Autres frais (US $)", value=float(dossier.get("Autres frais (US $)", 0)))
-total = honoraires + frais
-colC.metric("Total facturé", f"{total:,.0f} $")
 
+honoraires = colA.number_input(
+    "Honoraires (US $)",
+    value=to_float(dossier.get("Montant honoraires (US $)", 0))
+)
+
+frais = colB.number_input(
+    "Autres frais (US $)",
+    value=to_float(dossier.get("Autres frais (US $)", 0))
+)
+
+total_facture = honoraires + frais
+colC.metric("Total facturé", f"{total_facture:,.0f} $")
+
+# ---------------------------------------------------------
+# Acomptes
+# ---------------------------------------------------------
 st.subheader("Acomptes")
 
-# Acomptes & dates
-def get_float(val): 
-    try: return float(val)
-    except: return 0.0
-
 colA1, colA2, colA3, colA4 = st.columns(4)
-a1 = colA1.number_input("Acompte 1", value=get_float(dossier.get("Acompte 1")))
-a2 = colA2.number_input("Acompte 2", value=get_float(dossier.get("Acompte 2")))
-a3 = colA3.number_input("Acompte 3", value=get_float(dossier.get("Acompte 3")))
-a4 = colA4.number_input("Acompte 4", value=get_float(dossier.get("Acompte 4")))
+a1 = colA1.number_input("Acompte 1", value=to_float(dossier.get("Acompte 1")))
+a2 = colA2.number_input("Acompte 2", value=to_float(dossier.get("Acompte 2")))
+a3 = colA3.number_input("Acompte 3", value=to_float(dossier.get("Acompte 3")))
+a4 = colA4.number_input("Acompte 4", value=to_float(dossier.get("Acompte 4")))
 
 colD1, colD2, colD3, colD4 = st.columns(4)
 da1 = colD1.date_input("Date Acompte 1", value=clean_date(dossier.get("Date Acompte 1")))
@@ -103,7 +109,11 @@ da2 = colD2.date_input("Date Acompte 2", value=clean_date(dossier.get("Date Acom
 da3 = colD3.date_input("Date Acompte 3", value=clean_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", value=clean_date(dossier.get("Date Acompte 4")))
 
+# ---------------------------------------------------------
+# Statuts
+# ---------------------------------------------------------
 st.subheader("📌 Statuts dossier")
+
 colS1, colS2, colS3, colS4, colS5 = st.columns(5)
 
 envoye = colS1.checkbox("Dossier envoyé", value=bool(dossier.get("Dossier envoye", False)))
@@ -116,16 +126,16 @@ st.subheader("📦 Escrow")
 escrow = st.checkbox("Escrow activé", value=bool(dossier.get("Escrow", False)))
 
 # ---------------------------------------------------------
-# Sauvegarde
+# ENREGISTRER
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications"):
     idx = df.index[df[DOSSIER_COL] == selected_num][0]
 
     df.at[idx, "Nom"] = nom
     df.at[idx, "Date"] = str(date_dossier)
+    df.at[idx, "Visa"] = visa
     df.at[idx, "Categories"] = cat
     df.at[idx, "Sous-categories"] = souscat
-    df.at[idx, "Visa"] = visa
 
     df.at[idx, "Montant honoraires (US $)"] = honoraires
     df.at[idx, "Autres frais (US $)"] = frais
@@ -145,17 +155,16 @@ if st.button("💾 Enregistrer les modifications"):
     df.at[idx, "Dossier refuse"] = refuse
     df.at[idx, "Dossier Annule"] = annule
     df.at[idx, "RFE"] = rfe
-
     df.at[idx, "Escrow"] = escrow
 
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
-    st.success("✅ Dossier mis à jour avec succès !")
+    st.success("✅ Dossier mis à jour avec succès.")
     st.experimental_rerun()
 
 # ---------------------------------------------------------
-# Suppression dossier
+# SUPPRESSION
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🗑️ Supprimer ce dossier")
@@ -169,14 +178,13 @@ if st.button("❌ Supprimer définitivement"):
 
     df = df[df[DOSSIER_COL] != selected_num]
     db["clients"] = df.to_dict(orient="records")
-
     save_database(db)
 
     st.success("🚮 Dossier supprimé et archivé.")
     st.experimental_rerun()
 
 # ---------------------------------------------------------
-# Affichage historique
+# HISTORIQUE
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📜 Historique des suppressions")
