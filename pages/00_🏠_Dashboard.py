@@ -47,6 +47,17 @@ df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 df["Année"] = df["Date"].dt.year
 
 # ---------------------------------------------------------
+# KPI STYLE
+# ---------------------------------------------------------
+st.markdown("""
+<style>
+div[data-testid="stMetricValue"] {
+    font-size: 18px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
 # KPI FUNCTION
 # ---------------------------------------------------------
 def display_kpis(data):
