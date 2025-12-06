@@ -3,188 +3,185 @@ import pandas as pd
 from datetime import datetime, date
 from backend.dropbox_utils import load_database, save_database
 
-st.set_page_config(page_title="Modifier dossier", page_icon="✏️", layout="wide")
+st.set_page_config(page_title="Modifier un dossier", page_icon="✏️", layout="wide")
 st.title("✏️ Modifier un dossier")
 
 # ---------------------------------------------------------
-# SAFE HELPERS
-# ---------------------------------------------------------
-def parse_date_safe(value):
-    """Convertit une date JSON → date Python ou None."""
-    if not value or pd.isna(value) or value == "":
-        return None
-    try:
-        return pd.to_datetime(value).date()
-    except:
-        return None
-
-def normalize_float(value):
-    """Convertit proprement un champ numérique JSON en float."""
-    try:
-        if value in ["", None, " ", "-", "nan"]:
-            return 0.0
-        return float(value)
-    except:
-        return 0.0
-
-# ---------------------------------------------------------
-# LOAD DATABASE
+# Chargement base
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-
-if not clients:
-    st.error("Aucun dossier trouvé dans la base.")
-    st.stop()
+historique = db.get("historique_suppressions", [])
 
 df = pd.DataFrame(clients)
 
-# ---------------------------------------------------------
-# 🔍 AUTO-DETECTION DE LA COLONNE DU NUMÉRO DE DOSSIER
-# ---------------------------------------------------------
-possible_cols = [
-    "Dossier N", "Dossier", "Dossier Numéro", "Numero", "Numéro",
-    "No", "N dossier", "DossierN", "dossier n", "dossier"
-]
-
-DOSSIER_COL = None
-for col in df.columns:
-    if col.strip().lower() in [c.lower() for c in possible_cols]:
-        DOSSIER_COL = col
-        break
-
-if DOSSIER_COL is None:
-    st.error("❌ Impossible de trouver la colonne du numéro de dossier dans la base.")
-    st.write("Colonnes trouvées :", df.columns.tolist())
+if df.empty:
+    st.error("❌ Aucun dossier trouvé.")
     st.stop()
 
+DOSSIER_COL = "Dossier N"
+
 # ---------------------------------------------------------
-# LISTE DES DOSSIERS
+# Fonction sécurisée de conversion numéro de dossier
 # ---------------------------------------------------------
-try:
-    liste_dossiers = sorted(df[DOSSIER_COL].dropna().unique().tolist())
-except Exception as e:
-    st.error(f"Erreur lors de la lecture des numéros de dossiers : {e}")
-    st.write("Colonnes disponibles :", df.columns.tolist())
+def safe_int(value):
+    """Convertit proprement un numéro de dossier quel que soit son format."""
+    try:
+        return int(str(value).strip())
+    except:
+        return None
+
+# Nettoyage complet des numéros
+df[DOSSIER_COL] = df[DOSSIER_COL].apply(safe_int)
+
+# Suppression des lignes invalides
+df = df.dropna(subset=[DOSSIER_COL])
+
+# ---------------------------------------------------------
+# Liste triée des numéros de dossiers
+# ---------------------------------------------------------
+liste_dossiers = sorted(df[DOSSIER_COL].astype(int).unique().tolist())
+
+if not liste_dossiers:
+    st.error("❌ Aucun numéro de dossier valide détecté.")
     st.stop()
 
-selected = st.selectbox("Sélectionner un dossier", liste_dossiers)
+# Sélecteur principal
+selected_num = st.selectbox("Sélectionner un dossier", liste_dossiers)
 
-# Sélection du dossier
-dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
+# Charger dossier sélectionné
+dossier = df[df[DOSSIER_COL] == selected_num].iloc[0].copy()
 
 # ---------------------------------------------------------
-# FORMULAIRE
+# Fonction date propre
 # ---------------------------------------------------------
+def clean_date(v):
+    if not v:
+        return None
+    try:
+        return pd.to_datetime(v).date()
+    except:
+        return None
 
-st.subheader("📄 Informations du dossier")
+# ---------------------------------------------------------
+# Formulaire modification
+# ---------------------------------------------------------
+st.subheader("Informations principales")
 
 col1, col2, col3 = st.columns(3)
+nom = col1.text_input("Nom", value=dossier.get("Nom", ""))
+date_dossier = col2.date_input("Date", value=clean_date(dossier.get("Date")) or date.today())
 
-with col1:
-    numero = st.number_input("Dossier N", value=int(dossier.get(DOSSIER_COL)), step=1)
+cat = col1.text_input("Catégorie", value=dossier.get("Categories", ""))
+souscat = col2.text_input("Sous-catégorie", value=dossier.get("Sous-categories", ""))
+visa = col3.text_input("Visa", value=dossier.get("Visa", ""))
 
-with col2:
-    nom = st.text_input("Nom", value=dossier.get("Nom", ""))
-
-with col3:
-    d_creation = st.date_input(
-        "Date de création",
-        value=parse_date_safe(dossier.get("Date"))
-    )
-
-# ---------------------------------------------------------
-# FINANCES
-# ---------------------------------------------------------
-
-st.subheader("💵 Finances")
+st.subheader("💰 Finances")
 
 colA, colB, colC = st.columns(3)
+honoraires = colA.number_input("Honoraires (US $)", value=float(dossier.get("Montant honoraires (US $)", 0)))
+frais = colB.number_input("Autres frais (US $)", value=float(dossier.get("Autres frais (US $)", 0)))
+total = honoraires + frais
+colC.metric("Total facturé", f"{total:,.0f} $")
 
-with colA:
-    honoraires = st.number_input(
-        "Montant honoraires (US $)", value=normalize_float(dossier.get("Montant honoraires (US $)", 0))
-    )
+st.subheader("Acomptes")
 
-with colB:
-    autres = st.number_input(
-        "Autres frais (US $)", value=normalize_float(dossier.get("Autres frais (US $)", 0))
-    )
-
-with colC:
-    total = honoraires + autres
-    st.metric("Total facturé", f"${total:,.2f}")
-
-# ---------------------------------------------------------
-# ACOMPTE
-# ---------------------------------------------------------
-st.subheader("💰 Acomptes")
+# Acomptes & dates
+def get_float(val): 
+    try: return float(val)
+    except: return 0.0
 
 colA1, colA2, colA3, colA4 = st.columns(4)
+a1 = colA1.number_input("Acompte 1", value=get_float(dossier.get("Acompte 1")))
+a2 = colA2.number_input("Acompte 2", value=get_float(dossier.get("Acompte 2")))
+a3 = colA3.number_input("Acompte 3", value=get_float(dossier.get("Acompte 3")))
+a4 = colA4.number_input("Acompte 4", value=get_float(dossier.get("Acompte 4")))
 
-a1 = colA1.number_input("Acompte 1", value=normalize_float(dossier.get("Acompte 1")))
-a2 = colA2.number_input("Acompte 2", value=normalize_float(dossier.get("Acompte 2")))
-a3 = colA3.number_input("Acompte 3", value=normalize_float(dossier.get("Acompte 3")))
-a4 = colA4.number_input("Acompte 4", value=normalize_float(dossier.get("Acompte 4")))
-
-encaissé = a1 + a2 + a3 + a4
-solde = total - encaissé
-st.metric("Solde", f"${solde:,.2f}")
-
-# Dates acomptes
 colD1, colD2, colD3, colD4 = st.columns(4)
+da1 = colD1.date_input("Date Acompte 1", value=clean_date(dossier.get("Date Acompte 1")))
+da2 = colD2.date_input("Date Acompte 2", value=clean_date(dossier.get("Date Acompte 2")))
+da3 = colD3.date_input("Date Acompte 3", value=clean_date(dossier.get("Date Acompte 3")))
+da4 = colD4.date_input("Date Acompte 4", value=clean_date(dossier.get("Date Acompte 4")))
 
-d_a1 = colD1.date_input("Date Acompte 1", value=parse_date_safe(dossier.get("Date Acompte 1")))
-d_a2 = colD2.date_input("Date Acompte 2", value=parse_date_safe(dossier.get("Date Acompte 2")))
-d_a3 = colD3.date_input("Date Acompte 3", value=parse_date_safe(dossier.get("Date Acompte 3")))
-d_a4 = colD4.date_input("Date Acompte 4", value=parse_date_safe(dossier.get("Date Acompte 4")))
+st.subheader("📌 Statuts dossier")
+colS1, colS2, colS3, colS4, colS5 = st.columns(5)
+
+envoye = colS1.checkbox("Dossier envoyé", value=bool(dossier.get("Dossier envoye", False)))
+accepte = colS2.checkbox("Dossier accepté", value=bool(dossier.get("Dossier accepte", False)))
+refuse = colS3.checkbox("Dossier refusé", value=bool(dossier.get("Dossier refuse", False)))
+annule = colS4.checkbox("Dossier annulé", value=bool(dossier.get("Dossier Annule", False)))
+rfe = colS5.checkbox("RFE", value=bool(dossier.get("RFE", False)))
+
+st.subheader("📦 Escrow")
+escrow = st.checkbox("Escrow activé", value=bool(dossier.get("Escrow", False)))
 
 # ---------------------------------------------------------
-# SAUVEGARDE
+# Sauvegarde
 # ---------------------------------------------------------
+if st.button("💾 Enregistrer les modifications"):
+    idx = df.index[df[DOSSIER_COL] == selected_num][0]
 
+    df.at[idx, "Nom"] = nom
+    df.at[idx, "Date"] = str(date_dossier)
+    df.at[idx, "Categories"] = cat
+    df.at[idx, "Sous-categories"] = souscat
+    df.at[idx, "Visa"] = visa
+
+    df.at[idx, "Montant honoraires (US $)"] = honoraires
+    df.at[idx, "Autres frais (US $)"] = frais
+
+    df.at[idx, "Acompte 1"] = a1
+    df.at[idx, "Acompte 2"] = a2
+    df.at[idx, "Acompte 3"] = a3
+    df.at[idx, "Acompte 4"] = a4
+
+    df.at[idx, "Date Acompte 1"] = str(da1) if da1 else ""
+    df.at[idx, "Date Acompte 2"] = str(da2) if da2 else ""
+    df.at[idx, "Date Acompte 3"] = str(da3) if da3 else ""
+    df.at[idx, "Date Acompte 4"] = str(da4) if da4 else ""
+
+    df.at[idx, "Dossier envoye"] = envoye
+    df.at[idx, "Dossier accepte"] = accepte
+    df.at[idx, "Dossier refuse"] = refuse
+    df.at[idx, "Dossier Annule"] = annule
+    df.at[idx, "RFE"] = rfe
+
+    df.at[idx, "Escrow"] = escrow
+
+    db["clients"] = df.to_dict(orient="records")
+    save_database(db)
+
+    st.success("✅ Dossier mis à jour avec succès !")
+    st.experimental_rerun()
+
+# ---------------------------------------------------------
+# Suppression dossier
+# ---------------------------------------------------------
 st.markdown("---")
-colSave, colDelete = st.columns(2)
+st.subheader("🗑️ Supprimer ce dossier")
 
-if colSave.button("💾 Enregistrer les modifications", type="primary"):
-    for idx, row in df.iterrows():
-        if row[DOSSIER_COL] == selected:
-            df.at[idx, DOSSIER_COL] = numero
-            df.at[idx, "Nom"] = nom
-            df.at[idx, "Date"] = d_creation
+if st.button("❌ Supprimer définitivement"):
+    deleted = dossier.copy()
+    deleted["supprimé_le"] = datetime.now().isoformat()
 
-            df.at[idx, "Montant honoraires (US $)"] = honoraires
-            df.at[idx, "Autres frais (US $)"] = autres
+    historique.append(deleted)
+    db["historique_suppressions"] = historique
 
-            df.at[idx, "Acompte 1"] = a1
-            df.at[idx, "Acompte 2"] = a2
-            df.at[idx, "Acompte 3"] = a3
-            df.at[idx, "Acompte 4"] = a4
-
-            df.at[idx, "Date Acompte 1"] = d_a1
-            df.at[idx, "Date Acompte 2"] = d_a2
-            df.at[idx, "Date Acompte 3"] = d_a3
-            df.at[idx, "Date Acompte 4"] = d_a4
-
-    db["clients"] = df.to_dict(orient="records")
-    save_database(db)
-
-    st.success("✔ Dossier mis à jour avec succès !")
-    st.rerun()
-
-# ---------------------------------------------------------
-# SUPPRESSION AVEC HISTORIQUE
-# ---------------------------------------------------------
-
-if colDelete.button("🗑️ Supprimer ce dossier", type="secondary"):
-    if "deleted_clients" not in db:
-        db["deleted_clients"] = []
-
-    db["deleted_clients"].append(dossier)
-    df = df[df[DOSSIER_COL] != selected]
+    df = df[df[DOSSIER_COL] != selected_num]
     db["clients"] = df.to_dict(orient="records")
 
     save_database(db)
 
-    st.success("🗑️ Dossier supprimé et ajouté à l'historique.")
-    st.rerun()
+    st.success("🚮 Dossier supprimé et archivé.")
+    st.experimental_rerun()
+
+# ---------------------------------------------------------
+# Affichage historique
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("📜 Historique des suppressions")
+
+if historique:
+    st.dataframe(pd.DataFrame(historique))
+else:
+    st.info("Aucune suppression enregistrée.")
