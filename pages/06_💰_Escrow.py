@@ -90,5 +90,6 @@ else:
         save_database(db)
 
         st.success(f"✔ Escrow du dossier {choix} marqué comme réclamé.")
-        st.experimental_rerun()
+        st.rerun()
+
 
