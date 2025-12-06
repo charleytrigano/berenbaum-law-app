@@ -43,6 +43,18 @@ df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + 
 df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
 
 # ---------------------------------------------------------
+# KPI STYLE
+# ---------------------------------------------------------
+st.markdown("""
+<style>
+div[data-testid="stMetricValue"] {
+    font-size: 18px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------
 # KPIs GLOBAUX
 # ---------------------------------------------------------
 st.subheader("📌 Indicateurs globaux")
