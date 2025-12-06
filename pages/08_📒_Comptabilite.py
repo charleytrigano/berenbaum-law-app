@@ -1,174 +1,142 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import load_database, save_database
+from backend.dropbox_utils import load_database
+from components.export_pdf import generate_pdf_from_dataframe
 
-st.title("📒 Comptabilité – Gestion des mouvements financiers")
+st.set_page_config(page_title="Comptabilité", page_icon="📒", layout="wide")
+st.title("📒 Comptabilité — Berenbaum Law App")
 
-# ---------------------------------------------------------
-# Fonction sécurisée de conversion montant
-# ---------------------------------------------------------
-def safe_float(x, default=0.0):
-    """
-    Convertit proprement n'importe quelle valeur Excel/JSON en float.
-    Évite les crashs sur "", None, "N/A", "—", etc.
-    """
-    try:
-        if x is None:
-            return default
-        if isinstance(x, (int, float)):
-            return float(x)
+# ----------------------------------------------
+# LOAD DATABASE
+# ----------------------------------------------
+db = load_database()
+clients = db.get("clients", [])
 
-        x = str(x).replace(",", ".").strip()
-        if x == "":
-            return default
-
-        return float(x)
-    except:
-        return default
-
-
-# ---------------------------------------------------------
-# Charger base Dropbox
-# ---------------------------------------------------------
-try:
-    db = load_database()
-except:
-    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
-
-compta_entries = db.get("compta", [])
-
-
-# ---------------------------------------------------------
-# Tableau principal
-# ---------------------------------------------------------
-st.subheader("📌 Liste des opérations comptables")
-
-if compta_entries:
-    df = pd.DataFrame(compta_entries)
-else:
-    df = pd.DataFrame(columns=[
-        "Date", "Type", "Dossier N", "Nom",
-        "Montant", "Mode Paiement", "Catégorie", "Commentaires"
-    ])
-
-st.dataframe(df, use_container_width=True, height=350)
-
-st.markdown("---")
-
-
-# ---------------------------------------------------------
-# AJOUTER une opération comptable
-# ---------------------------------------------------------
-st.subheader("➕ Ajouter une opération")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    date_op = st.date_input("Date de l'opération")
-    type_op = st.selectbox("Type d'opération", ["Encaissement", "Décaissement"])
-    dossier_num = st.text_input("Dossier N")
-    nom = st.text_input("Nom du client")
-
-with col2:
-    montant = st.number_input("Montant (USD)", min_value=0.0, format="%.2f")
-    mode = st.selectbox("Mode de paiement", ["Virement", "Carte", "Espèces", "Chèque", "Autre"])
-    categorie = st.text_input("Catégorie")
-
-comment = st.text_area("Commentaires")
-
-if st.button("Ajouter l'opération", type="primary"):
-    new_entry = {
-        "Date": str(date_op),
-        "Type": type_op,
-        "Dossier N": dossier_num,
-        "Nom": nom,
-        "Montant": montant,
-        "Mode Paiement": mode,
-        "Catégorie": categorie,
-        "Commentaires": comment
-    }
-    compta_entries.append(new_entry)
-    db["compta"] = compta_entries
-    save_database(db)
-    st.success("Opération ajoutée ✔")
-    st.balloons()
-
-st.markdown("---")
-
-
-# ---------------------------------------------------------
-# MODIFIER une opération existante
-# ---------------------------------------------------------
-st.subheader("✏️ Modifier une opération")
-
-if not compta_entries:
-    st.info("Aucune opération à modifier.")
+if not clients:
+    st.warning("Aucun dossier trouvé.")
     st.stop()
 
-liste = [
-    f"{c.get('Date', '')} – {c.get('Nom', '')} – ${c.get('Montant', '')}"
-    for c in compta_entries
+df = pd.DataFrame(clients)
+
+DOSSIER_COL = "Dossier N"
+
+# ----------------------------------------------
+# SELECT DOSSIER
+# ----------------------------------------------
+try:
+    dossiers = sorted([int(x) for x in df[DOSSIER_COL].dropna().unique().tolist()])
+except:
+    dossiers = df[DOSSIER_COL].dropna().unique().tolist()
+
+selected = st.selectbox("Sélectionner un dossier", dossiers)
+
+dossier = df[df[DOSSIER_COL] == selected].iloc[0]
+
+# ----------------------------------------------
+# SAFE GETTER
+# ----------------------------------------------
+def val(k):
+    v = dossier.get(k, "")
+    if pd.isna(v) or v == "":
+        return ""
+    return v
+
+# ----------------------------------------------
+# CALCULS
+# ----------------------------------------------
+honoraires = float(val("Montant honoraires (US $)") or 0)
+autres = float(val("Autres frais (US $)") or 0)
+total_facture = honoraires + autres
+
+acomptes = [
+    float(val("Acompte 1") or 0),
+    float(val("Acompte 2") or 0),
+    float(val("Acompte 3") or 0),
+    float(val("Acompte 4") or 0),
 ]
+total_encaisse = sum(acomptes)
+solde = total_facture - total_encaisse
 
-selection = st.selectbox("Sélectionner une opération", liste)
+# ----------------------------------------------
+# AFFICHAGE FICHE
+# ----------------------------------------------
 
-index = liste.index(selection)
-entry = compta_entries[index]
+st.markdown(f"""
+<h2 style="margin-top:20px;">📁 Dossier ref. : {val('Dossier N')} — {val('Nom')}</h2>
 
-MODES = ["Virement", "Carte", "Espèces", "Chèque", "Autre"]
+### 🛂 Informations Visa
+**Visa :** {val("Sous-categories")} / {val("Visa")}  
+**Date d’envoi :** {val("Date envoi")}  
+**Dossier accepté le :** {val("Date acceptation")}  
+**Dossier refusé le :** {val("Date refus")}  
+**Dossier annulé le :** {val("Date annulation")}  
+**RFE :** {val("RFE")}
 
-# Sélection mode paiement correct
-mode_actuel = entry.get("Mode Paiement", "Virement")
-if mode_actuel not in MODES:
-    mode_actuel = "Virement"
-index_mode = MODES.index(mode_actuel)
+---
 
-colA, colB = st.columns(2)
+### 💰 Comptabilité
 
-with colA:
-    mod_date = st.text_input("Date", value=str(entry.get("Date", "")))
-    mod_type = st.selectbox(
-        "Type",
-        ["Encaissement", "Décaissement"],
-        index=["Encaissement", "Décaissement"].index(entry.get("Type", "Encaissement"))
-    )
-    mod_dossier = st.text_input("Dossier N", value=str(entry.get("Dossier N", "")))
-    mod_nom = st.text_input("Nom", value=str(entry.get("Nom", "")))
+| Intitulé | Montant |
+|---------|---------|
+| **Honoraires** | ${honoraires:,.2f} |
+| **Frais annexes** | ${autres:,.2f} |
+| **Total facturé** | **${total_facture:,.2f}** |
 
-with colB:
-    mod_montant = st.number_input(
-        "Montant (USD)",
-        value=safe_float(entry.get("Montant", 0)),
-        format="%.2f"
-    )
-    mod_mode = st.selectbox("Mode Paiement", MODES, index=index_mode)
-    mod_categorie = st.text_input("Catégorie", value=str(entry.get("Catégorie", "")))
+### 💵 Acomptes
+""", unsafe_allow_html=True)
 
-mod_comment = st.text_area("Commentaires", value=str(entry.get("Commentaires", "")))
+# Tableau des acomptes
+acomptes_data = {
+    "Date": [
+        val("Date Acompte 1"),
+        val("Date Acompte 2"),
+        val("Date Acompte 3"),
+        val("Date Acompte 4"),
+    ],
+    "Mode de paiement": [
+        val("mode de paiement"),
+        val("mode de paiement"),
+        val("mode de paiement"),
+        val("mode de paiement"),
+    ],
+    "Montant": acomptes
+}
 
-if st.button("💾 Enregistrer les modifications"):
-    compta_entries[index] = {
-        "Date": mod_date,
-        "Type": mod_type,
-        "Dossier N": mod_dossier,
-        "Nom": mod_nom,
-        "Montant": mod_montant,
-        "Mode Paiement": mod_mode,
-        "Catégorie": mod_categorie,
-        "Commentaires": mod_comment
-    }
-    db["compta"] = compta_entries
-    save_database(db)
-    st.success("Opération mise à jour ✔")
+st.table(pd.DataFrame(acomptes_data))
 
-st.markdown("---")
+st.markdown(f"""
+### 🧾 Totaux
 
+| Intitulé | Montant |
+|----------|---------|
+| **Total encaissé** | ${total_encaisse:,.2f} |
+| **Solde dû** | **${solde:,.2f}** |
 
-# ---------------------------------------------------------
-# SUPPRIMER une opération
-# ---------------------------------------------------------
-if st.button("🗑️ Supprimer cette opération"):
-    del compta_entries[index]
-    db["compta"] = compta_entries
-    save_database(db)
-    st.success("Opération supprimée ✔")
+---
+""", unsafe_allow_html=True)
+
+# ----------------------------------------------
+# EXPORT PDF
+# ----------------------------------------------
+
+export_df = pd.DataFrame({
+    "Champ": [
+        "Dossier N", "Nom", "Visa", "Date envoi", "Date acceptation",
+        "Date refus", "Date annulation", "RFE", "Honoraires",
+        "Autres frais", "Total facturé", "Total encaissé", "Solde dû"
+    ],
+    "Valeur": [
+        val("Dossier N"), val("Nom"),
+        f"{val('Sous-categories')} / {val('Visa')}",
+        val("Date envoi"), val("Date acceptation"),
+        val("Date refus"), val("Date annulation"), val("RFE"),
+        honoraires, autres, total_facture, total_encaisse, solde
+    ]
+})
+
+st.download_button(
+    "📕 Télécharger la fiche comptabilité (PDF)",
+    data=generate_pdf_from_dataframe(export_df),
+    file_name=f"Comptabilite_{val('Dossier N')}.pdf",
+    mime="application/pdf"
+)
