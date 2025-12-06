@@ -20,42 +20,17 @@ df = pd.DataFrame(clients)
 DOSSIER_COL = "Dossier N"
 
 # ---------------------------------------------------------
-# 🔹 Normalisation des numéros de dossiers
+# 🔹 Helpers
 # ---------------------------------------------------------
-# Convertir proprement les valeurs en nombres entiers
-df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
+def to_float(x):
+    """Convertit n’importe quoi en float sans erreur."""
+    try:
+        return float(x)
+    except:
+        return 0.0
 
-# Construire une liste triée et valide
-liste_dossiers = (
-    df[DOSSIER_COL]
-    .dropna()
-    .astype(int)
-    .sort_values()
-    .tolist()
-)
-
-if not liste_dossiers:
-    st.error("Aucun numéro de dossier valide trouvé.")
-    st.stop()
-
-# ---------------------------------------------------------
-# 🔹 Sélection du dossier à modifier
-# ---------------------------------------------------------
-selected_num = st.selectbox("Sélectionner un dossier :", liste_dossiers)
-
-# Extraction du dossier
-dossier = df[df[DOSSIER_COL] == selected_num]
-if dossier.empty:
-    st.error("Erreur : dossier introuvable dans la base.")
-    st.stop()
-
-dossier = dossier.iloc[0].copy()
-
-# ---------------------------------------------------------
-# 🔹 Fonction utilitaire pour dates sûres
-# ---------------------------------------------------------
 def safe_date(value):
-    """Convertit une date JSON -> datetime.date ou retourne None."""
+    """Convertit une date JSON -> datetime.date ou None."""
     try:
         v = pd.to_datetime(value, errors="coerce")
         if pd.isna(v):
@@ -65,7 +40,29 @@ def safe_date(value):
         return None
 
 # ---------------------------------------------------------
-# 🔹 Formulaire d’édition
+# 🔹 Normalisation des numéros de dossiers
+# ---------------------------------------------------------
+df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
+liste_dossiers = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
+
+if not liste_dossiers:
+    st.error("Aucun numéro de dossier valide trouvé.")
+    st.stop()
+
+# ---------------------------------------------------------
+# 🔹 Sélection du dossier
+# ---------------------------------------------------------
+selected_num = st.selectbox("Sélectionner un dossier :", liste_dossiers)
+
+dossier = df[df[DOSSIER_COL] == selected_num]
+if dossier.empty:
+    st.error("Erreur : dossier introuvable.")
+    st.stop()
+
+dossier = dossier.iloc[0].copy()
+
+# ---------------------------------------------------------
+# 🔹 Affichage du formulaire
 # ---------------------------------------------------------
 st.subheader(f"Dossier n° {selected_num}")
 
@@ -80,7 +77,6 @@ with col2:
 with col3:
     categories = st.text_input("Catégories", value=dossier.get("Categories", ""))
 
-# Ligne sous-catégories + visa
 col4, col5 = st.columns(2)
 
 with col4:
@@ -89,36 +85,30 @@ with col4:
 with col5:
     visa = st.text_input("Visa", value=dossier.get("Visa", ""))
 
-# Ligne honoraires + frais + facturé
 col6, col7, col8 = st.columns(3)
 
 with col6:
-    honoraires = st.number_input(
-        "Montant honoraires (US $)",
-        value=float(dossier.get("Montant honoraires (US $)", 0))
-    )
+    honoraires = st.number_input("Montant honoraires (US $)", value=to_float(dossier.get("Montant honoraires (US $)", 0)))
 
 with col7:
-    frais = st.number_input(
-        "Autres frais (US $)",
-        value=float(dossier.get("Autres frais (US $)", 0))
-    )
+    frais = st.number_input("Autres frais (US $)", value=to_float(dossier.get("Autres frais (US $)", 0)))
 
 with col8:
     facture = honoraires + frais
     st.number_input("Total facturé", value=facture, disabled=True)
 
-# Acomptes
+# ---------------------------------------------------------
+# 🔹 Acomptes
+# ---------------------------------------------------------
 st.subheader("Acomptes")
 
 colA1, colA2, colA3, colA4 = st.columns(4)
 
-ac1 = colA1.number_input("Acompte 1", value=float(dossier.get("Acompte 1", 0)))
-ac2 = colA2.number_input("Acompte 2", value=float(dossier.get("Acompte 2", 0)))
-ac3 = colA3.number_input("Acompte 3", value=float(dossier.get("Acompte 3", 0)))
-ac4 = colA4.number_input("Acompte 4", value=float(dossier.get("Acompte 4", 0)))
+ac1 = colA1.number_input("Acompte 1", value=to_float(dossier.get("Acompte 1")))
+ac2 = colA2.number_input("Acompte 2", value=to_float(dossier.get("Acompte 2")))
+ac3 = colA3.number_input("Acompte 3", value=to_float(dossier.get("Acompte 3")))
+ac4 = colA4.number_input("Acompte 4", value=to_float(dossier.get("Acompte 4")))
 
-# Dates acomptes
 colD1, colD2, colD3, colD4 = st.columns(4)
 
 da1 = colD1.date_input("Date Acompte 1", value=safe_date(dossier.get("Date Acompte 1")))
@@ -126,7 +116,9 @@ da2 = colD2.date_input("Date Acompte 2", value=safe_date(dossier.get("Date Acomp
 da3 = colD3.date_input("Date Acompte 3", value=safe_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acompte 4")))
 
-# Statuts
+# ---------------------------------------------------------
+# 🔹 Statuts
+# ---------------------------------------------------------
 st.subheader("Statuts du dossier")
 
 colS1, colS2, colS3, colS4, colS5 = st.columns(5)
@@ -137,7 +129,6 @@ refuse = colS3.checkbox("Dossier refusé", bool(dossier.get("Dossier refuse", Fa
 annule = colS4.checkbox("Dossier annulé", bool(dossier.get("Dossier Annule", False)))
 rfe = colS5.checkbox("RFE", bool(dossier.get("RFE", False)))
 
-# Dates statuts
 colT1, colT2, colT3, colT4, colT5 = st.columns(5)
 
 date_envoye = colT1.date_input("Date envoi", value=safe_date(dossier.get("Date envoi")))
@@ -147,9 +138,9 @@ date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("D
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# 🔹 Mise à jour dans la base
+# 🔹 Sauvegarde
 # ---------------------------------------------------------
-if st.button("💾 Enregistrer les modifications"):
+if st.button("💾 Enregistrer"):
     idx = df[df[DOSSIER_COL] == selected_num].index[0]
 
     df.loc[idx, :] = {
@@ -183,11 +174,11 @@ if st.button("💾 Enregistrer les modifications"):
 
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
-    st.success("Dossier mis à jour avec succès ✔")
+    st.success("Dossier mis à jour ✔")
     st.experimental_rerun()
 
 # ---------------------------------------------------------
-# 🔥 SUPPRESSION D’UN DOSSIER
+# 🔥 SUPPRESSION
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🗑️ Supprimer ce dossier")
