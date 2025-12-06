@@ -92,11 +92,11 @@ st.subheader("🎛️ Filtres")
 
 colA, colB, colC, colD, colE = st.columns(5)
 
-# Catégories
+# Categories
 cat_list = ["Toutes"] + sorted(visa_table["Categories"].unique())
 cat = colA.selectbox("Catégorie", cat_list)
 
-# Sous-catégories
+# Sous-categories
 if cat != "Toutes":
     souscat_list = ["Toutes"] + sorted(
         visa_table.loc[visa_table["Categories"] == cat]["Sous-categories"].unique()
@@ -104,7 +104,7 @@ if cat != "Toutes":
 else:
     souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique())
 
-souscat = colB.selectbox("Sous-catégorie", souscat_list)
+souscat = colB.selectbox("Sous-categorie", souscat_list)
 
 # Visa
 if souscat != "Toutes":
