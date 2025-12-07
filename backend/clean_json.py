@@ -8,28 +8,32 @@ def clean_database(db):
     for c in db.get("clients", []):
         c = c.copy()
 
-        # Renommage des anciennes colonnes françaises
+        # --- Renommer anciennes colonnes ---
         if "Catégories" in c:
             c["Categories"] = c.pop("Catégories")
 
         if "Sous-catégories" in c:
             c["Sous-categories"] = c.pop("Sous-catégories")
 
-        # SUPPRIMER définirivement la colonne Escrow_final
+        # --- Supprimer colonne obsolète ---
         if "Escrow_final" in c:
             c.pop("Escrow_final")
 
-        # Corriger Escrow : "" / None / NaN → False
-        if "Escrow" in c:
-            if c["Escrow"] in ["", None] or (isinstance(c["Escrow"], float) and pd.isna(c["Escrow"])):
-                c["Escrow"] = False
-
-        # Assurer la présence d'Escrow
+        # --- Assurer présence de la colonne Escrow ---
         if "Escrow" not in c:
-                c["Escrow"] = False
+            c["Escrow"] = False
 
+        # --- Normaliser Escrow ---
+        esc = c["Escrow"]
+        if isinstance(esc, str):
+            esc = esc.strip().lower() in ["true", "1", "yes"]
+        elif isinstance(esc, (int, float)):
+            esc = (esc == 1)
+        else:
+            esc = bool(esc)
+        c["Escrow"] = esc
 
-        # Préserver booléens, nettoyer AUTRES colonnes uniquement
+        # --- Nettoyage générique mais préserver les bool ---
         for k, v in list(c.items()):
             if isinstance(v, bool):
                 continue
@@ -45,7 +49,6 @@ def clean_database(db):
 
         if "Catégories" in v:
             v["Categories"] = v.pop("Catégories")
-
         if "Sous-catégories" in v:
             v["Sous-categories"] = v.pop("Sous-catégories")
 
