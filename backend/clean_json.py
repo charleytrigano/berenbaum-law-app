@@ -24,6 +24,11 @@ def clean_database(db):
             if c["Escrow"] in ["", None] or (isinstance(c["Escrow"], float) and pd.isna(c["Escrow"])):
                 c["Escrow"] = False
 
+        # Assurer la présence d'Escrow
+        if "Escrow" not in c:
+                c["Escrow"] = False
+
+
         # Préserver booléens, nettoyer AUTRES colonnes uniquement
         for k, v in list(c.items()):
             if isinstance(v, bool):
