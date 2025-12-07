@@ -141,17 +141,17 @@ date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("D
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# 🔹 Sauvegarde (CORRIGÉE)
+# 🔹 SAUVEGARDE (CORRIGÉE)
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer"):
 
-    # 🔥 S'assurer que la colonne existe
+    idx = df[df[DOSSIER_COL] == selected_num].index[0]
+
+    # --- CRÉER LA COLONNE ESCROW SI ABSENTE ---
     if "Escrow" not in df.columns:
         df["Escrow"] = False
 
-    idx = df[df[DOSSIER_COL] == selected_num].index[0]
-
-    # Mise à jour uniquement des colonnes existantes (fiable)
+    # --- METTRE À JOUR UNIQUEMENT LES COLONNES EXISTANTES ---
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -178,7 +178,7 @@ if st.button("💾 Enregistrer"):
     df.loc[idx, "RFE"] = rfe
     df.loc[idx, "Date reclamation"] = date_rfe
 
-    # 🔥 LIGNE CRITIQUE : Escrow finalement bien enregistré
+    # --- 🔥 ENREGISTRER ESCROW CORRECTEMENT ---
     df.loc[idx, "Escrow"] = bool(dossier["Escrow"])
 
     db["clients"] = df.to_dict(orient="records")
@@ -188,7 +188,7 @@ if st.button("💾 Enregistrer"):
     st.rerun()
 
 # ---------------------------------------------------------
-# 🔥 Suppression
+# 🔥 SUPPRESSION
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🗑️ Supprimer ce dossier")
