@@ -116,6 +116,9 @@ da2 = colD2.date_input("Date Acompte 2", value=safe_date(dossier.get("Date Acomp
 da3 = colD3.date_input("Date Acompte 3", value=safe_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acompte 4")))
 
+dossier["Escrow"] = st.checkbox("Escrow ?", value=dossier.get("Escrow", False))
+
+
 # ---------------------------------------------------------
 # 🔹 Statuts
 # ---------------------------------------------------------
@@ -142,80 +145,6 @@ import datetime
 
 st.subheader("💰 Escrow – Historique & Mise à jour")
 
-# ---------------------------------------------------------
-# 🔹 SECTION ESCROW — Historique + Ajout + Totaux
-# ---------------------------------------------------------
-
-st.markdown("---")
-st.subheader("💰 Escrow – Historique & Mise à jour")
-
-# Charger les données escrow brutes
-escrow_raw = db.get("escrow", [])
-
-# Convertir en DataFrame
-if len(escrow_raw) > 0:
-    escrow_df = pd.DataFrame(escrow_raw)
-
-    # Vérifier que la colonne "Dossier N" existe
-    if "Dossier N" not in escrow_df.columns:
-        st.error("La colonne 'Dossier N' est absente dans la base Escrow.")
-        st.stop()
-
-    # Filtrer sur le dossier en cours
-    escrow_df = escrow_df[escrow_df["Dossier N"] == dossier[DOSSIER_COL]]
-else:
-    escrow_df = pd.DataFrame()
-    
-
-# 🔸 AFFICHAGE HISTORIQUE
-if escrow_df.empty:
-    st.info("Aucune entrée Escrow pour ce dossier.")
-else:
-    escrow_display = escrow_df.copy()
-    # conversion dates
-    if "date" in escrow_display.columns:
-        escrow_display["date"] = pd.to_datetime(escrow_display["date"], errors="coerce").dt.strftime("%Y-%m-%d")
-    
-    st.dataframe(escrow_display, use_container_width=True)
-
-# 🔸 TOTAUX
-if not escrow_df.empty and "amount" in escrow_df.columns:
-    total_escrow = escrow_df["amount"].sum()
-else:
-    total_escrow = 0
-
-st.metric("Total Escrow", f"${total_escrow:,.2f}")
-
-st.markdown("---")
-st.subheader("➕ Ajouter une entrée Escrow")
-
-import datetime
-
-with st.form("add_escrow"):
-    new_date = st.date_input("Date", datetime.date.today())
-    new_type = st.selectbox("Type", ["Deposit", "Withdrawal", "Correction"])
-    new_amount = st.number_input("Montant (US $)", step=1.0, format="%.2f")
-    new_note = st.text_input("Note / Description")
-
-    submitted = st.form_submit_button("Ajouter une entrée")
-
-    if submitted:
-        new_entry = {
-            "Dossier N": dossier[DOSSIER_COL],  # 🔥 clé correcte
-            "date": str(new_date),
-            "type": new_type,
-            "amount": float(new_amount),
-            "note": new_note,
-        }
-
-        # Ajouter à la base
-        escrow_list = db.get("escrow", [])
-        escrow_list.append(new_entry)
-        db["escrow"] = escrow_list
-        save_database(db)
-
-        st.success("Nouvelle entrée Escrow ajoutée.")
-        st.rerun()
 
 # ---------------------------------------------------------
 # 🔹 Sauvegarde
