@@ -16,6 +16,10 @@ if not clients:
     st.stop()
 
 df = pd.DataFrame(clients)
+df["Escrow"] = df.get("Escrow", False).apply(
+    lambda x: True if x in [True, 1, "1"] else False
+)
+
 
 # ---------------------------------------------------------
 # CORRECTION : conversion Escrow en bool strict
