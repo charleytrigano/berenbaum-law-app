@@ -26,6 +26,9 @@ df["Escrow"] = df.get("Escrow", False).apply(lambda x: True if x in [True, 1, "1
 escrow_en_cours = df[df["Escrow"] == True]
 
 st.dataframe(escrow_en_cours)
+# DEBUG : afficher valeur brute
+st.write("Valeur ESCROW brute :", df[["Dossier N", "Escrow"]])
+
 
 # ---------------------------------------------------------
 # SECURISATION DES COLONNES
