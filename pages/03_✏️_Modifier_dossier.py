@@ -37,7 +37,7 @@ def safe_date(value):
         return None
 
 # ---------------------------------------------------------
-# 🔹 Liste des dossiers
+# 🔹 Normalisation
 # ---------------------------------------------------------
 df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
 liste_dossiers = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
@@ -45,14 +45,18 @@ liste_dossiers = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
 selected_num = st.selectbox("Sélectionner un dossier :", liste_dossiers)
 dossier = df[df[DOSSIER_COL] == selected_num].iloc[0].copy()
 
-# Normaliser Escrow correctement
+# ---------------------------------------------------------
+# 🔹 Normalisation Escrow (critique)
+# ---------------------------------------------------------
 esc = dossier.get("Escrow", False)
+
+# Convertir toute forme en bool propre
 if isinstance(esc, str):
     esc = esc.strip().lower() in ["true", "1", "yes"]
-if isinstance(esc, (int, float)):
-    esc = esc == 1
-dossier["Escrow"] = bool(esc)
+elif isinstance(esc, (int, float)):
+    esc = (esc == 1)
 
+dossier["Escrow"] = bool(esc)
 
 # ---------------------------------------------------------
 # 🔹 Formulaire
@@ -91,11 +95,10 @@ da3 = colD3.date_input("Date Acompte 3", value=safe_date(dossier.get("Date Acomp
 da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acompte 4")))
 
 # ---------------------------------------------------------
-# 🔹 Escrow
+# 🔹 ESCROW — VERSION STABLE
 # ---------------------------------------------------------
-escrow_value = dossier["Escrow"]  # déjà normalisé
+escrow_value = dossier["Escrow"]
 dossier["Escrow"] = st.checkbox("Escrow ?", value=escrow_value)
-
 
 # ---------------------------------------------------------
 # 🔹 Statuts
@@ -117,15 +120,17 @@ date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("D
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# 🔹 Sauvegarde
+# 🔹 SAUVEGARDE (robuste)
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer"):
 
     idx = df[df[DOSSIER_COL] == selected_num].index[0]
 
+    # S'assurer que la colonne existe
     if "Escrow" not in df.columns:
         df["Escrow"] = False
 
+    # Mise à jour normale
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -152,9 +157,10 @@ if st.button("💾 Enregistrer"):
     df.loc[idx, "RFE"] = rfe
     df.loc[idx, "Date reclamation"] = date_rfe
 
-    # Escrow ENFIN stocké proprement
-    df.loc[idx, "Escrow"] = bool(dossier.get("Escrow", False))
+    # Escrow stocké proprement
+    df.loc[idx, "Escrow"] = bool(dossier["Escrow"])
 
+    # Sauvegarde Dropbox
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
@@ -163,7 +169,7 @@ if st.button("💾 Enregistrer"):
 
 
 # ---------------------------------------------------------
-# 🔥 Suppression
+# 🔥 SUPPRESSION
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🗑️ Supprimer ce dossier")
