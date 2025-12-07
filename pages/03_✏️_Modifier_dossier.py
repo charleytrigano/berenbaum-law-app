@@ -114,8 +114,10 @@ da2 = colD2.date_input("Date Acompte 2", value=safe_date(dossier.get("Date Acomp
 da3 = colD3.date_input("Date Acompte 3", value=safe_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acompte 4")))
 
-# ✅ CASE ESCROW (corrigée, fonctionnelle)
-dossier["Escrow"] = st.checkbox("Escrow ?", value=dossier.get("Escrow", False))
+# ---------------------------------------------------------
+# 🔹 CASE ESCROW (corrigée)
+# ---------------------------------------------------------
+dossier["Escrow"] = st.checkbox("Escrow ?", value=bool(dossier.get("Escrow", False)))
 
 # ---------------------------------------------------------
 # 🔹 Statuts
@@ -139,47 +141,49 @@ date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("D
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# 🔹 Sauvegarde
+# 🔹 Sauvegarde (CORRIGÉE)
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer"):
+
+    # 🔥 S'assurer que la colonne existe
+    if "Escrow" not in df.columns:
+        df["Escrow"] = False
+
     idx = df[df[DOSSIER_COL] == selected_num].index[0]
 
-    df.loc[idx, :] = {
-        DOSSIER_COL: selected_num,
-        "Nom": nom,
-        "Date": date_dossier,
-        "Categories": categories,
-        "Sous-categories": sous_categories,
-        "Visa": visa,
-        "Montant honoraires (US $)": honoraires,
-        "Autres frais (US $)": frais,
-        "Acompte 1": ac1,
-        "Acompte 2": ac2,
-        "Acompte 3": ac3,
-        "Acompte 4": ac4,
-        "Date Acompte 1": da1,
-        "Date Acompte 2": da2,
-        "Date Acompte 3": da3,
-        "Date Acompte 4": da4,
-        "Dossier envoye": envoye,
-        "Date envoi": date_envoye,
-        "Dossier accepte": accepte,
-        "Date acceptation": date_accepte,
-        "Dossier refuse": refuse,
-        "Date refus": date_refuse,
-        "Dossier Annule": annule,
-        "Date annulation": date_annule,
-        "RFE": rfe,
-        "Date reclamation": date_rfe,
-        "Escrow": dossier["Escrow"],  # ✅ IMPORTANT : ajout correct !
-    }
+    # Mise à jour uniquement des colonnes existantes (fiable)
+    df.loc[idx, "Nom"] = nom
+    df.loc[idx, "Date"] = date_dossier
+    df.loc[idx, "Categories"] = categories
+    df.loc[idx, "Sous-categories"] = sous_categories
+    df.loc[idx, "Visa"] = visa
+    df.loc[idx, "Montant honoraires (US $)"] = honoraires
+    df.loc[idx, "Autres frais (US $)"] = frais
+    df.loc[idx, "Acompte 1"] = ac1
+    df.loc[idx, "Acompte 2"] = ac2
+    df.loc[idx, "Acompte 3"] = ac3
+    df.loc[idx, "Acompte 4"] = ac4
+    df.loc[idx, "Date Acompte 1"] = da1
+    df.loc[idx, "Date Acompte 2"] = da2
+    df.loc[idx, "Date Acompte 3"] = da3
+    df.loc[idx, "Date Acompte 4"] = da4
+    df.loc[idx, "Dossier envoye"] = envoye
+    df.loc[idx, "Date envoi"] = date_envoye
+    df.loc[idx, "Dossier accepte"] = accepte
+    df.loc[idx, "Date acceptation"] = date_accepte
+    df.loc[idx, "Dossier refuse"] = refuse
+    df.loc[idx, "Date refus"] = date_refuse
+    df.loc[idx, "Dossier Annule"] = annule
+    df.loc[idx, "Date annulation"] = date_annule
+    df.loc[idx, "RFE"] = rfe
+    df.loc[idx, "Date reclamation"] = date_rfe
+
+    # 🔥 LIGNE CRITIQUE : Escrow finalement bien enregistré
+    df.loc[idx, "Escrow"] = bool(dossier["Escrow"])
 
     db["clients"] = df.to_dict(orient="records")
-    st.write("Valeur à enregistrer ->", dossier["Escrow"], type(dossier["Escrow"]))
-
     save_database(db)
-    st.write("Valeur réellement enregistrée ->", df.loc[idx])
-    stop()
+
     st.success("Dossier mis à jour ✔")
     st.rerun()
 
