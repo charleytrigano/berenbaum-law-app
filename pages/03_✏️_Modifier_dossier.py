@@ -137,6 +137,56 @@ date_refuse = colT3.date_input("Date refus", value=safe_date(dossier.get("Date r
 date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("Date annulation")))
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
 
+
+import datetime
+
+st.subheader("💰 Escrow – Historique & Mise à jour")
+
+# Charger l'historique Escrow du dossier
+escrow_df = pd.DataFrame(db.get("escrow", []))
+escrow_df = escrow_df[escrow_df["dossier_num"] == dossier[DOSSIER_COL]]
+
+if escrow_df.empty:
+    st.info("Aucune entrée Escrow pour ce dossier.")
+else:
+    escrow_df_display = escrow_df.copy()
+    escrow_df_display["date"] = pd.to_datetime(escrow_df_display["date"]).dt.strftime("%Y-%m-%d")
+    st.dataframe(escrow_df_display)
+
+# Total Escrow calculé automatiquement
+total_escrow = escrow_df["amount"].sum() if not escrow_df.empty else 0
+st.metric("Total Escrow", f"${total_escrow:,.2f}")
+
+st.markdown("---")
+st.subheader("➕ Ajouter une entrée Escrow")
+
+with st.form("add_escrow"):
+    new_date = st.date_input("Date", datetime.date.today())
+    new_type = st.selectbox("Type", ["Deposit", "Withdrawal", "Correction"])
+    new_amount = st.number_input("Montant (US $)", min_value=-100000.0, max_value=100000.0, step=1.0)
+    new_note = st.text_input("Note / Description")
+
+    submitted = st.form_submit_button("Ajouter")
+
+    if submitted:
+        new_entry = {
+            "dossier_num": dossier[DOSSIER_COL],
+            "date": str(new_date),
+            "type": new_type,
+            "amount": float(new_amount),
+            "note": new_note
+        }
+
+        # Sauver
+        escrow_list = db.get("escrow", [])
+        escrow_list.append(new_entry)
+        db["escrow"] = escrow_list
+        save_database(db)
+
+        st.success("Nouvelle entrée Escrow ajoutée.")
+        st.rerun()
+
+
 # ---------------------------------------------------------
 # 🔹 Sauvegarde
 # ---------------------------------------------------------
