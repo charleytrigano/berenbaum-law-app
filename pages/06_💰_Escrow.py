@@ -17,11 +17,15 @@ if not clients:
 
 df = pd.DataFrame(clients)
 
+# ---------------------------------------------------------
+# CORRECTION : conversion Escrow en bool propre
+# ---------------------------------------------------------
+df["Escrow"] = df.get("Escrow", False).apply(lambda x: True if x in [True, 1, "1"] else False)
+
 # Garder uniquement ceux cochés
-escrow_en_cours = df[df.get("Escrow", False) == True]
+escrow_en_cours = df[df["Escrow"] == True]
 
 st.dataframe(escrow_en_cours)
-
 
 # ---------------------------------------------------------
 # SECURISATION DES COLONNES
@@ -29,11 +33,6 @@ st.dataframe(escrow_en_cours)
 
 # Dossier envoye → 0/1
 df["Dossier envoye"] = pd.to_numeric(df.get("Dossier envoye", 0), errors="coerce").fillna(0).astype(int)
-
-# Escrow (True/False)
-df["Escrow"] = df.get("Escrow", False)
-df["Escrow"] = df["Escrow"].replace({"": False, "0": False, "1": True, 0: False, 1: True})
-df["Escrow"] = df["Escrow"].fillna(False).astype(bool)
 
 # Escrow réclamé
 df["Escrow_reclame"] = df.get("Escrow_reclame", False)
@@ -47,15 +46,14 @@ df["Acompte 1"] = pd.to_numeric(df.get("Acompte 1", 0), errors="coerce").fillna(
 # LOGIQUE AUTOMATIQUE ESCROW
 # ---------------------------------------------------------
 
-# 1 → Si dossier envoyé, l’escrow passe en "à réclamer"
-df.loc[df["Dossier envoye"] == 1, "Escrow"] = False
-df.loc[df["Dossier envoye"] == 1, "Escrow_a_reclamer"] = True
-
-# Créer colonne si absente
+# Créer la colonne si absente
 if "Escrow_a_reclamer" not in df.columns:
     df["Escrow_a_reclamer"] = False
 
-df["Escrow_a_reclamer"] = df.get("Escrow_a_reclamer", False)
+# Dossier envoyé -> l’escrow passe à réclamer
+df.loc[df["Dossier envoye"] == 1, "Escrow"] = False
+df.loc[df["Dossier envoye"] == 1, "Escrow_a_reclamer"] = True
+
 df["Escrow_a_reclamer"] = df["Escrow_a_reclamer"].replace({"": False, "0": False, "1": True})
 df["Escrow_a_reclamer"] = df["Escrow_a_reclamer"].fillna(False).astype(bool)
 
@@ -91,11 +89,8 @@ else:
         df.loc[df["Dossier N"] == choix, "Escrow_a_reclamer"] = False
         df.loc[df["Dossier N"] == choix, "Escrow_reclame"] = True
 
-        # Mise à jour JSON
         db["clients"] = df.to_dict(orient="records")
         save_database(db)
 
         st.success(f"✔ Escrow du dossier {choix} marqué comme réclamé.")
         st.rerun()
-
-
