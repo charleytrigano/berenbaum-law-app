@@ -1,3 +1,4 @@
+# backend/dropbox_utils.py
 import json
 import dropbox
 import streamlit as st
@@ -17,7 +18,7 @@ def get_dbx():
             "client_id": APP_KEY,
             "client_secret": APP_SECRET,
             "grant_type": "refresh_token",
-        },
+        }
     )
     access_token = resp.json()["access_token"]
     return dropbox.Dropbox(access_token)
@@ -29,7 +30,7 @@ def load_database():
         metadata, res = dbx.files_download(JSON_PATH)
         data = json.loads(res.content.decode("utf-8"))
 
-        # Nettoyage intelligent (supprime Escrow_final)
+        # Nettoyage intelligent et normalisation Escrow
         data = clean_database(data)
 
         return data
