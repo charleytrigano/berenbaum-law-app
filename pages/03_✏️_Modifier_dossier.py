@@ -184,7 +184,7 @@ if st.button("💾 Enregistrer"):
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
     st.success("Dossier mis à jour ✔")
-    st.experimental_rerun()
+    st.rerun()
 
 # ---------------------------------------------------------
 # 🔥 SUPPRESSION
