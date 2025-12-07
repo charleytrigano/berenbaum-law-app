@@ -98,7 +98,7 @@ da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acomp
 # 🔹 ESCROW — VERSION STABLE
 # ---------------------------------------------------------
 escrow_value = dossier["Escrow"]
-dossier["Escrow"] = st.checkbox("Escrow ?", value=escrow_value)
+dossier["Escrow"] = st.checkbox("Escrow ", value=escrow_value)
 
 # ---------------------------------------------------------
 # 🔹 Statuts
