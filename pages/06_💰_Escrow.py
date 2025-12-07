@@ -24,7 +24,7 @@ def normalize_bool(x):
     """Transforme toutes les valeurs possibles en bool propre."""
     if isinstance(x, bool):
         return x
-    if x in [1, "1", "True", "true", "YES", "yes"]:
+    if x in [1, "1", "True", "TRUE", "YES", "yes"]:
         return True
     return False
 
