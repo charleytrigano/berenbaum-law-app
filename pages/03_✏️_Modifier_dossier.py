@@ -191,8 +191,10 @@ if st.button("💾 Enregistrer"):
     st.write("🚨 Valeur ESCROW DANS LA BASE APRÈS SAVE :", df.loc[idx, "Escrow"])
 
     st.success("Dossier mis à jour ✔")
-    st.rerun()
     stop()
+    st.rerun()
+    
+    
 
 # ---------------------------------------------------------
 # 🔥 SUPPRESSION
