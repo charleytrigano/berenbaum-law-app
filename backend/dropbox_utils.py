@@ -8,9 +8,6 @@ APP_SECRET = st.secrets["dropbox"]["APP_SECRET"]
 REFRESH_TOKEN = st.secrets["dropbox"]["DROPBOX_TOKEN"]
 JSON_PATH = st.secrets["paths"]["DROPBOX_JSON"]
 
-# -------------------------------
-# Refresh token → accès Dropbox
-# -------------------------------
 def get_dbx():
     import requests
     resp = requests.post(
@@ -25,16 +22,13 @@ def get_dbx():
     access_token = resp.json()["access_token"]
     return dropbox.Dropbox(access_token)
 
-# -------------------------------
-# Charger JSON
-# -------------------------------
 def load_database():
     try:
         dbx = get_dbx()
         metadata, res = dbx.files_download(JSON_PATH)
         data = json.loads(res.content.decode("utf-8"))
 
-        # Nettoyage automatique 🔥
+        # Nettoyage intelligent
         data = clean_database(data)
 
         return data
@@ -42,14 +36,12 @@ def load_database():
         print("❌ Erreur load_database :", e)
         return {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-# -------------------------------
-# Sauvegarder JSON
-# -------------------------------
 def save_database(data):
     try:
         dbx = get_dbx()
         cleaned = clean_database(data)
 
+        # Sauvegarde finale
         dbx.files_upload(
             json.dumps(cleaned, indent=2).encode("utf-8"),
             JSON_PATH,
