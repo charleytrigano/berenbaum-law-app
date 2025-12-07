@@ -175,7 +175,11 @@ if st.button("💾 Enregistrer"):
     }
 
     db["clients"] = df.to_dict(orient="records")
+    st.write("Valeur à enregistrer ->", dossier["Escrow"], type(dossier["Escrow"]))
+
     save_database(db)
+    st.write("Valeur réellement enregistrée ->", df.loc[idx])
+
     st.success("Dossier mis à jour ✔")
     st.rerun()
 
