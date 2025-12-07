@@ -45,6 +45,15 @@ liste_dossiers = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
 selected_num = st.selectbox("Sélectionner un dossier :", liste_dossiers)
 dossier = df[df[DOSSIER_COL] == selected_num].iloc[0].copy()
 
+# Normaliser Escrow correctement
+esc = dossier.get("Escrow", False)
+if isinstance(esc, str):
+    esc = esc.strip().lower() in ["true", "1", "yes"]
+if isinstance(esc, (int, float)):
+    esc = esc == 1
+dossier["Escrow"] = bool(esc)
+
+
 # ---------------------------------------------------------
 # 🔹 Formulaire
 # ---------------------------------------------------------
