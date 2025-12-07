@@ -115,7 +115,7 @@ da3 = colD3.date_input("Date Acompte 3", value=safe_date(dossier.get("Date Acomp
 da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acompte 4")))
 
 # ---------------------------------------------------------
-# 🔹 CASE ESCROW (corrigée)
+# 🔹 CASE ESCROW
 # ---------------------------------------------------------
 dossier["Escrow"] = st.checkbox("Escrow ?", value=bool(dossier.get("Escrow", False)))
 
@@ -141,17 +141,17 @@ date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("D
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# 🔹 SAUVEGARDE (CORRIGÉE)
+# 🔹 SAUVEGARDE (CORRIGÉE & PROPRE)
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer"):
 
     idx = df[df[DOSSIER_COL] == selected_num].index[0]
 
-    # --- CRÉER LA COLONNE ESCROW SI ABSENTE ---
+    # --- Créer la colonne Escrow si elle n'existe pas ---
     if "Escrow" not in df.columns:
         df["Escrow"] = False
 
-    # --- METTRE À JOUR UNIQUEMENT LES COLONNES EXISTANTES ---
+    # --- Mise à jour propre, colonne par colonne ---
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -165,43 +165,5 @@ if st.button("💾 Enregistrer"):
     df.loc[idx, "Acompte 4"] = ac4
     df.loc[idx, "Date Acompte 1"] = da1
     df.loc[idx, "Date Acompte 2"] = da2
-    df.loc[idx, "Date Acompte 3"] = da3
-    df.loc[idx, "Date Acompte 4"] = da4
-    df.loc[idx, "Dossier envoye"] = envoye
-    df.loc[idx, "Date envoi"] = date_envoye
-    df.loc[idx, "Dossier accepte"] = accepte
-    df.loc[idx, "Date acceptation"] = date_accepte
-    df.loc[idx, "Dossier refuse"] = refuse
-    df.loc[idx, "Date refus"] = date_refuse
-    df.loc[idx, "Dossier Annule"] = annule
-    df.loc[idx, "Date annulation"] = date_annule
-    df.loc[idx, "RFE"] = rfe
-    df.loc[idx, "Date reclamation"] = date_rfe
+    df.loc[idx, "Date Acomp]()
 
-    # --- 🔥 ENREGISTRER ESCROW CORRECTEMENT ---
-    df.loc[idx, "Escrow"] = bool(dossier["Escrow"])
-
-    db["clients"] = df.to_dict(orient="records")st.write("🚨 Valeur ESCROW AVANT SAUVEGARDE :", dossier["Escrow"], type(dossier["Escrow"]))
-
-    st.write("🚨 Valeur ESCROW AVANT SAUVEGARDE :", dossier["Escrow"], type(dossier["Escrow"]))
-
-    save_database(db)
-
-    st.write("🚨 Valeur ESCROW DANS LA BASE APRÈS SAVE :", df.loc[idx, "Escrow"])
-
-
-    st.success("Dossier mis à jour ✔")
-    st.rerun()
-
-# ---------------------------------------------------------
-# 🔥 SUPPRESSION
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("🗑️ Supprimer ce dossier")
-
-if st.button("❌ Supprimer définitivement ce dossier"):
-    df = df[df[DOSSIER_COL] != selected_num]
-    db["clients"] = df.to_dict(orient="records")
-    save_database(db)
-    st.success(f"Dossier {selected_num} supprimé ✔")
-    st.experimental_rerun()
