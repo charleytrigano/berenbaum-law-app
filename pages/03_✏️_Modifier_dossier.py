@@ -18,9 +18,8 @@ if not clients:
 df = pd.DataFrame(clients)
 DOSSIER_COL = "Dossier N"
 
-
 # ---------------------------------------------------------
-# 🔹 Fonctions utilitaires
+# 🔹 Helpers
 # ---------------------------------------------------------
 def to_float(x):
     try:
@@ -37,9 +36,8 @@ def safe_date(value):
     except:
         return None
 
-
 # ---------------------------------------------------------
-# 🔹 Dossiers disponibles
+# 🔹 Liste des dossiers
 # ---------------------------------------------------------
 df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
 liste_dossiers = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
@@ -47,9 +45,8 @@ liste_dossiers = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
 selected_num = st.selectbox("Sélectionner un dossier :", liste_dossiers)
 dossier = df[df[DOSSIER_COL] == selected_num].iloc[0].copy()
 
-
 # ---------------------------------------------------------
-# 🔹 Formulaire principal
+# 🔹 Formulaire
 # ---------------------------------------------------------
 st.subheader(f"Dossier n° {selected_num}")
 
@@ -66,7 +63,6 @@ col6, col7, col8 = st.columns(3)
 honoraires = col6.number_input("Montant honoraires (US $)", value=to_float(dossier.get("Montant honoraires (US $)", 0)))
 frais = col7.number_input("Autres frais (US $)", value=to_float(dossier.get("Autres frais (US $)", 0)))
 col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
-
 
 # ---------------------------------------------------------
 # 🔹 Acomptes
@@ -85,12 +81,10 @@ da2 = colD2.date_input("Date Acompte 2", value=safe_date(dossier.get("Date Acomp
 da3 = colD3.date_input("Date Acompte 3", value=safe_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acompte 4")))
 
-
 # ---------------------------------------------------------
 # 🔹 Escrow
 # ---------------------------------------------------------
 dossier["Escrow"] = st.checkbox("Escrow ?", value=bool(dossier.get("Escrow", False)))
-
 
 # ---------------------------------------------------------
 # 🔹 Statuts
@@ -111,7 +105,6 @@ date_refuse = colT3.date_input("Date refus", value=safe_date(dossier.get("Date r
 date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("Date annulation")))
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
 
-
 # ---------------------------------------------------------
 # 🔹 Sauvegarde
 # ---------------------------------------------------------
@@ -119,11 +112,9 @@ if st.button("💾 Enregistrer"):
 
     idx = df[df[DOSSIER_COL] == selected_num].index[0]
 
-    # S'assurer que la colonne existe
     if "Escrow" not in df.columns:
         df["Escrow"] = False
 
-    # Mise à jour des champs
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -150,10 +141,9 @@ if st.button("💾 Enregistrer"):
     df.loc[idx, "RFE"] = rfe
     df.loc[idx, "Date reclamation"] = date_rfe
 
-    # Escrow
-    df.loc[idx, "Escrow"] = True if dossier["Escrow"] else False
+    # Escrow ENFIN stocké proprement
+    df.loc[idx, "Escrow"] = bool(dossier.get("Escrow", False))
 
-    # Sauvegarde Dropbox
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
@@ -162,7 +152,7 @@ if st.button("💾 Enregistrer"):
 
 
 # ---------------------------------------------------------
-# 🔥 SUPPRESSION
+# 🔥 Suppression
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🗑️ Supprimer ce dossier")
