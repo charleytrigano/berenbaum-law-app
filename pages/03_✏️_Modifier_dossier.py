@@ -179,7 +179,7 @@ if st.button("💾 Enregistrer"):
 
     save_database(db)
     st.write("Valeur réellement enregistrée ->", df.loc[idx])
-
+    stop()
     st.success("Dossier mis à jour ✔")
     st.rerun()
 
