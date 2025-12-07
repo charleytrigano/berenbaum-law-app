@@ -17,6 +17,12 @@ if not clients:
 
 df = pd.DataFrame(clients)
 
+# Garder uniquement ceux cochés
+escrow_en_cours = df[df.get("Escrow", False) == True]
+
+st.dataframe(escrow_en_cours)
+
+
 # ---------------------------------------------------------
 # SECURISATION DES COLONNES
 # ---------------------------------------------------------
