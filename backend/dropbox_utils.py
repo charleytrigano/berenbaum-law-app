@@ -23,12 +23,13 @@ def get_dbx():
     return dropbox.Dropbox(access_token)
 
 def load_database():
+    """Télécharge le JSON Dropbox + nettoyage cohérent."""
     try:
         dbx = get_dbx()
         metadata, res = dbx.files_download(JSON_PATH)
         data = json.loads(res.content.decode("utf-8"))
 
-        # Nettoyage intelligent
+        # Nettoyage intelligent (supprime Escrow_final)
         data = clean_database(data)
 
         return data
@@ -37,11 +38,11 @@ def load_database():
         return {"clients": [], "visa": [], "escrow": [], "compta": []}
 
 def save_database(data):
+    """Sauvegarde JSON propre dans Dropbox."""
     try:
         dbx = get_dbx()
         cleaned = clean_database(data)
 
-        # Sauvegarde finale
         dbx.files_upload(
             json.dumps(cleaned, indent=2).encode("utf-8"),
             JSON_PATH,
