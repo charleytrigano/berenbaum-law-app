@@ -23,14 +23,12 @@ DOSSIER_COL = "Dossier N"
 # 🔹 Helpers
 # ---------------------------------------------------------
 def to_float(x):
-    """Convertit n’importe quoi en float sans erreur."""
     try:
         return float(x)
     except:
         return 0.0
 
 def safe_date(value):
-    """Convertit une date JSON -> datetime.date ou None."""
     try:
         v = pd.to_datetime(value, errors="coerce")
         if pd.isna(v):
@@ -40,7 +38,7 @@ def safe_date(value):
         return None
 
 # ---------------------------------------------------------
-# 🔹 Normalisation des numéros de dossiers
+# 🔹 Normalisation
 # ---------------------------------------------------------
 df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
 liste_dossiers = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
@@ -62,7 +60,7 @@ if dossier.empty:
 dossier = dossier.iloc[0].copy()
 
 # ---------------------------------------------------------
-# 🔹 Affichage du formulaire
+# 🔹 Formulaire
 # ---------------------------------------------------------
 st.subheader(f"Dossier n° {selected_num}")
 
@@ -116,8 +114,8 @@ da2 = colD2.date_input("Date Acompte 2", value=safe_date(dossier.get("Date Acomp
 da3 = colD3.date_input("Date Acompte 3", value=safe_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", value=safe_date(dossier.get("Date Acompte 4")))
 
+# ✅ CASE ESCROW (corrigée, fonctionnelle)
 dossier["Escrow"] = st.checkbox("Escrow ?", value=dossier.get("Escrow", False))
-
 
 # ---------------------------------------------------------
 # 🔹 Statuts
@@ -139,12 +137,6 @@ date_accepte = colT2.date_input("Date acceptation", value=safe_date(dossier.get(
 date_refuse = colT3.date_input("Date refus", value=safe_date(dossier.get("Date refus")))
 date_annule = colT4.date_input("Date annulation", value=safe_date(dossier.get("Date annulation")))
 date_rfe = colT5.date_input("Date RFE", value=safe_date(dossier.get("Date reclamation")))
-
-
-import datetime
-
-st.subheader("💰 Escrow – Historique & Mise à jour")
-
 
 # ---------------------------------------------------------
 # 🔹 Sauvegarde
@@ -179,6 +171,7 @@ if st.button("💾 Enregistrer"):
         "Date annulation": date_annule,
         "RFE": rfe,
         "Date reclamation": date_rfe,
+        "Escrow": dossier["Escrow"],  # ✅ IMPORTANT : ajout correct !
     }
 
     db["clients"] = df.to_dict(orient="records")
@@ -187,7 +180,7 @@ if st.button("💾 Enregistrer"):
     st.rerun()
 
 # ---------------------------------------------------------
-# 🔥 SUPPRESSION
+# 🔥 Suppression
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🗑️ Supprimer ce dossier")
