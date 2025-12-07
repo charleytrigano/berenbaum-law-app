@@ -18,82 +18,22 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# CORRECTION : conversion Escrow en bool propre
+# CORRECTION : conversion Escrow en bool strict
 # ---------------------------------------------------------
-df["Escrow"] = df.get("Escrow", False).apply(lambda x: True if x in [True, 1, "1"] else False)
+def normalize_escrow(x):
+    if isinstance(x, bool):
+        return x
+    if isinstance(x, (int, float)):
+        return x == 1
+    if isinstance(x, str):
+        return x.strip().lower() in ["true", "1", "yes"]
+    return False
 
-# Garder uniquement ceux cochés
-escrow_en_cours = df[df["Escrow"] == True]
-
-st.dataframe(escrow_en_cours)
-# DEBUG : afficher valeur brute
-st.write("Valeur ESCROW brute :", df[["Dossier N", "Escrow"]])
-
-
-# ---------------------------------------------------------
-# SECURISATION DES COLONNES
-# ---------------------------------------------------------
-
-# Dossier envoye → 0/1
-df["Dossier envoye"] = pd.to_numeric(df.get("Dossier envoye", 0), errors="coerce").fillna(0).astype(int)
-
-# Escrow réclamé
-df["Escrow_reclame"] = df.get("Escrow_reclame", False)
-df["Escrow_reclame"] = df["Escrow_reclame"].replace({"": False, "0": False, "1": True})
-df["Escrow_reclame"] = df["Escrow_reclame"].fillna(False).astype(bool)
-
-# Montants
-df["Acompte 1"] = pd.to_numeric(df.get("Acompte 1", 0), errors="coerce").fillna(0)
+df["Escrow"] = df.get("Escrow", False).apply(normalize_escrow)
 
 # ---------------------------------------------------------
-# LOGIQUE AUTOMATIQUE ESCROW
-# ---------------------------------------------------------
-
-# Créer la colonne si absente
-if "Escrow_a_reclamer" not in df.columns:
-    df["Escrow_a_reclamer"] = False
-
-# Dossier envoyé -> l’escrow passe à réclamer
-df.loc[df["Dossier envoye"] == 1, "Escrow"] = False
-df.loc[df["Dossier envoye"] == 1, "Escrow_a_reclamer"] = True
-
-df["Escrow_a_reclamer"] = df["Escrow_a_reclamer"].replace({"": False, "0": False, "1": True})
-df["Escrow_a_reclamer"] = df["Escrow_a_reclamer"].fillna(False).astype(bool)
-
-# ---------------------------------------------------------
-# TABLEAUX
+# TABLEAU PRINCIPAL
 # ---------------------------------------------------------
 st.subheader("📌 Escrow en cours")
-escrow_cours = df[(df["Escrow"] == True) & (df["Escrow_reclame"] == False)]
+escrow_cours = df[df["Escrow"] == True]
 st.dataframe(escrow_cours, use_container_width=True)
-
-st.subheader("📌 Escrow à réclamer")
-escrow_reclamer = df[(df["Escrow_a_reclamer"] == True) & (df["Escrow_reclame"] == False)]
-st.dataframe(escrow_reclamer, use_container_width=True)
-
-st.subheader("📌 Escrow réclamé")
-escrow_reclame = df[df["Escrow_reclame"] == True]
-st.dataframe(escrow_reclame, use_container_width=True)
-
-# ---------------------------------------------------------
-# ACTION : RECLAMER L’ESCROW
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📝 Réclamer un Escrow")
-
-liste_dossiers = escrow_reclamer["Dossier N"].tolist()
-
-if len(liste_dossiers) == 0:
-    st.info("Aucun Escrow à réclamer.")
-else:
-    choix = st.selectbox("Sélectionner un dossier à réclamer :", liste_dossiers)
-
-    if st.button("Réclamer maintenant ✅", type="primary"):
-        df.loc[df["Dossier N"] == choix, "Escrow_a_reclamer"] = False
-        df.loc[df["Dossier N"] == choix, "Escrow_reclame"] = True
-
-        db["clients"] = df.to_dict(orient="records")
-        save_database(db)
-
-        st.success(f"✔ Escrow du dossier {choix} marqué comme réclamé.")
-        st.rerun()
