@@ -192,7 +192,7 @@ if st.button("💾 Enregistrer"):
 
     st.success("Dossier mis à jour ✔")
     st.rerun()
-    st.stop()
+    stop()
 
 # ---------------------------------------------------------
 # 🔥 SUPPRESSION
