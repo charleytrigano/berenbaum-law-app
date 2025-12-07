@@ -181,8 +181,14 @@ if st.button("💾 Enregistrer"):
     # --- 🔥 ENREGISTRER ESCROW CORRECTEMENT ---
     df.loc[idx, "Escrow"] = bool(dossier["Escrow"])
 
-    db["clients"] = df.to_dict(orient="records")
+    db["clients"] = df.to_dict(orient="records")st.write("🚨 Valeur ESCROW AVANT SAUVEGARDE :", dossier["Escrow"], type(dossier["Escrow"]))
+
+    st.write("🚨 Valeur ESCROW AVANT SAUVEGARDE :", dossier["Escrow"], type(dossier["Escrow"]))
+
     save_database(db)
+
+    st.write("🚨 Valeur ESCROW DANS LA BASE APRÈS SAVE :", df.loc[idx, "Escrow"])
+
 
     st.success("Dossier mis à jour ✔")
     st.rerun()
