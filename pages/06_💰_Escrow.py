@@ -53,7 +53,7 @@ df.loc[df["Dossier envoye"] == 1, "Escrow_a_reclamer"] = True
 # ---------------------------------------------------------
 st.markdown("## 📌 Escrow en cours")
 
-escrow_cours = df[(df["Escrow"] == TRUE) & (df["Escrow_reclame"] == False)]
+escrow_cours = df[(df["Escrow"] == True) & (df["Escrow_reclame"] == False)]
 st.dataframe(escrow_cours, use_container_width=TRUE)
 
 # Total
