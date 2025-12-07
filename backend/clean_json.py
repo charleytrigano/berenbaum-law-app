@@ -15,15 +15,18 @@ def clean_database(db):
         if "Sous-catégories" in c:
             c["Sous-categories"] = c.pop("Sous-catégories")
 
-        # Correction automatique des valeurs d'Escrow
-        # Si la valeur est "", None, NaN → on passe à False
+        # SUPPRIMER définirivement la colonne Escrow_final
+        if "Escrow_final" in c:
+            c.pop("Escrow_final")
+
+        # Corriger Escrow : "" / None / NaN → False
         if "Escrow" in c:
             if c["Escrow"] in ["", None] or (isinstance(c["Escrow"], float) and pd.isna(c["Escrow"])):
                 c["Escrow"] = False
 
-        # Préserver les booléens, nettoyer uniquement les autres types
+        # Préserver booléens, nettoyer AUTRES colonnes uniquement
         for k, v in list(c.items()):
-            if isinstance(v, bool):     # Ne pas toucher les bool
+            if isinstance(v, bool):
                 continue
             if pd.isna(v) or v is None:
                 c[k] = ""
