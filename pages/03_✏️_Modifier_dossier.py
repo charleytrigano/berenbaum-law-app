@@ -52,7 +52,7 @@ esc = dossier.get("Escrow", False)
 
 # Convertir toute forme en bool propre
 if isinstance(esc, str):
-    esc = esc.strip().lower() in ["true", "1", "yes"]
+    esc = esc.strip().lower() in ["True", "1", "yes"]
 elif isinstance(esc, (int, float)):
     esc = (esc == 1)
 
