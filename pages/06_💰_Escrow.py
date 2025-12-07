@@ -19,6 +19,7 @@ df = pd.DataFrame(clients)
 df["Escrow"] = df.get("Escrow", False).apply(
     lambda x: True if x in [True, 1, "1"] else False
 )
+st.write("VALEUR ESCROW LUE PAR ESCROW.PY :", df[["Dossier N", "Escrow"]])
 
 
 # ---------------------------------------------------------
