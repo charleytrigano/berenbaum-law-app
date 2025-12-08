@@ -1,58 +1,89 @@
 import pandas as pd
 
+# Colonnes autorisées et normalisées
+VALID_COLUMNS = {
+    "Dossier N": None,
+    "Nom": "",
+    "Date": "",
+    "Categories": "",
+    "Sous-categories": "",
+    "Visa": "",
+    "Montant honoraires (US $)": 0.0,
+    "Autres frais (US $)": 0.0,
+    "Acompte 1": 0.0,
+    "Acompte 2": 0.0,
+    "Acompte 3": 0.0,
+    "Acompte 4": 0.0,
+    "Date Acompte 1": "",
+    "Date Acompte 2": "",
+    "Date Acompte 3": "",
+    "Date Acompte 4": "",
+    "mode de paiement": "",
+    "Escrow": False,
+    "Escrow_a_reclamer": False,
+    "Escrow_reclame": False,
+    "Dossier_envoye": False,
+    "Date envoi": "",
+    "Dossier accepte": False,
+    "Date acceptation": "",
+    "Dossier refuse": False,
+    "Date refus": "",
+    "Dossier Annule": False,
+    "Date annulation": "",
+    "RFE": False,
+    "Date reclamation": "",
+}
+
+def normalize_bool(value):
+    """Nettoyage strict des valeurs bool."""
+    if isinstance(value, bool):
+        return value
+    if str(value).strip().lower() in ["true", "1", "yes", "oui"]:
+        return True
+    return False
+
 def clean_database(db):
-    """ Nettoyage complet et unification des colonnes """
-
     cleaned_clients = []
-    for c in db.get("clients", []):
-        c = c.copy()
 
-        # ------------------------------------------------------
-        # Unifier Catégories / Sous-catégories
-        # ------------------------------------------------------
-        if "Catégories" in c:
-            c["Categories"] = c.pop("Catégories")
+    for item in db.get("clients", []):
+        clean = {}
 
-        if "Sous-catégories" in c:
-            c["Sous-categories"] = c.pop("Sous-catégories")
+        # On force toutes les colonnes valides à exister
+        for col, default in VALID_COLUMNS.items():
 
-        # ------------------------------------------------------
-        # Unifier Dossier envoye (PAS D’ACCENT)
-        # ------------------------------------------------------
-        if "Dossier envoyé" in c:  # mauvais champ → supprimer
-            c["Dossier envoye"] = c.pop("Dossier envoyé")
+            if col in item:
+                val = item[col]
 
-        # si pas encore présent
-        if "Dossier envoye" not in c:
-            c["Dossier envoye"] = False
+                # Booléens
+                if isinstance(default, bool):
+                    val = normalize_bool(val)
 
-        # ------------------------------------------------------
-        # Nettoyage valeurs None / NaN
-        # ------------------------------------------------------
-        for k, v in list(c.items()):
-            if v is None:
-                c[k] = ""
-            elif isinstance(v, float) and pd.isna(v):
-                c[k] = ""
+                # Nombres
+                elif isinstance(default, float):
+                    try:
+                        val = float(val)
+                    except:
+                        val = default
 
-        cleaned_clients.append(c)
+                # Dates : on laisse tel quel
+                elif isinstance(default, str) and "Date" in col:
+                    val = val if val else ""
 
-    # VISA
-    cleaned_visa = []
-    for v in db.get("visa", []):
-        v = v.copy()
+                # Texte
+                elif isinstance(default, str):
+                    val = val if val else ""
 
-        if "Catégories" in v:
-            v["Categories"] = v.pop("Catégories")
+                clean[col] = val
 
-        if "Sous-catégories" in v:
-            v["Sous-categories"] = v.pop("Sous-catégories")
+            else:
+                # Colonne manquante → valeur par défaut
+                clean[col] = default
 
-        cleaned_visa.append(v)
+        cleaned_clients.append(clean)
 
     return {
         "clients": cleaned_clients,
-        "visa": cleaned_visa,
+        "visa": db.get("visa", []),
         "escrow": db.get("escrow", []),
         "compta": db.get("compta", [])
     }
