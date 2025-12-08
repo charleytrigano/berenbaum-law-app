@@ -205,6 +205,14 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     # SAUVEGARDE BASE
     db["clients"] = df.to_dict(orient="records")
+    st.write("DEBUG — Sauvegarde en cours...")
+
+try:
+    save_database(db)
+    st.write("DEBUG — SAUVEGARDE OK")
+except Exception as e:
+    st.write("DEBUG — ERREUR DE SAUVEGARDE :", e)
+
     save_database(db)
 
     st.success("✔ Modifications enregistrées.")
