@@ -14,35 +14,29 @@ clients = db.get("clients", [])
 visa_raw = pd.DataFrame(db.get("visa", []))
 
 # ---------------------------------------------------------
-# UTILITAIRES POUR TROUVER AUTOMATIQUEMENT LES BONNES COLONNES
+# FILTRES SIMPLES ET ROBUSTES
 # ---------------------------------------------------------
-def detect_col(df, possible_names):
-    """Trouve la colonne correcte peu importe l'orthographe ou les accents."""
-    return next((col for col in df.columns if col.strip().lower() in possible_names), None)
 
-# Détection des colonnes
-cat_col      = detect_col(visa_raw, ["categories", "categorie", "catégorie", "category"])
-souscat_col  = detect_col(visa_raw, ["sous-categories", "sous-catégories", "souscategorie", "subcategory"])
-visa_col     = detect_col(visa_raw, ["visa", "type visa", "code visa"])
-
-# Sécurité : si une colonne manque → message clair
-if not cat_col or not souscat_col or not visa_col:
-    st.error("❌ ERREUR : Le fichier VISA n’a pas les colonnes nécessaires.\n"
-             f"Trouvé : {list(visa_raw.columns)}")
-    st.stop()
-
-# ---------------------------------------------------------
-# FILTRES LOGIQUES
-# ---------------------------------------------------------
 def get_souscats(df, categorie):
-    return sorted(df[df[cat_col] == categorie][souscat_col].dropna().unique().tolist())
+    return sorted(
+        df[df["Categories"] == categorie]["Sous-categories"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
 
 def get_visas(df, souscat):
-    return sorted(df[df[souscat_col] == souscat][visa_col].dropna().unique().tolist())
+    return sorted(
+        df[df["Sous-categories"] == souscat]["Visa"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
 
 # ---------------------------------------------------------
-# NUMÉRO DOSSIER AUTOMATIQUE
+# NUMÉRO DOSSIER
 # ---------------------------------------------------------
+
 def nouveau_numero():
     nums = []
     for item in clients:
@@ -59,6 +53,7 @@ new_id = nouveau_numero()
 # ---------------------------------------------------------
 # FORMULAIRE
 # ---------------------------------------------------------
+
 st.subheader("📄 Informations dossier")
 
 col1, col2, col3 = st.columns(3)
@@ -72,20 +67,22 @@ st.subheader("🧩 Catégorisation")
 colA, colB, colC = st.columns(3)
 
 # Catégories
-cat_list = ["Choisir..."] + sorted(visa_raw[cat_col].dropna().unique().tolist())
+cat_list = ["Choisir..."] + sorted(visa_raw["Categories"].dropna().unique().tolist())
 categorie = colA.selectbox("Catégorie", cat_list)
 
-# Sous-catégories dépendantes
-souscats = ["Choisir..."]
+# Sous-catégories
 if categorie != "Choisir...":
-    souscats += get_souscats(visa_raw, categorie)
+    souscats = ["Choisir..."] + get_souscats(visa_raw, categorie)
+else:
+    souscats = ["Choisir..."]
 
 sous_categorie = colB.selectbox("Sous-catégorie", souscats)
 
-# Visa dépendant
-visa_list = ["Choisir..."]
+# Visa
 if sous_categorie != "Choisir...":
-    visa_list += get_visas(visa_raw, sous_categorie)
+    visa_list = ["Choisir..."] + get_visas(visa_raw, sous_categorie)
+else:
+    visa_list = ["Choisir..."]
 
 visa = colC.selectbox("Visa", visa_list)
 
@@ -114,7 +111,7 @@ mode_paiement = st.selectbox("Mode de paiement", ["", "Chèque", "CB", "Virement
 escrow = st.checkbox("Mettre en Escrow")
 
 # ---------------------------------------------------------
-# VALIDATION & ENREGISTREMENT
+# ENREGISTREMENT
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer le dossier", type="primary"):
 
@@ -143,7 +140,7 @@ if st.button("💾 Enregistrer le dossier", type="primary"):
         "Acompte 4": a4,
         "mode de paiement": mode_paiement,
 
-        # ESCROW EN 3 ÉTATS — OPTION B
+        # ESCROW EN 3 ÉTATS
         "Escrow": bool(escrow),
         "Escrow_a_reclamer": False,
         "Escrow_reclame": False,
