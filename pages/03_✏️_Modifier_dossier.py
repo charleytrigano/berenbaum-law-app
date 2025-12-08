@@ -138,11 +138,13 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Date Acompte 3"] = da3
     df.loc[idx, "Date Acompte 4"] = da4
 
-    df.loc[idx, "Dossier envoye"] = envoye
-    df.loc[idx, "Dossier accepte"] = accepte
-    df.loc[idx, "Dossier refuse"] = refuse
-    df.loc[idx, "Dossier Annule"] = annule
-    df.loc[idx, "RFE"] = rfe
+    # -------- STATUTS --------
+    df.loc[idx, "Dossier envoye"] = True if envoye else False
+    df.loc[idx, "Dossier accepte"] = True if accepte else False
+    df.loc[idx, "Dossier refuse"] = True if refuse else False
+    df.loc[idx, "Dossier Annule"] = True if annule else False
+    df.loc[idx, "RFE"] = True if rfe else False
+
 
     df.loc[idx, "Date envoi"] = date_envoye
     df.loc[idx, "Date acceptation"] = date_accepte
