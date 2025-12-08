@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import load_database, save_database
+from backend.dropbox_utils import load_database, save_database, get_dbx
 
 st.set_page_config(page_title="Modifier un dossier", page_icon="✏️", layout="wide")
 st.title("✏️ Modifier un dossier")
@@ -9,8 +9,6 @@ st.title("✏️ Modifier un dossier")
 # 🔹 Chargement base
 # ---------------------------------------------------------
 db = load_database()
-st.write("JSON PATH utilisé :", st.secrets["paths"]["DROPBOX_JSON"])
-
 clients = db.get("clients", [])
 
 if not clients:
@@ -140,7 +138,6 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
-    # Infos générales
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -186,15 +183,18 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         df.loc[idx, "Escrow"] = bool(escrow_checkbox)
 
     # ---------------------------------------------------------
-    # SAUVEGARDE
+    # 🔥 SAUVEGARDE JSON
     # ---------------------------------------------------------
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
-    dbx = get_dbx()
-metadata, res = dbx.files_download(st.secrets["paths"]["DROPBOX_JSON"])
-st.write("JSON APRES SAUVEGARDE :")
-st.json(res.content.decode("utf-8"))
 
+    # ---------------------------------------------------------
+    # 🔍 DEBUG JSON APRES SAUVEGARDE
+    # ---------------------------------------------------------
+    dbx = get_dbx()
+    metadata, res = dbx.files_download(st.secrets["paths"]["DROPBOX_JSON"])
+    st.write("JSON APRES SAUVEGARDE :")
+    st.json(res.content.decode("utf-8"))
 
     st.success("✔ Modifications enregistrées.")
     st.rerun()
