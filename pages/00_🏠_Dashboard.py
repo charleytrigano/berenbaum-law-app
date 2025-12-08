@@ -1,161 +1,104 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from utils.visa_filters import clean_visa_df
+
+st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
+st.title("🏠 Dashboard — Berenbaum Law App")
 
 # ---------------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
-st.title("📊 Tableau de bord – Berenbaum Law App")
-
-# ---------------------------------------------------------
-# LOAD DATABASE
+# 🔹 Charger la base JSON
 # ---------------------------------------------------------
 db = load_database()
-clients = db.get("clients", [])
-visa_raw = pd.DataFrame(db.get("visa", []))
+clients = pd.DataFrame(db.get("clients", []))
 
-if not clients:
-    st.warning("Aucun dossier trouvé dans Dropbox.")
+if clients.empty:
+    st.warning("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients)
+# Convertir dates
+clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
 
 # ---------------------------------------------------------
-# NORMALISATION VISA VIA FONCTION OFFICIELLE
+# 🔹 KPIs
 # ---------------------------------------------------------
-visa_table = clean_visa_df(visa_raw)
+total_dossiers = len(clients)
+dossiers_envoyes = clients["Dossier envoye"].sum()
+escrow_en_cours = clients["Escrow"].sum()
+escrow_a_reclamer = clients["Escrow_a_reclamer"].sum()
+escrow_reclame = clients["Escrow_reclame"].sum()
 
-# ---------------------------------------------------------
-# NORMALISATION CLIENTS
-# ---------------------------------------------------------
-df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
+col1, col2, col3, col4, col5 = st.columns(5)
 
-numeric_cols = [
-    "Montant honoraires (US $)",
-    "Autres frais (US $)",
-    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
-]
+col1.metric("📁 Total dossiers", total_dossiers)
+col2.metric("📨 Dossiers envoyés", dossiers_envoyes)
+col3.metric("💰 Escrow en cours", escrow_en_cours)
+col4.metric("🟧 Escrow à réclamer", escrow_a_reclamer)
+col5.metric("🟩 Escrow réclamé", escrow_reclame)
 
-for col in numeric_cols:
-    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
-
-df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
-df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
-df["Année"] = df["Date"].dt.year
-
-# ---------------------------------------------------------
-# KPI STYLE
-# ---------------------------------------------------------
-st.markdown("""
-<style>
-div[data-testid="stMetricValue"] {
-    font-size: 18px !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# KPI FUNCTION
-# ---------------------------------------------------------
-def display_kpis(data):
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    k1.metric("Dossiers", len(data))
-    k2.metric("Honoraires", f"${data['Montant honoraires (US $)'].sum():,.0f}")
-    k3.metric("Autres frais", f"${data['Autres frais (US $)'].sum():,.0f}")
-    k4.metric("Facturé", f"${data['Total facturé'].sum():,.0f}")
-    k5.metric("Encaissé", f"${data['Montant encaissé'].sum():,.0f}")
-    k6.metric("Solde", f"${data['Solde'].sum():,.0f}")
-
-# ---------------------------------------------------------
-# KPI (non filtrés)
-# ---------------------------------------------------------
-st.subheader("📌 Indicateurs")
-display_kpis(df)
 st.markdown("---")
 
 # ---------------------------------------------------------
-# FILTRES
+# 🔹 Alerte : Escrow à réclamer
 # ---------------------------------------------------------
-st.subheader("🎛️ Filtres")
-
-colA, colB, colC, colD, colE, colF = st.columns(6)
-
-# Liste réelle de catégories (sans les sous-catégories)
-real_categories = sorted(
-    set(visa_table["Categories"]) -
-    set(visa_table["Sous-categories"])
-)
-
-cat_list = ["Toutes"] + real_categories
-cat = colA.selectbox("Catégorie", cat_list)
-
-# Sous-catégories dépendantes
-if cat != "Toutes":
-    souscat_list = ["Toutes"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat, "Sous-categories"].unique()
-    )
-else:
-    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique())
-
-souscat = colB.selectbox("Sous-catégorie", souscat_list)
-
-# Visa dépendant
-if souscat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Sous-categories"] == souscat, "Visa"].unique()
-    )
-elif cat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat, "Visa"].unique()
-    )
-else:
-    visa_list = ["Tous"] + sorted(visa_table["Visa"].unique())
-
-visa_choice = colC.selectbox("Visa", visa_list)
-
-# Année
-annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
-annee = colD.selectbox("Année", annees)
-
-# Dates
-date_debut = colE.date_input("Date début", value=None)
-date_fin = colF.date_input("Date fin", value=None)
+if escrow_a_reclamer > 0:
+    st.warning(f"⚠️ {escrow_a_reclamer} dossier(s) ont un Escrow à réclamer.")
 
 # ---------------------------------------------------------
-# APPLY FILTERS
+# 🔹 Alerte : dossiers sans visa
 # ---------------------------------------------------------
-filtered = df.copy()
-
-if cat != "Toutes":
-    filtered = filtered[filtered["Categories"] == cat]
-
-if souscat != "Toutes":
-    filtered = filtered[filtered["Sous-categories"] == souscat]
-
-if visa_choice != "Tous":
-    filtered = filtered[filtered["Visa"] == visa_choice]
-
-if annee != "Toutes":
-    filtered = filtered[filtered["Année"] == annee]
-
-if date_debut:
-    filtered = filtered[filtered["Date"] >= pd.to_datetime(date_debut)]
-
-if date_fin:
-    filtered = filtered[filtered["Date"] <= pd.to_datetime(date_fin)]
+missing_visa = clients[clients["Visa"] == ""]
+if not missing_visa.empty:
+    st.error(f"❗ {len(missing_visa)} dossier(s) sans Visa renseigné.")
 
 # ---------------------------------------------------------
-# KPI après filtres
+# 🔹 Graphique — Dossiers par mois
 # ---------------------------------------------------------
-st.markdown("### 🔎 Indicateurs après filtres")
-display_kpis(filtered)
+st.subheader("📅 Dossiers créés par mois")
 
-# ---------------------------------------------------------
-# TABLEAU FINAL
-# ---------------------------------------------------------
+clients["Mois"] = clients["Date"].dt.to_period("M").astype(str)
+
+df_month = clients.groupby("Mois").size().reset_index(name="Nombre")
+
+st.line_chart(df_month, x="Mois", y="Nombre")
+
 st.markdown("---")
-st.subheader("📋 Dossiers filtrés")
-st.dataframe(filtered, use_container_width=True, height=600)
+
+# ---------------------------------------------------------
+# 🔹 Répartition par Visa
+# ---------------------------------------------------------
+st.subheader("🛂 Répartition des dossiers par type de Visa")
+
+df_visa = clients["Visa"].value_counts().reset_index()
+df_visa.columns = ["Visa", "Nombre"]
+
+st.bar_chart(df_visa, x="Visa", y="Nombre")
+
+st.markdown("---")
+
+# ---------------------------------------------------------
+# 🔹 Répartition par Catégorie
+# ---------------------------------------------------------
+st.subheader("🧩 Répartition par catégorie")
+
+df_cat = clients["Categories"].value_counts().reset_index()
+df_cat.columns = ["Catégorie", "Nombre"]
+
+st.bar_chart(df_cat, x="Catégorie", y="Nombre")
+
+st.markdown("---")
+
+# ---------------------------------------------------------
+# 🔹 Tableau des alertes Escrow
+# ---------------------------------------------------------
+st.subheader("⚠️ Détails : Escrow à réclamer")
+
+if escrow_a_reclamer == 0:
+    st.info("Aucun Escrow à réclamer.")
+else:
+    st.dataframe(
+        clients[clients["Escrow_a_reclamer"] == True][
+            ["Dossier N", "Nom", "Date", "Visa", "Montant honoraires (US $)"]
+        ],
+        use_container_width=True
+    )
+
