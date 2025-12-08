@@ -134,7 +134,7 @@ date_accepte = colT2.date_input("Date acceptation", safe_date(dossier.get("Date 
 date_refuse = colT3.date_input("Date refus", safe_date(dossier.get("Date refus")))
 date_annule = colT4.date_input("Date annulation", safe_date(dossier.get("Date annulation")))
 date_rfe = colT5.date_input("Date RFE", safe_date(dossier.get("Date reclamation")))
-
+ 
 # ---------------------------------------------------------
 # 🔥 SAUVEGARDE
 # ---------------------------------------------------------
@@ -184,6 +184,15 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         df.loc[idx, "Escrow_reclame"] = False
     else:
         df.loc[idx, "Escrow"] = bool(escrow_checkbox)
+
+    st.write("DEBUG — Valeurs écrites :")
+st.write({
+    "Escrow": bool(escrow_checkbox),
+    "Escrow_a_reclamer": False if not envoye else True,
+    "Escrow_reclame": False,
+    "Dossier envoye": bool(envoye),
+})
+
 
     # ---------------------------------------------------------
     # 🔥 SAUVEGARDE JSON
