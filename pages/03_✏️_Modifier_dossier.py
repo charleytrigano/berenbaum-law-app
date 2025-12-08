@@ -28,7 +28,7 @@ def normalize_bool(x):
         return True
     return False
 
-for col in ["Dossier envoye", "Dossier envoyé"]:
+for col in ["Dossier envoye"]:
     if col not in df.columns:
         df[col] = False
     df[col] = df[col].apply(normalize_bool)
@@ -119,7 +119,6 @@ envoye = colS1.checkbox(
     value=normalize_bool(dossier.get("Dossier envoye", False))
 )
 
-
 accepte = colS2.checkbox("Dossier accepté", normalize_bool(dossier.get("Dossier accepte", False)))
 refuse = colS3.checkbox("Dossier refusé", normalize_bool(dossier.get("Dossier refuse", False)))
 annule = colS4.checkbox("Dossier annulé", normalize_bool(dossier.get("Dossier Annule", False)))
@@ -160,7 +159,6 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     # STATUTS
     df.loc[idx, "Dossier envoye"] = bool(envoye)
-    df.loc[idx, "Dossier envoye"] = bool(envoye)
 
     df.loc[idx, "Dossier accepte"] = bool(accepte)
     df.loc[idx, "Dossier refuse"] = bool(refuse)
@@ -188,14 +186,6 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     # ---------------------------------------------------------
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
-
-    # ---------------------------------------------------------
-    # 🔍 DEBUG JSON APRES SAUVEGARDE
-    # ---------------------------------------------------------
-    dbx = get_dbx()
-    metadata, res = dbx.files_download(st.secrets["paths"]["DROPBOX_JSON"])
-    st.write("JSON APRES SAUVEGARDE :")
-    st.json(res.content.decode("utf-8"))
 
     st.success("✔ Modifications enregistrées.")
     st.rerun()
