@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
-from utils.visa_filters import clean_visa_df, get_souscats, get_visas
 
 st.set_page_config(page_title="Nouveau dossier", page_icon="➕", layout="wide")
 st.title("➕ Nouveau dossier")
@@ -11,19 +10,46 @@ st.title("➕ Nouveau dossier")
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
+
 visa_raw = pd.DataFrame(db.get("visa", []))
-visa_table = clean_visa_df(visa_raw)
 
 # ---------------------------------------------------------
-# FONCTION : Génération automatique du numéro
+# UTILITAIRES POUR TROUVER AUTOMATIQUEMENT LES BONNES COLONNES
+# ---------------------------------------------------------
+def detect_col(df, possible_names):
+    """Trouve la colonne correcte peu importe l'orthographe ou les accents."""
+    return next((col for col in df.columns if col.strip().lower() in possible_names), None)
+
+# Détection des colonnes
+cat_col      = detect_col(visa_raw, ["categories", "categorie", "catégorie", "category"])
+souscat_col  = detect_col(visa_raw, ["sous-categories", "sous-catégories", "souscategorie", "subcategory"])
+visa_col     = detect_col(visa_raw, ["visa", "type visa", "code visa"])
+
+# Sécurité : si une colonne manque → message clair
+if not cat_col or not souscat_col or not visa_col:
+    st.error("❌ ERREUR : Le fichier VISA n’a pas les colonnes nécessaires.\n"
+             f"Trouvé : {list(visa_raw.columns)}")
+    st.stop()
+
+# ---------------------------------------------------------
+# FILTRES LOGIQUES
+# ---------------------------------------------------------
+def get_souscats(df, categorie):
+    return sorted(df[df[cat_col] == categorie][souscat_col].dropna().unique().tolist())
+
+def get_visas(df, souscat):
+    return sorted(df[df[souscat_col] == souscat][visa_col].dropna().unique().tolist())
+
+# ---------------------------------------------------------
+# NUMÉRO DOSSIER AUTOMATIQUE
 # ---------------------------------------------------------
 def nouveau_numero():
     nums = []
     for item in clients:
         try:
-            n = float(item.get("Dossier N", 0))
+            n = int(float(item.get("Dossier N", 0)))
             if n > 0:
-                nums.append(int(n))
+                nums.append(n)
         except:
             pass
     return max(nums) + 1 if nums else 13057
@@ -45,18 +71,21 @@ st.subheader("🧩 Catégorisation")
 
 colA, colB, colC = st.columns(3)
 
-cat_list = ["Choisir..."] + sorted(visa_table["Categories"].dropna().unique().tolist())
+# Catégories
+cat_list = ["Choisir..."] + sorted(visa_raw[cat_col].dropna().unique().tolist())
 categorie = colA.selectbox("Catégorie", cat_list)
 
+# Sous-catégories dépendantes
 souscats = ["Choisir..."]
 if categorie != "Choisir...":
-    souscats += get_souscats(visa_table, categorie)
+    souscats += get_souscats(visa_raw, categorie)
 
 sous_categorie = colB.selectbox("Sous-catégorie", souscats)
 
+# Visa dépendant
 visa_list = ["Choisir..."]
 if sous_categorie != "Choisir...":
-    visa_list += get_visas(visa_table, sous_categorie)
+    visa_list += get_visas(visa_raw, sous_categorie)
 
 visa = colC.selectbox("Visa", visa_list)
 
@@ -98,17 +127,14 @@ if st.button("💾 Enregistrer le dossier", type="primary"):
         st.stop()
 
     new_entry = {
-        # -------- IDENTITÉ ----------
         "Dossier N": new_id,
         "Nom": nom,
         "Date": str(date_dossier),
 
-        # -------- VISA --------------
         "Categories": categorie,
         "Sous-categories": sous_categorie,
         "Visa": visa,
 
-        # -------- FINANCES ----------
         "Montant honoraires (US $)": montant_hon,
         "Autres frais (US $)": autres_frais,
         "Acompte 1": a1,
@@ -117,12 +143,12 @@ if st.button("💾 Enregistrer le dossier", type="primary"):
         "Acompte 4": a4,
         "mode de paiement": mode_paiement,
 
-        # -------- ESCROW SYSTEME COMPLET ----------
+        # ESCROW EN 3 ÉTATS — OPTION B
         "Escrow": bool(escrow),
         "Escrow_a_reclamer": False,
         "Escrow_reclame": False,
 
-        # -------- STATUTS COMPLETS ----------
+        # STATUTS
         "Dossier envoye": 0,
         "Dossier accepte": 0,
         "Dossier refuse": 0,
