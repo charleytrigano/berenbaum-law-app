@@ -1,209 +1,135 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from utils.visa_filters import clean_visa_df
-from components.export_pdf import generate_pdf_from_dataframe
 
 st.set_page_config(page_title="Liste des dossiers", page_icon="📁", layout="wide")
-
-st.title("📁 Liste des dossiers – Analyse & Filtrage avancé")
+st.title("📁 Liste des dossiers")
 
 # ---------------------------------------------------------
-# LOAD DATABASE
+# 🔹 Charger la base JSON
 # ---------------------------------------------------------
 db = load_database()
-clients = db.get("clients", [])
-visa_raw = pd.DataFrame(db.get("visa", []))
+df = pd.DataFrame(db.get("clients", []))
 
-if not clients:
+if df.empty:
     st.warning("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients)
-visa_table = clean_visa_df(visa_raw)
+# ---------------------------------------------------------
+# 🔹 Nettoyage des dates
+# ---------------------------------------------------------
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
 # ---------------------------------------------------------
-# NORMALISATIONS CLIENTS
+# 🔹 Barre de recherche
 # ---------------------------------------------------------
-df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
+st.subheader("🔍 Recherche")
 
-num_cols = [
-    "Montant honoraires (US $)", "Autres frais (US $)",
-    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
-]
+search = st.text_input("Rechercher par nom / visa / numéro", "")
 
-for c in num_cols:
-    df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
-
-df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-df["Montant encaissé"] = df["Acompte 1"] + df["Acompte 2"] + df["Acompte 3"] + df["Acompte 4"]
-df["Solde"] = df["Total facturé"] - df["Montant encaissé"]
-df["Année"] = df["Date"].dt.year
+if search.strip():
+    df = df[
+        df["Nom"].str.contains(search, case=False, na=False)
+        | df["Visa"].str.contains(search, case=False, na=False)
+        | df["Dossier N"].astype(str).str.contains(search)
+    ]
 
 # ---------------------------------------------------------
-# STATUT DOSSIER
+# 🔹 Filtres avancés
 # ---------------------------------------------------------
-def compute_status(row):
-    if str(row.get("RFE", "")).strip() not in ["", "None", "nan"]:
-        return "RFE"
-    if str(row.get("Date annulation", "")).strip():
-        return "Annulé"
-    if str(row.get("Date refus", "")).strip():
-        return "Refusé"
-    if str(row.get("Date acceptation", "")).strip():
-        return "Accepté"
-    if str(row.get("Date envoi", "")).strip():
-        return "Envoyé"
-    return "En cours"
-
-df["Statut"] = df.apply(compute_status, axis=1)
-
-# ---------------------------------------------------------
-# KPI STYLE
-# ---------------------------------------------------------
-st.markdown("""
-<style>
-div[data-testid="stMetricValue"] {
-    font-size: 18px !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# KPI FUNCTION
-# ---------------------------------------------------------
-def show_kpis(df_local):
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Dossiers", len(df_local))
-    c2.metric("Honoraires", f"${df_local['Montant honoraires (US $)'].sum():,.0f}")
-    c3.metric("Autres frais", f"${df_local['Autres frais (US $)'].sum():,.0f}")
-    c4.metric("Facturé", f"${df_local['Total facturé'].sum():,.0f}")
-    c5.metric("Encaissé", f"${df_local['Montant encaissé'].sum():,.0f}")
-    c6.metric("Solde", f"${df_local['Solde'].sum():,.0f}")
-
-st.subheader("📌 Indicateurs (Filtres actifs)")
-show_kpis(df)
-
-# ---------------------------------------------------------
-# FILTRES
-# ---------------------------------------------------------
-st.markdown("---")
 st.subheader("🎛️ Filtres")
 
-colA, colB, colC, colD, colE = st.columns(5)
+col1, col2, col3, col4 = st.columns(4)
 
-# Categories
-cat_list = ["Toutes"] + sorted(visa_table["Categories"].unique())
-cat = colA.selectbox("Catégorie", cat_list)
+# Catégorie
+cats = ["Tous"] + sorted(df["Categories"].dropna().unique().tolist())
+f_cat = col1.selectbox("Catégorie", cats)
 
-# Sous-categories
-if cat != "Toutes":
-    souscat_list = ["Toutes"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat]["Sous-categories"].unique()
-    )
-else:
-    souscat_list = ["Toutes"] + sorted(visa_table["Sous-categories"].unique())
-
-souscat = colB.selectbox("Sous-categorie", souscat_list)
+# Sous-catégorie
+ss = ["Tous"] + sorted(df["Sous-categories"].dropna().unique().tolist())
+f_ss = col2.selectbox("Sous-catégorie", ss)
 
 # Visa
-if souscat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Sous-categories"] == souscat]["Visa"].unique()
-    )
-elif cat != "Toutes":
-    visa_list = ["Tous"] + sorted(
-        visa_table.loc[visa_table["Categories"] == cat]["Visa"].unique()
-    )
-else:
-    visa_list = ["Tous"] + sorted(visa_table["Visa"].unique())
+visas = ["Tous"] + sorted(df["Visa"].dropna().unique().tolist())
+f_visa = col3.selectbox("Visa", visas)
 
-visa_choice = colC.selectbox("Visa", visa_list)
+# Escrow
+f_escrow = col4.selectbox("Escrow", ["Tous", "En cours", "À réclamer", "Réclamé"])
 
-# Année
-annees = ["Toutes"] + sorted(df["Année"].dropna().unique().tolist())
-annee = colD.selectbox("Année", annees)
+# Appliquer filtres
+if f_cat != "Tous":
+    df = df[df["Categories"] == f_cat]
 
-# Statut
-status_filter = colE.selectbox(
-    "Statut dossier",
-    ["Tous", "En cours", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
-)
+if f_ss != "Tous":
+    df = df[df["Sous-categories"] == f_ss]
+
+if f_visa != "Tous":
+    df = df[df["Visa"] == f_visa]
+
+if f_escrow == "En cours":
+    df = df[df["Escrow"] == True]
+elif f_escrow == "À réclamer":
+    df = df[df["Escrow_a_reclamer"] == True]
+elif f_escrow == "Réclamé":
+    df = df[df["Escrow_reclame"] == True]
 
 # ---------------------------------------------------------
-# APPLICATION FILTRES
+# 🔹 Statut visuel
 # ---------------------------------------------------------
-filtered = df.copy()
+def badge(row):
+    if row["Dossier envoye"]:
+        return "🟦 Envoyé"
+    if row["Dossier accepte"]:
+        return "🟩 Accepté"
+    if row["Dossier refuse"]:
+        return "🟥 Refusé"
+    if row["Dossier Annule"]:
+        return "🟧 Annulé"
+    return "⬜ En cours"
 
-if cat != "Toutes":
-    filtered = filtered[filtered["Categories"] == cat]
+df["Statut"] = df.apply(badge, axis=1)
 
-if souscat != "Toutes":
-    filtered = filtered[filtered["Sous-categories"] == souscat]
+# ---------------------------------------------------------
+# 🔹 Escrow : affichage compact
+# ---------------------------------------------------------
+def escrow_status(row):
+    if row["Escrow"]:
+        return "🟡 En cours"
+    if row["Escrow_a_reclamer"]:
+        return "🟠 À réclamer"
+    if row["Escrow_reclame"]:
+        return "🟢 Réclamé"
+    return ""
 
-if visa_choice != "Tous":
-    filtered = filtered[filtered["Visa"] == visa_choice]
+df["Escrow ▶"] = df.apply(escrow_status, axis=1)
 
-if annee != "Toutes":
-    filtered = filtered[filtered["Année"] == annee]
+# ---------------------------------------------------------
+# 🔹 Tableau
+# ---------------------------------------------------------
+st.subheader("📋 Résultats")
 
-if status_filter != "Tous":
-    filtered = filtered[filtered["Statut"] == status_filter]
+show_cols = [
+    "Dossier N",
+    "Nom",
+    "Date",
+    "Categories",
+    "Sous-categories",
+    "Visa",
+    "Statut",
+    "Escrow ▶",
+]
 
-# KPI avec filtres
-st.subheader("📌 Indicateurs filtrés")
-show_kpis(filtered)
+st.dataframe(df[show_cols], use_container_width=True)
 
+# ---------------------------------------------------------
+# 🔹 Sélection d’un dossier pour modification
+# ---------------------------------------------------------
 st.markdown("---")
+st.subheader("✏️ Modifier un dossier")
 
-# ---------------------------------------------------------
-# ACTIONS : EXPORTS & MODIFICATION DOSSIER
-# ---------------------------------------------------------
-st.subheader("📤 Export & Actions")
+liste = df["Dossier N"].astype(int).tolist()
+choix = st.selectbox("Choisir un dossier :", liste)
 
-colX, colY = st.columns(2)
+if st.button("Ouvrir dans Modifier"):
+    st.switch_page("pages/03_✏️_Modifier_dossier.py")
 
-from io import BytesIO
-
-# ---- EXPORT EXCEL ----
-excel_buffer = BytesIO()
-filtered.to_excel(excel_buffer, index=False, engine="openpyxl")
-excel_buffer.seek(0)
-
-colX.download_button(
-    label="📥 Export Excel",
-    data=excel_buffer,
-    file_name="Liste_dossiers.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
-
-# ---- EXPORT PDF ----
-pdf_buffer = generate_pdf_from_dataframe(filtered)
-colY.download_button(
-    label="📄 Export PDF",
-    data=pdf_buffer,
-    file_name="Liste_dossiers.pdf",
-    mime="application/pdf",
-)
-
-st.markdown("---")
-
-# ---------------------------------------------------------
-# TABLEAU AVEC BOUTON "MODIFIER"
-# ---------------------------------------------------------
-st.subheader("📋 Dossiers filtrés")
-
-def add_actions(df_local):
-    df_out = df_local.copy()
-    df_out["Action"] = ""
-    for idx, row in df_out.iterrows():
-        if st.button("✏️ Modifier", key=f"edit_{idx}"):
-            st.session_state["edit_dossier"] = row["Dossier N"]
-            st.switch_page("pages/03_✏️_Modifier_dossier.py")
-    return df_out
-
-st.dataframe(
-    filtered,
-    use_container_width=True,
-    height=650
-)
