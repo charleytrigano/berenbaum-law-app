@@ -37,6 +37,13 @@ def safe_date(value):
     except:
         return None
 
+def normalize_bool(x):
+    if isinstance(x, bool):
+        return x
+    if str(x).lower() in ["1", "true", "yes", "oui"]:
+        return True
+    return False
+
 # ---------------------------------------------------------
 # 🔹 Normalisation numéros
 # ---------------------------------------------------------
@@ -50,24 +57,15 @@ dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
 # ---------------------------------------------------------
 # 🔹 Normalisation ESCROW (3 États)
 # ---------------------------------------------------------
-def normalize_bool(x):
-    if isinstance(x, bool):
-        return x
-    if x in ["1", 1, "true", "True", "yes", "YES", "Oui"]:
-        return True
-    return False
-
-# Garantir les colonnes
 for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
     if col not in dossier:
         dossier[col] = False
 
-# Normaliser
 dossier["Escrow"] = normalize_bool(dossier.get("Escrow"))
 dossier["Escrow_a_reclamer"] = normalize_bool(dossier.get("Escrow_a_reclamer"))
 dossier["Escrow_reclame"] = normalize_bool(dossier.get("Escrow_reclame"))
 
-# Si déjà envoyé → Escrow en cours impossible
+# Si dossier envoyé → Escrow forcé à "à réclamer"
 if normalize_bool(dossier.get("Dossier envoye", False)):
     dossier["Escrow"] = False
     dossier["Escrow_a_reclamer"] = True
@@ -77,22 +75,19 @@ if normalize_bool(dossier.get("Dossier envoye", False)):
 # ---------------------------------------------------------
 st.subheader(f"Dossier n° {selected}")
 
-# Infos générales
 col1, col2, col3 = st.columns(3)
 nom = col1.text_input("Nom", dossier.get("Nom", ""))
 date_dossier = col2.date_input("Date", safe_date(dossier.get("Date")))
 categories = col3.text_input("Catégories", dossier.get("Categories", ""))
 
-# Visa
-colA, colB = st.columns(2)
-sous_categories = colA.text_input("Sous-catégories", dossier.get("Sous-categories", ""))
-visa = colB.text_input("Visa", dossier.get("Visa", ""))
+col4, col5 = st.columns(2)
+sous_categories = col4.text_input("Sous-catégories", dossier.get("Sous-categories", ""))
+visa = col5.text_input("Visa", dossier.get("Visa", ""))
 
-# Facturation
-colF1, colF2, colF3 = st.columns(3)
-honoraires = colF1.number_input("Montant honoraires (US $)", value=to_float(dossier.get("Montant honoraires (US $)", 0)))
-frais = colF2.number_input("Autres frais (US $)", value=to_float(dossier.get("Autres frais (US $)", 0)))
-colF3.number_input("Total facturé", value=honoraires + frais, disabled=True)
+col6, col7, col8 = st.columns(3)
+honoraires = col6.number_input("Montant honoraires (US $)", value=to_float(dossier.get("Montant honoraires (US $)", 0)))
+frais = col7.number_input("Autres frais (US $)", value=to_float(dossier.get("Autres frais (US $)", 0)))
+col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
 
 # ---------------------------------------------------------
 # Acomptes
@@ -142,7 +137,7 @@ date_annule = colT4.date_input("Date annulation", safe_date(dossier.get("Date an
 date_rfe = colT5.date_input("Date RFE", safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# LOGIQUE ESCROW AUTOMATIQUE
+# LOGIQUE AUTOMATIQUE ESCROW
 # ---------------------------------------------------------
 if envoye:
     escrow_flag = False
@@ -182,9 +177,11 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Escrow"] = bool(escrow_flag)
 
     if not escrow_flag:
+        # On désactive totalement l'Escrow
         df.loc[idx, "Escrow_a_reclamer"] = False
         df.loc[idx, "Escrow_reclame"] = False
     else:
+        # On garde les états existants
         df.loc[idx, "Escrow_a_reclamer"] = bool(escrow_a_reclamer_flag)
         df.loc[idx, "Escrow_reclame"] = bool(escrow_reclame_flag)
 
