@@ -1,6 +1,6 @@
 import pandas as pd
 
-# Colonnes autorisées et normalisées
+# Colonnes standardisées
 VALID_COLUMNS = {
     "Dossier N": None,
     "Nom": "",
@@ -34,13 +34,14 @@ VALID_COLUMNS = {
     "Date reclamation": "",
 }
 
-def normalize_bool(value):
-    """Nettoyage strict des valeurs bool."""
-    if isinstance(value, bool):
-        return value
-    if str(value).strip().lower() in ["true", "1", "yes", "oui"]:
+
+def normalize_bool(v):
+    if isinstance(v, bool):
+        return v
+    if str(v).strip().lower() in ["1", "true", "yes", "oui"]:
         return True
     return False
+
 
 def clean_database(db):
     cleaned_clients = []
@@ -48,35 +49,33 @@ def clean_database(db):
     for item in db.get("clients", []):
         clean = {}
 
-        # On force toutes les colonnes valides à exister
         for col, default in VALID_COLUMNS.items():
 
             if col in item:
                 val = item[col]
 
-                # Booléens
+                # bool
                 if isinstance(default, bool):
                     val = normalize_bool(val)
 
-                # Nombres
+                # float
                 elif isinstance(default, float):
                     try:
                         val = float(val)
                     except:
                         val = default
 
-                # Dates : on laisse tel quel
+                # date (laisser string)
                 elif isinstance(default, str) and "Date" in col:
                     val = val if val else ""
 
-                # Texte
+                # text
                 elif isinstance(default, str):
                     val = val if val else ""
 
                 clean[col] = val
 
             else:
-                # Colonne manquante → valeur par défaut
                 clean[col] = default
 
         cleaned_clients.append(clean)
