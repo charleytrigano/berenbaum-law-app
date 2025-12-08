@@ -13,10 +13,11 @@ clients = db.get("clients", [])
 
 if not clients:
     st.error("Aucun dossier trouvé.")
-   
+    st.stop()
+
 df = pd.DataFrame(clients)
 DOSSIER_COL = "Dossier N"
-    stop()
+
 # ---------------------------------------------------------
 # 🔹 Utils
 # ---------------------------------------------------------
@@ -47,13 +48,14 @@ def normalize_bool(x):
 # ---------------------------------------------------------
 df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
 liste = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
+
 selected = st.selectbox("Sélectionner un dossier :", liste)
 
 dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
 
-#----------------------------------------------------------
+# ---------------------------------------------------------
 # 🔹 Normalisation Escrow
-#----------------------------------------------------------
+# ---------------------------------------------------------
 for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
     if col not in dossier:
         dossier[col] = False
@@ -85,6 +87,7 @@ col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
 # Acomptes
 # ---------------------------------------------------------
 st.subheader("🏦 Acomptes")
+
 colA1, colA2, colA3, colA4 = st.columns(4)
 ac1 = colA1.number_input("Acompte 1", value=to_float(dossier.get("Acompte 1")))
 ac2 = colA2.number_input("Acompte 2", value=to_float(dossier.get("Acompte 2")))
@@ -98,7 +101,7 @@ da3 = colD3.date_input("Date Acompte 3", safe_date(dossier.get("Date Acompte 3")
 da4 = colD4.date_input("Date Acompte 4", safe_date(dossier.get("Date Acompte 4")))
 
 # ---------------------------------------------------------
-# ESCROW
+# Escrow
 # ---------------------------------------------------------
 st.subheader("💰 Escrow")
 
@@ -107,7 +110,7 @@ escrow_a_reclamer_flag = dossier["Escrow_a_reclamer"]
 escrow_reclame_flag = dossier["Escrow_reclame"]
 
 # ---------------------------------------------------------
-# STATUTS
+# Statuts
 # ---------------------------------------------------------
 st.subheader("📦 Statuts du dossier")
 
@@ -126,7 +129,7 @@ date_annule = colT4.date_input("Date annulation", safe_date(dossier.get("Date an
 date_rfe = colT5.date_input("Date RFE", safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# ➕ METTRE EN ESCROW EN COURS
+# Bouton : Mettre en Escrow EN COURS
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("➕ Mettre ce dossier en Escrow *en cours*")
@@ -145,18 +148,9 @@ if st.button("Mettre en Escrow en cours"):
     st.rerun()
 
 # ---------------------------------------------------------
-# SAUVEGARDE DES MODIFICATIONS
+# Bouton : Enregistrer les modifications
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications", type="primary"):
-
-    st.write("DEBUG — Avant mise à jour :", df[df[DOSSIER_COL] == selected])
-    
-
-    # (Ton code de sauvegarde ici)
-
-    st.write("DEBUG — Après mise à jour :", df[df[DOSSIER_COL] == selected])
-
-    
 
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
@@ -210,7 +204,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     st.rerun()
 
 # ---------------------------------------------------------
-# ❌ SUPPRESSION COMPLÈTE DE L’ESCROW
+# Bouton : SUPPRIMER l’Escrow
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🛑 Supprimer totalement l’Escrow pour ce dossier")
@@ -229,7 +223,7 @@ if st.button("Supprimer l’Escrow"):
     st.rerun()
 
 # ---------------------------------------------------------
-# SUPPRESSION DU DOSSIER
+# Bouton : SUPPRIMER LE DOSSIER
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🗑️ Supprimer définitivement ce dossier")
