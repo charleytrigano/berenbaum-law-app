@@ -116,8 +116,9 @@ colS1, colS2, colS3, colS4, colS5 = st.columns(5)
 
 envoye = colS1.checkbox(
     "Dossier envoyé",
-    value=normalize_bool(dossier.get("Dossier envoye", dossier.get("Dossier envoyé", False)))
+    value=normalize_bool(dossier.get("Dossier envoye", False))
 )
+
 
 accepte = colS2.checkbox("Dossier accepté", normalize_bool(dossier.get("Dossier accepte", False)))
 refuse = colS3.checkbox("Dossier refusé", normalize_bool(dossier.get("Dossier refuse", False)))
@@ -159,7 +160,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     # STATUTS
     df.loc[idx, "Dossier envoye"] = bool(envoye)
-    df.loc[idx, "Dossier envoyé"] = bool(envoye)
+    df.loc[idx, "Dossier envoye"] = bool(envoye)
 
     df.loc[idx, "Dossier accepte"] = bool(accepte)
     df.loc[idx, "Dossier refuse"] = bool(refuse)
