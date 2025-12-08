@@ -6,7 +6,7 @@ st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
 st.title("🏠 Dashboard — Berenbaum Law App")
 
 # ---------------------------------------------------------
-# 🔹 Chargement de la base
+# 🔹 Chargement DB
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
@@ -18,9 +18,9 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# 🔹 Colonnes obligatoires
+# 🔹 Normalisation colonnes
 # ---------------------------------------------------------
-REQUIRED_BOOL_COLS = [
+BOOL_COLS = [
     "Dossier envoye",
     "Dossier accepte",
     "Dossier refuse",
@@ -30,63 +30,124 @@ REQUIRED_BOOL_COLS = [
     "Escrow_reclame",
 ]
 
-for col in REQUIRED_BOOL_COLS:
+for col in BOOL_COLS:
     if col not in df.columns:
         df[col] = False
 
-# Normalisation booléens
 def normalize_bool(x):
     if isinstance(x, bool):
         return x
-    if str(x).lower() in ["true", "1", "1.0", "yes", "oui"]:
+    if str(x).lower() in ["1", "true", "yes", "oui"]:
         return True
     return False
 
-for col in REQUIRED_BOOL_COLS:
+for col in BOOL_COLS:
     df[col] = df[col].apply(normalize_bool)
 
-# ---------------------------------------------------------
-# 🔹 Colonnes dates
-# ---------------------------------------------------------
-DATE_COLS = ["Date", "Date envoi", "Date acceptation", "Date refus"]
+# Dates
+if "Date" in df.columns:
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+else:
+    df["Date"] = pd.NaT
 
-for col in DATE_COLS:
-    if col in df.columns:
-        df[col] = pd.to_datetime(df[col], errors="coerce")
+df["Année"] = df["Date"].dt.year.fillna(0).astype(int)
 
 # ---------------------------------------------------------
-# 📊 KPIs
+# 🔹 SIDEBAR — Filtres
+# ---------------------------------------------------------
+st.sidebar.header("🔍 Filtres")
+
+annee_list = sorted(df["Année"].unique())
+annee = st.sidebar.selectbox("Année :", ["Toutes"] + [str(a) for a in annee_list if a != 0])
+
+categories = df.get("Categories", pd.Series([""])).fillna("")
+categorie = st.sidebar.selectbox("Catégorie :", ["Toutes"] + sorted(categories.unique()))
+
+statut = st.sidebar.selectbox("Statut :", [
+    "Tous",
+    "Envoyé",
+    "Accepté",
+    "Refusé",
+    "Annulé",
+    "Escrow en cours",
+    "Escrow à réclamer",
+    "Escrow réclamé",
+])
+
+# ---------------------------------------------------------
+# 🔹 Application des filtres
+# ---------------------------------------------------------
+df_filtered = df.copy()
+
+if annee != "Toutes":
+    df_filtered = df_filtered[df_filtered["Année"] == int(annee)]
+
+if categorie != "Toutes":
+    df_filtered = df_filtered[df_filtered["Categories"] == categorie]
+
+if statut == "Envoyé":
+    df_filtered = df_filtered[df_filtered["Dossier envoye"]]
+elif statut == "Accepté":
+    df_filtered = df_filtered[df_filtered["Dossier accepte"]]
+elif statut == "Refusé":
+    df_filtered = df_filtered[df_filtered["Dossier refuse"]]
+elif statut == "Annulé":
+    df_filtered = df_filtered[df_filtered["Dossier Annule"]]
+elif statut == "Escrow en cours":
+    df_filtered = df_filtered[df_filtered["Escrow"]]
+elif statut == "Escrow à réclamer":
+    df_filtered = df_filtered[df_filtered["Escrow_a_reclamer"]]
+elif statut == "Escrow réclamé":
+    df_filtered = df_filtered[df_filtered["Escrow_reclame"]]
+
+# ---------------------------------------------------------
+# 🔹 KPIs
 # ---------------------------------------------------------
 st.subheader("📊 Indicateurs clés")
 
-total_dossiers = len(df)
-dossiers_envoyes = df["Dossier envoye"].sum()
-dossiers_acceptes = df["Dossier accepte"].sum()
-dossiers_refuses = df["Dossier refuse"].sum()
-dossiers_annules = df["Dossier Annule"].sum()
-
-escrow_en_cours = df["Escrow"].sum()
-escrow_a_reclamer = df["Escrow_a_reclamer"].sum()
-escrow_reclame = df["Escrow_reclame"].sum()
-
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Total dossiers", total_dossiers)
-k2.metric("Envoyés", dossiers_envoyes)
-k3.metric("Acceptés", dossiers_acceptes)
-k4.metric("Refusés", dossiers_refuses)
+k1.metric("Total dossiers", len(df_filtered))
+k2.metric("Envoyés", df_filtered["Dossier envoye"].sum())
+k3.metric("Acceptés", df_filtered["Dossier accepte"].sum())
+k4.metric("Refusés", df_filtered["Dossier refuse"].sum())
 
-k5, k6, k7 = st.columns(3)
-k5.metric("Annulés", dossiers_annules)
-k6.metric("Escrow en cours", escrow_en_cours)
-k7.metric("Escrow à réclamer", escrow_a_reclamer)
+k5, k6, k7, k8 = st.columns(4)
+k5.metric("Annulés", df_filtered["Dossier Annule"].sum())
+k6.metric("Escrow en cours", df_filtered["Escrow"].sum())
+k7.metric("Escrow à réclamer", df_filtered["Escrow_a_reclamer"].sum())
+k8.metric("Escrow réclamé", df_filtered["Escrow_reclame"].sum())
+
+# Finances
+if "Montant honoraires (US $)" in df_filtered.columns:
+    honoraires = df_filtered["Montant honoraires (US $)"].fillna(0).sum()
+else:
+    honoraires = 0
+
+if "Autres frais (US $)" in df_filtered.columns:
+    frais = df_filtered["Autres frais (US $)"].fillna(0).sum()
+else:
+    frais = 0
+
+if "Acompte 1" in df_filtered.columns:
+    paiements = df_filtered[["Acompte 1","Acompte 2","Acompte 3","Acompte 4"]].fillna(0).sum().sum()
+else:
+    paiements = 0
+
+solde = honoraires + frais - paiements
+
+st.subheader("💰 Finances")
+
+f1, f2, f3 = st.columns(3)
+f1.metric("Total facturé", f"${honoraires + frais:,.2f}")
+f2.metric("Paiements reçus", f"${paiements:,.2f}")
+f3.metric("Solde restant", f"${solde:,.2f}")
 
 # ---------------------------------------------------------
-# 📄 Tableau des derniers dossiers
+# 🔹 Tableau
 # ---------------------------------------------------------
-st.subheader("📄 Aperçu des derniers dossiers")
+st.subheader("📄 Liste des dossiers filtrés")
 
-affichage_cols = ["Dossier N", "Nom", "Date", "Visa", "Dossier envoye", "Dossier accepte", "Escrow"]
+cols = ["Dossier N", "Nom", "Date", "Visa", "Categories", "Dossier envoye", "Escrow"]
+exist = [c for c in cols if c in df_filtered.columns]
 
-existing_cols = [c for c in affichage_cols if c in df.columns]
-
-st.dataframe(df[existing_cols].sort_values("Date", ascending=False), use_container_width=True)
+st.dataframe(df_filtered[exist].sort_values("Date", ascending=False), use_container_width=True)
