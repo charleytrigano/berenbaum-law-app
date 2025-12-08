@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
-from utils.visa_filters import clean_visa_df
+from utils.visa_filters import clean_visa_df, get_souscats, get_visas
 
 st.set_page_config(page_title="Nouveau dossier", page_icon="➕", layout="wide")
 st.title("➕ Nouveau dossier")
@@ -11,27 +11,8 @@ st.title("➕ Nouveau dossier")
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-
 visa_raw = pd.DataFrame(db.get("visa", []))
 visa_table = clean_visa_df(visa_raw)
-
-# DEBUG : Voir structure réelle
-# st.write("VISA TABLE :", visa_table.head())
-
-# ---------------------------------------------------------
-# FONCTIONS FILTRES FIABLES
-# ---------------------------------------------------------
-def get_souscats(df, categorie):
-    """Retourne les sous-catégories correspondant à une catégorie."""
-    if "Categories" not in df.columns or "Sous-categories" not in df.columns:
-        return []
-    return sorted(df[df["Categories"] == categorie]["Sous-categories"].dropna().unique().tolist())
-
-def get_visas(df, souscat):
-    """Retourne les visas correspondant à une sous-catégorie."""
-    if "Sous-categories" not in df.columns or "Visa" not in df.columns:
-        return []
-    return sorted(df[df["Sous-categories"] == souscat]["Visa"].dropna().unique().tolist())
 
 # ---------------------------------------------------------
 # FONCTION : Génération automatique du numéro
@@ -59,23 +40,20 @@ col1.text_input("Dossier N", value=str(new_id), disabled=True)
 nom = col2.text_input("Nom")
 date_dossier = col3.date_input("Date de création")
 
-# ---------------- CATEGORIES & VISA ---------------------
+# ---------------- CATEGORIES & VISA ----------------------
 st.subheader("🧩 Catégorisation")
 
 colA, colB, colC = st.columns(3)
 
-# Catégories
 cat_list = ["Choisir..."] + sorted(visa_table["Categories"].dropna().unique().tolist())
 categorie = colA.selectbox("Catégorie", cat_list)
 
-# Sous-catégories dépendantes
 souscats = ["Choisir..."]
 if categorie != "Choisir...":
     souscats += get_souscats(visa_table, categorie)
 
 sous_categorie = colB.selectbox("Sous-catégorie", souscats)
 
-# Visa dépendant
 visa_list = ["Choisir..."]
 if sous_categorie != "Choisir...":
     visa_list += get_visas(visa_table, sous_categorie)
@@ -120,12 +98,17 @@ if st.button("💾 Enregistrer le dossier", type="primary"):
         st.stop()
 
     new_entry = {
+        # -------- IDENTITÉ ----------
         "Dossier N": new_id,
         "Nom": nom,
         "Date": str(date_dossier),
+
+        # -------- VISA --------------
         "Categories": categorie,
         "Sous-categories": sous_categorie,
         "Visa": visa,
+
+        # -------- FINANCES ----------
         "Montant honoraires (US $)": montant_hon,
         "Autres frais (US $)": autres_frais,
         "Acompte 1": a1,
@@ -134,12 +117,12 @@ if st.button("💾 Enregistrer le dossier", type="primary"):
         "Acompte 4": a4,
         "mode de paiement": mode_paiement,
 
-        # Colonnes Escrow
+        # -------- ESCROW SYSTEME COMPLET ----------
         "Escrow": bool(escrow),
         "Escrow_a_reclamer": False,
         "Escrow_reclame": False,
 
-        # Colonnes statut
+        # -------- STATUTS COMPLETS ----------
         "Dossier envoye": 0,
         "Dossier accepte": 0,
         "Dossier refuse": 0,
