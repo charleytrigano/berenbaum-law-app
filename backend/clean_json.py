@@ -13,12 +13,21 @@ def clean_database(db):
         if "Sous-catégories" in c:
             c["Sous-categories"] = c.pop("Sous-catégories")
 
-        # Ne PAS toucher aux valeurs booléennes !
+        # Important : NE RIEN TOUCHER si c'est un bool
         for k, v in list(c.items()):
+            # bool → on NE touche pas
+            if isinstance(v, bool):
+                continue
+
+            # None → remplacer
             if v is None:
                 c[k] = ""
-            elif isinstance(v, float) and pd.isna(v):
+                continue
+
+            # float NaN → remplacer
+            if isinstance(v, float) and pd.isna(v):
                 c[k] = ""
+                continue
 
         cleaned_clients.append(c)
 
