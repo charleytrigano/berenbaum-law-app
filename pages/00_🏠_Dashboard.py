@@ -30,12 +30,10 @@ BOOL_COLS = [
     "Escrow_reclame",
 ]
 
-# Ajouter colonnes manquantes
 for col in BOOL_COLS:
     if col not in df.columns:
         df[col] = False
 
-# Convertir en booléens corrects
 def normalize_bool(x):
     if isinstance(x, bool):
         return x
@@ -55,43 +53,44 @@ else:
 df["Année"] = df["Date"].dt.year.fillna(0).astype(int)
 
 # ---------------------------------------------------------
-# 🔍 FILTRES DIRECTEMENT SUR LA PAGE
+# 🔍 FILTRES VISIBLES SUR LA PAGE
 # ---------------------------------------------------------
 st.subheader("🔍 Filtres")
 
-col_f1, col_f2, col_f3 = st.columns(3)
+col_f1, col_f2, col_f3, col_f4 = st.columns(4)
 
 # ▪ Filtre Année
 annee_list = sorted(df["Année"].unique())
 annee = col_f1.selectbox(
     "📅 Année",
-    ["Toutes"] + [str(a) for a in annee_list if a != 0]
+    ["Toutes"] + [str(a) for a in annee_list if a > 0]
 )
 
-# ▪ Filtre Catégorie
+# ▪ Filtre Catégories
 categories = df.get("Categories", pd.Series([""])).fillna("")
-categorie = col_f2.selectbox(
-    "📌 Catégorie",
-    ["Toutes"] + sorted(categories.unique())
-)
+categorie = col_f2.selectbox("📌 Catégorie", ["Toutes"] + sorted(categories.unique()))
 
-# ▪ Filtre Statut
-statut = col_f3.selectbox(
-    "📂 Statut",
-    [
-        "Tous",
-        "Envoyé",
-        "Accepté",
-        "Refusé",
-        "Annulé",
-        "Escrow en cours",
-        "Escrow à réclamer",
-        "Escrow réclamé",
-    ]
-)
+# ▪ Filtre Sous-catégories
+souscats = df.get("Sous-categories", pd.Series([""])).fillna("")
+sous_categorie = col_f3.selectbox("📁 Sous-catégorie", ["Toutes"] + sorted(souscats.unique()))
+
+# ▪ Filtre Visa
+visa_list = df.get("Visa", pd.Series([""])).fillna("")
+visa_filter = col_f4.selectbox("🛂 Visa", ["Toutes"] + sorted(visa_list.unique()))
+
 
 # ---------------------------------------------------------
-# 🔹 Application des filtres
+# 🔍 COMPARAISON ENTRE PÉRIODES (5 ANS MAX)
+# ---------------------------------------------------------
+st.subheader("📈 Comparaison entre périodes")
+
+col_p1, col_p2 = st.columns(2)
+
+per1 = col_p1.selectbox("📆 Période A (année)", ["Aucune"] + [str(a) for a in annee_list if a > 0])
+per2 = col_p2.selectbox("📆 Période B (année)", ["Aucune"] + [str(a) for a in annee_list if a > 0])
+
+# ---------------------------------------------------------
+# 🔹 Application des filtres simples
 # ---------------------------------------------------------
 df_filtered = df.copy()
 
@@ -101,23 +100,15 @@ if annee != "Toutes":
 if categorie != "Toutes":
     df_filtered = df_filtered[df_filtered["Categories"] == categorie]
 
-if statut == "Envoyé":
-    df_filtered = df_filtered[df_filtered["Dossier envoye"]]
-elif statut == "Accepté":
-    df_filtered = df_filtered[df_filtered["Dossier accepte"]]
-elif statut == "Refusé":
-    df_filtered = df_filtered[df_filtered["Dossier refuse"]]
-elif statut == "Annulé":
-    df_filtered = df_filtered[df_filtered["Dossier Annule"]]
-elif statut == "Escrow en cours":
-    df_filtered = df_filtered[df_filtered["Escrow"]]
-elif statut == "Escrow à réclamer":
-    df_filtered = df_filtered[df_filtered["Escrow_a_reclamer"]]
-elif statut == "Escrow réclamé":
-    df_filtered = df_filtered[df_filtered["Escrow_reclame"]]
+if sous_categorie != "Toutes":
+    df_filtered = df_filtered[df_filtered["Sous-categories"] == sous_categorie]
+
+if visa_filter != "Toutes":
+    df_filtered = df_filtered[df_filtered["Visa"] == visa_filter]
+
 
 # ---------------------------------------------------------
-# 📊 KPIs
+# 🔹 KPIs
 # ---------------------------------------------------------
 st.subheader("📊 Indicateurs clés")
 
@@ -134,7 +125,7 @@ k7.metric("Escrow à réclamer", df_filtered["Escrow_a_reclamer"].sum())
 k8.metric("Escrow réclamé", df_filtered["Escrow_reclame"].sum())
 
 # ---------------------------------------------------------
-# 💰 Finances
+# 💰 FINANCES
 # ---------------------------------------------------------
 st.subheader("💰 Finances")
 
@@ -154,6 +145,26 @@ f2.metric("Paiements reçus", f"${paiements:,.2f}")
 f3.metric("Solde restant", f"${solde:,.2f}")
 
 # ---------------------------------------------------------
+# 📈 COMPARAISON ENTRE PÉRIODES
+# ---------------------------------------------------------
+if per1 != "Aucune" and per2 != "Aucune":
+    st.markdown("### 📊 Comparaison Périodes A vs B")
+
+    dfA = df[df["Année"] == int(per1)]
+    dfB = df[df["Année"] == int(per2)]
+
+    c1, c2 = st.columns(2)
+
+    c1.metric(f"Dossiers {per1}", len(dfA))
+    c2.metric(f"Dossiers {per2}", len(dfB))
+
+    c1.metric(f"Acceptés {per1}", dfA["Dossier accepte"].sum())
+    c2.metric(f"Acceptés {per2}", dfB["Dossier accepte"].sum())
+
+    c1.metric(f"Facturé {per1}", f"${dfA.get('Montant honoraires (US $)', 0).sum():,.2f}")
+    c2.metric(f"Facturé {per2}", f"${dfB.get('Montant honoraires (US $)', 0).sum():,.2f}")
+
+# ---------------------------------------------------------
 # 📄 Tableau
 # ---------------------------------------------------------
 st.subheader("📄 Liste des dossiers filtrés")
@@ -163,6 +174,7 @@ colonnes = [
     "Nom",
     "Date",
     "Categories",
+    "Sous-categories",
     "Visa",
     "Dossier envoye",
     "Escrow"
