@@ -65,6 +65,10 @@ def safe_date(value):
     except:
         return None
 
+st.markdown("### DEBUG — État brut du dossier :")
+st.json(dossier)
+
+
 # ---------------------------------------------------------
 # FORMULAIRE — Infos générales
 # ---------------------------------------------------------
