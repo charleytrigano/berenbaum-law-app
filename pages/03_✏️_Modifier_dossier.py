@@ -221,7 +221,8 @@ st.subheader("🗑️ Supprimer définitivement ce dossier")
 
 if st.button("❌ Supprimer ce dossier"):
     df = df[df[DOSSIER_COL] != selected]
-    db["clients"] = df.to_dict(orient="records"])
+    db["clients"] = df.to_dict(orient="records")
     save_database(db)
     st.success(f"Dossier {selected} supprimé ✔")
     st.experimental_rerun()
+
