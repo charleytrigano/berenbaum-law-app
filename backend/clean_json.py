@@ -1,36 +1,43 @@
 import pandas as pd
 
 def clean_database(db):
+    """ Nettoyage complet et unification des colonnes """
 
     cleaned_clients = []
     for c in db.get("clients", []):
         c = c.copy()
 
-        # Renommage anciens noms
+        # ------------------------------------------------------
+        # Unifier Catégories / Sous-catégories
+        # ------------------------------------------------------
         if "Catégories" in c:
             c["Categories"] = c.pop("Catégories")
 
         if "Sous-catégories" in c:
             c["Sous-categories"] = c.pop("Sous-catégories")
 
-        # Important : NE RIEN TOUCHER si c'est un bool
-        for k, v in list(c.items()):
-            # bool → on NE touche pas
-            if isinstance(v, bool):
-                continue
+        # ------------------------------------------------------
+        # Unifier Dossier envoye (PAS D’ACCENT)
+        # ------------------------------------------------------
+        if "Dossier envoyé" in c:  # mauvais champ → supprimer
+            c["Dossier envoye"] = c.pop("Dossier envoyé")
 
-            # None → remplacer
+        # si pas encore présent
+        if "Dossier envoye" not in c:
+            c["Dossier envoye"] = False
+
+        # ------------------------------------------------------
+        # Nettoyage valeurs None / NaN
+        # ------------------------------------------------------
+        for k, v in list(c.items()):
             if v is None:
                 c[k] = ""
-                continue
-
-            # float NaN → remplacer
-            if isinstance(v, float) and pd.isna(v):
+            elif isinstance(v, float) and pd.isna(v):
                 c[k] = ""
-                continue
 
         cleaned_clients.append(c)
 
+    # VISA
     cleaned_visa = []
     for v in db.get("visa", []):
         v = v.copy()
@@ -42,16 +49,6 @@ def clean_database(db):
             v["Sous-categories"] = v.pop("Sous-catégories")
 
         cleaned_visa.append(v)
-
-    # ----------
-# Unifier Dossier envoye
-# ----------
-        if "Dossier envoyé" in c:
-            c["Dossier envoye"] = c.pop("Dossier envoyé")
-
-        if "Dossier envoye" not in c:
-            c["Dossier envoye"] = False
-
 
     return {
         "clients": cleaned_clients,
