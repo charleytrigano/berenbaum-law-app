@@ -6,28 +6,27 @@ st.set_page_config(page_title="Modifier un dossier", page_icon="✏️", layout=
 st.title("✏️ Modifier un dossier")
 
 # ---------------------------------------------------------
-# 🔹 Chargement base
+# LOAD DATA
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-
-if not clients:
-    st.error("Aucun dossier trouvé.")
-    st.stop()
-
 df = pd.DataFrame(clients)
+
 DOSSIER_COL = "Dossier N"
+
+if df.empty:
+    st.error("Aucun dossier trouvé dans la base.")
+    st.stop()
 
 
 # ---------------------------------------------------------
-# UTIL FUNCTIONS
+# UTILS
 # ---------------------------------------------------------
 def normalize_bool(x):
     if isinstance(x, bool):
         return x
-    if str(x).lower() in ["1", "true", "yes", "oui"]:
-        return True
-    return False
+    return str(x).lower() in ["true", "1", "yes", "oui"]
+
 
 def to_float(x):
     try:
@@ -35,36 +34,29 @@ def to_float(x):
     except:
         return 0.0
 
-def safe_date(value):
+
+def safe_date(x):
     try:
-        v = pd.to_datetime(value, errors="coerce")
-        if pd.isna(v):
-            return None
-        return v.date()
+        d = pd.to_datetime(x, errors="coerce")
+        return None if pd.isna(d) else d.date()
     except:
         return None
 
 
 # ---------------------------------------------------------
-# NORMALISATION COLONNES
+# NORMALISATION
 # ---------------------------------------------------------
-for col in ["Dossier envoye", "Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
+for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame", "Dossier envoye"]:
     if col not in df.columns:
         df[col] = False
     df[col] = df[col].apply(normalize_bool)
 
+
 df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
 liste = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
+
 selected = st.selectbox("Sélectionner un dossier :", liste)
-
 dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
-
-
-# ---------------------------------------------------------
-# DEBUG
-# ---------------------------------------------------------
-st.markdown("### 🔍 DEBUG — État brut du dossier chargé :")
-st.json(dossier)
 
 
 # ---------------------------------------------------------
@@ -86,12 +78,7 @@ honoraires = col6.number_input("Montant honoraires (US $)", value=to_float(dossi
 frais = col7.number_input("Autres frais (US $)", value=to_float(dossier.get("Autres frais (US $)", 0)))
 col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
 
-
-# ---------------------------------------------------------
-# ACOMPTES
-# ---------------------------------------------------------
-st.subheader("🏦 Acomptes")
-
+# Acomptes
 colA1, colA2, colA3, colA4 = st.columns(4)
 ac1 = colA1.number_input("Acompte 1", value=to_float(dossier.get("Acompte 1")))
 ac2 = colA2.number_input("Acompte 2", value=to_float(dossier.get("Acompte 2")))
@@ -104,26 +91,17 @@ da2 = colD2.date_input("Date Acompte 2", safe_date(dossier.get("Date Acompte 2")
 da3 = colD3.date_input("Date Acompte 3", safe_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", safe_date(dossier.get("Date Acompte 4")))
 
-
-# ---------------------------------------------------------
 # ESCROW
-# ---------------------------------------------------------
 st.subheader("💰 Escrow")
-escrow_checkbox = st.checkbox("Escrow actif ?", value=normalize_bool(dossier.get("Escrow")))
+escrow_flag = st.checkbox("Escrow actif ?", value=normalize_bool(dossier.get("Escrow", False)))
 
-
-# ---------------------------------------------------------
 # STATUTS
-# ---------------------------------------------------------
-st.subheader("📦 Statuts du dossier")
-
 colS1, colS2, colS3, colS4, colS5 = st.columns(5)
-
-envoye = colS1.checkbox("Dossier envoyé", normalize_bool(dossier.get("Dossier envoye")))
-accepte = colS2.checkbox("Dossier accepté", normalize_bool(dossier.get("Dossier accepte")))
-refuse = colS3.checkbox("Dossier refusé", normalize_bool(dossier.get("Dossier refuse")))
-annule = colS4.checkbox("Dossier annulé", normalize_bool(dossier.get("Dossier Annule")))
-rfe = colS5.checkbox("RFE", normalize_bool(dossier.get("RFE")))
+envoye = colS1.checkbox("Dossier envoyé", value=normalize_bool(dossier.get("Dossier envoye", False)))
+accepte = colS2.checkbox("Dossier accepté", value=normalize_bool(dossier.get("Dossier accepte", False)))
+refuse = colS3.checkbox("Dossier refusé", value=normalize_bool(dossier.get("Dossier refuse", False)))
+annule = colS4.checkbox("Dossier annulé", value=normalize_bool(dossier.get("Dossier Annule", False)))
+rfe = colS5.checkbox("RFE", value=normalize_bool(dossier.get("RFE", False)))
 
 colT1, colT2, colT3, colT4, colT5 = st.columns(5)
 date_envoye = colT1.date_input("Date envoi", safe_date(dossier.get("Date envoi")))
@@ -140,7 +118,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
-    # —— INFOS ——  
+    # Infos générales
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -160,12 +138,11 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Date Acompte 3"] = da3
     df.loc[idx, "Date Acompte 4"] = da4
 
-    # —— STATUTS ——  
-    df.loc[idx, "Dossier envoye"] = bool(envoye)
-    df.loc[idx, "Dossier accepte"] = bool(accepte)
-    df.loc[idx, "Dossier refuse"] = bool(refuse)
-    df.loc[idx, "Dossier Annule"] = bool(annule)
-    df.loc[idx, "RFE"] = bool(rfe)
+    df.loc[idx, "Dossier envoye"] = envoye
+    df.loc[idx, "Dossier accepte"] = accepte
+    df.loc[idx, "Dossier refuse"] = refuse
+    df.loc[idx, "Dossier Annule"] = annule
+    df.loc[idx, "RFE"] = rfe
 
     df.loc[idx, "Date envoi"] = date_envoye
     df.loc[idx, "Date acceptation"] = date_accepte
@@ -173,36 +150,17 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Date annulation"] = date_annule
     df.loc[idx, "Date reclamation"] = date_rfe
 
-    # —— ESCROW LOGIC ——  
+    # LOGIQUE ESCROW
     if envoye:
         df.loc[idx, "Escrow"] = False
         df.loc[idx, "Escrow_a_reclamer"] = True
         df.loc[idx, "Escrow_reclame"] = False
     else:
-        df.loc[idx, "Escrow"] = bool(escrow_checkbox)
+        df.loc[idx, "Escrow"] = escrow_flag
 
-    # —— SAUVEGARDE JSON ——  
+    # Sauvegarde
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
     st.success("✔ Modifications enregistrées.")
-    st.rerun()
-
-
-# ---------------------------------------------------------
-# BOUTON MANUEL ESCROW
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("🔧 Modifier / Supprimer totalement l’Escrow")
-
-escrow_state = normalize_bool(dossier.get("Escrow"))
-
-if st.button("❌ Supprimer l’Escrow"):
-    idx = df[df[DOSSIER_COL] == selected].index[0]
-    df.loc[idx, "Escrow"] = False
-    df.loc[idx, "Escrow_a_reclamer"] = False
-    df.loc[idx, "Escrow_reclame"] = False
-    db["clients"] = df.to_dict(orient="records")
-    save_database(db)
-    st.success("✔ Escrow retiré.")
     st.rerun()
