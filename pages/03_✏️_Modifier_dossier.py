@@ -171,6 +171,10 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     # ----------- ESCROW 3 États -----------
     df.loc[idx, "Escrow"] = bool(escrow_flag)
+    if not escrow_flag:
+    df.loc[idx, "Escrow_a_reclamer"] = False
+    df.loc[idx, "Escrow_reclame"] = False
+
     df.loc[idx, "Escrow_a_reclamer"] = bool(escrow_a_reclamer_flag)
     df.loc[idx, "Escrow_reclame"] = bool(escrow_reclame_flag)
 
