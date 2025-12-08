@@ -13,11 +13,10 @@ clients = db.get("clients", [])
 
 if not clients:
     st.error("Aucun dossier trouvé.")
-    st.stop()
-
+   
 df = pd.DataFrame(clients)
 DOSSIER_COL = "Dossier N"
-
+    stop()
 # ---------------------------------------------------------
 # 🔹 Utils
 # ---------------------------------------------------------
