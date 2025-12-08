@@ -1,7 +1,7 @@
 import json
 from components.dropbox_utils import download_from_dropbox, upload_bytes_to_dropbox
 
-DB_PATH = "/berenbaum/database.json"
+DB_PATH = "Apps/berenbaum-law/database.json"
 
 def initialize_database():
     default_db = {
