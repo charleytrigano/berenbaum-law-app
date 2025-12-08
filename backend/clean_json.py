@@ -43,6 +43,16 @@ def clean_database(db):
 
         cleaned_visa.append(v)
 
+    # ----------
+# Unifier Dossier envoye
+# ----------
+        if "Dossier envoyé" in c:
+            c["Dossier envoye"] = c.pop("Dossier envoyé")
+
+        if "Dossier envoye" not in c:
+            c["Dossier envoye"] = False
+
+
     return {
         "clients": cleaned_clients,
         "visa": cleaned_visa,
