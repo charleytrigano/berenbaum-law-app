@@ -9,6 +9,8 @@ st.title("✏️ Modifier un dossier")
 # 🔹 Chargement base
 # ---------------------------------------------------------
 db = load_database()
+st.write("JSON PATH utilisé :", st.secrets["paths"]["DROPBOX_JSON"])
+
 clients = db.get("clients", [])
 
 if not clients:
@@ -188,6 +190,11 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     # ---------------------------------------------------------
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
+    dbx = get_dbx()
+metadata, res = dbx.files_download(st.secrets["paths"]["DROPBOX_JSON"])
+st.write("JSON APRES SAUVEGARDE :")
+st.json(res.content.decode("utf-8"))
+
 
     st.success("✔ Modifications enregistrées.")
     st.rerun()
