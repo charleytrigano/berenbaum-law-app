@@ -1,23 +1,26 @@
-{
-  "dropbox": {
-    "APP_KEY": "dec5zj63pkh1clf",
-    "APP_SECRET": "..."
-    "DROPBOX_TOKEN": "..."
-  },
-  "paths": {
-      "CLIENTS_FILE": "/Apps/Clients.xlsx",
-      ...
-  }
-}
 import streamlit as st
 from backend.dropbox_utils import load_database
 
-st.title("🔍 DEBUG — Chemins utilisés")
+st.set_page_config(page_title="Debug Secrets", page_icon="🛠️")
 
-st.write("➡️ DROPBOX_JSON dans secrets.toml :")
+st.title("🔍 DEBUG — Secrets & Chemins Dropbox")
+
+# Montrer les secrets
+st.subheader("📦 Contenu de st.secrets")
+st.json({
+    "dropbox": {
+        "APP_KEY": st.secrets["dropbox"]["APP_KEY"],
+        "APP_SECRET": st.secrets["dropbox"]["APP_SECRET"],
+        "DROPBOX_TOKEN": st.secrets["dropbox"]["DROPBOX_TOKEN"]
+    },
+    "paths": st.secrets["paths"]
+})
+
+# Chemin JSON réellement utilisé
+st.subheader("📁 Chemin JSON utilisé :")
 st.code(st.secrets["paths"]["DROPBOX_JSON"])
 
-st.write("➡️ Dossier chargé par load_database() :")
+# Contenu JSON chargé
+st.subheader("📄 Base JSON chargée :")
 db = load_database()
 st.json(db)
-
