@@ -18,59 +18,47 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# NORMALISATION DES COLONNES
+# NORMALISATION FIABLE
 # ---------------------------------------------------------
-df["Escrow"] = df.get("Escrow", False)
-df["Escrow_a_reclamer"] = df.get("Escrow_a_reclamer", False)
-df["Escrow_reclame"] = df.get("Escrow_reclame", False)
+def normalize_bool(x):
+    if isinstance(x, bool):
+        return x
+    if x in [1, "1", "true", "True", "TRUE", "yes", "Oui"]:
+        return True
+    return False
 
-# Conversion bool cohérente
-df["Escrow"] = df["Escrow"].replace({"": False, "0": False, "1": True}).astype(bool)
-df["Escrow_a_reclamer"] = df["Escrow_a_reclamer"].replace({"": False, "0": False, "1": True}).astype(bool)
-df["Escrow_reclame"] = df["Escrow_reclame"].replace({"": False, "0": False, "1": True}).astype(bool)
-
-# ---------------------------------------------------------
-# AUCUNE LOGIQUE AUTOMATIQUE SUPPLÉMENTAIRE
-# ---------------------------------------------------------
-# ➤ Option B : L’utilisateur décide entièrement depuis Modifier_dossier
-# ➤ On n'impose plus :
-#     - Escrow → False si dossier envoyé
-#     - Escrow → A réclamer automatiquement
-# ➤ Escrow.py devient un module d'affichage uniquement.
+for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
+    if col not in df.columns:
+        df[col] = False
+    df[col] = df[col].apply(normalize_bool)
 
 # ---------------------------------------------------------
-# TABLEAU ESCROW EN COURS
+# TABLEAUX
 # ---------------------------------------------------------
 st.subheader("📌 Escrow en cours")
 escrow_cours = df[(df["Escrow"] == True) & (df["Escrow_reclame"] == False)]
 st.dataframe(escrow_cours, use_container_width=True)
 
-# ---------------------------------------------------------
-# TABLEAU ESCROW À RÉCLAMER
-# ---------------------------------------------------------
 st.subheader("📌 Escrow à réclamer")
 escrow_reclamer = df[(df["Escrow_a_reclamer"] == True) & (df["Escrow_reclame"] == False)]
 st.dataframe(escrow_reclamer, use_container_width=True)
 
-# ---------------------------------------------------------
-# TABLEAU ESCROW RÉCLAMÉ
-# ---------------------------------------------------------
 st.subheader("📌 Escrow réclamé")
 escrow_reclame = df[df["Escrow_reclame"] == True]
 st.dataframe(escrow_reclame, use_container_width=True)
 
 # ---------------------------------------------------------
-# ACTION : RÉCLAMER L’ESCROW
+# ACTION : RÉCLAMER
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📝 Réclamer un Escrow")
 
 liste_dossiers = escrow_reclamer["Dossier N"].tolist()
 
-if len(liste_dossiers) == 0:
+if not liste_dossiers:
     st.info("Aucun Escrow à réclamer.")
 else:
-    choix = st.selectbox("Sélectionner un dossier à réclamer :", liste_dossiers)
+    choix = st.selectbox("Sélectionner un dossier :", liste_dossiers)
 
     if st.button("Réclamer maintenant ✅", type="primary"):
         df.loc[df["Dossier N"] == choix, "Escrow_a_reclamer"] = False
