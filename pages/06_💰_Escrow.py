@@ -16,6 +16,9 @@ if not clients:
     st.stop()
 
 df = pd.DataFrame(clients)
+st.markdown("### DEBUG — État réel des colonnes Escrow")
+st.dataframe(df[["Dossier N", "Escrow", "Escrow_a_reclamer", "Escrow_reclame", "Dossier envoye"]])
+
 
 # ---------------------------------------------------------
 # NORMALISATION FINALE
