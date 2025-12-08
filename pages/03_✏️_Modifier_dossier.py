@@ -168,4 +168,4 @@ if st.button("❌ Supprimer définitivement ce dossier"):
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
     st.success(f"Dossier {selected} supprimé ✔")
-    st.experimental_rerun()
+    st.rerun()
