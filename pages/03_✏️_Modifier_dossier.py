@@ -99,7 +99,7 @@ da3 = colD3.date_input("Date Acompte 3", safe_date(dossier.get("Date Acompte 3")
 da4 = colD4.date_input("Date Acompte 4", safe_date(dossier.get("Date Acompte 4")))
 
 # ---------------------------------------------------------
-# ESCROW (checkbox pour information)
+# ESCROW (affichage de l’état)
 # ---------------------------------------------------------
 st.subheader("💰 Escrow")
 
@@ -127,6 +127,14 @@ date_annule = colT4.date_input("Date annulation", safe_date(dossier.get("Date an
 date_rfe = colT5.date_input("Date RFE", safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
+# 🔥 LOGIQUE AUTOMATIQUE : DOSSIER ENVOYÉ
+# ---------------------------------------------------------
+if envoye:
+    escrow_flag = False
+    escrow_a_reclamer_flag = True
+    escrow_reclame_flag = False
+
+# ---------------------------------------------------------
 # ➕ METTRE EN ESCROW EN COURS
 # ---------------------------------------------------------
 st.markdown("---")
@@ -152,15 +160,18 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
+    # Infos
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
     df.loc[idx, "Sous-categories"] = sous_categories
     df.loc[idx, "Visa"] = visa
 
+    # Finances
     df.loc[idx, "Montant honoraires (US $)"] = honoraires
     df.loc[idx, "Autres frais (US $)"] = frais
 
+    # Acomptes
     df.loc[idx, "Acompte 1"] = ac1
     df.loc[idx, "Acompte 2"] = ac2
     df.loc[idx, "Acompte 3"] = ac3
@@ -171,10 +182,12 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Date Acompte 3"] = da3
     df.loc[idx, "Date Acompte 4"] = da4
 
+    # ESCROW
     df.loc[idx, "Escrow"] = bool(escrow_flag)
     df.loc[idx, "Escrow_a_reclamer"] = bool(escrow_a_reclamer_flag)
     df.loc[idx, "Escrow_reclame"] = bool(escrow_reclame_flag)
 
+    # STATUTS
     df.loc[idx, "Dossier envoye"] = envoye
     df.loc[idx, "Date envoi"] = date_envoye
     df.loc[idx, "Dossier accepte"] = accepte
