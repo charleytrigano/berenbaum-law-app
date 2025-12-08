@@ -19,7 +19,40 @@ df = pd.DataFrame(clients)
 DOSSIER_COL = "Dossier N"
 
 # ---------------------------------------------------------
-# 🔹 Utils
+# 🔹 Normalisation des booleans (PAS DE FLOATS)
+# ---------------------------------------------------------
+def normalize_bool(x):
+    if isinstance(x, bool):
+        return x
+    if str(x) in ["1", "1.0", "True", "true", "yes", "Oui"]:
+        return True
+    return False
+
+# Forcer colonne dossier envoye en booléen dans tout le df
+if "Dossier envoye" in df.columns:
+    df["Dossier envoye"] = df["Dossier envoye"].apply(normalize_bool)
+else:
+    df["Dossier envoye"] = False
+
+if "Dossier envoyé" in df.columns:
+    df["Dossier envoyé"] = df["Dossier envoyé"].apply(normalize_bool)
+else:
+    df["Dossier envoyé"] = False
+
+# ---------------------------------------------------------
+# 🔹 Sélection du dossier
+# ---------------------------------------------------------
+df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
+liste = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
+selected = st.selectbox("Sélectionner un dossier :", liste)
+
+dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
+
+# PATHS équivalents
+envoye_initial = normalize_bool(dossier.get("Dossier envoye", dossier.get("Dossier envoyé", False)))
+
+# ---------------------------------------------------------
+# 🔹 Fonction safe
 # ---------------------------------------------------------
 def to_float(x):
     try:
@@ -36,39 +69,6 @@ def safe_date(value):
     except:
         return None
 
-def normalize_bool(x):
-    if isinstance(x, bool):
-        return x
-    if str(x).lower() in ["1", "true", "yes", "oui"]:
-        return True
-    return False
-
-# ---------------------------------------------------------
-# 🔹 Sélection dossier
-# ---------------------------------------------------------
-df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
-liste = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
-selected = st.selectbox("Sélectionner un dossier :", liste)
-
-dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
-
-# ---------------------------------------------------------
-# DEBUG : afficher le dossier brut
-# ---------------------------------------------------------
-st.write("🔍 DEBUG — Dossier brut avant modification :")
-st.write(dossier)
-
-#----------------------------------------------------------
-# 🔹 Normalisation Escrow
-#----------------------------------------------------------
-for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
-    if col not in dossier:
-        dossier[col] = False
-
-dossier["Escrow"] = normalize_bool(dossier.get("Escrow"))
-dossier["Escrow_a_reclamer"] = normalize_bool(dossier.get("Escrow_a_reclamer"))
-dossier["Escrow_reclame"] = normalize_bool(dossier.get("Escrow_reclame"))
-
 # ---------------------------------------------------------
 # FORMULAIRE
 # ---------------------------------------------------------
@@ -78,9 +78,6 @@ col1, col2, col3 = st.columns(3)
 nom = col1.text_input("Nom", dossier.get("Nom", ""))
 date_dossier = col2.date_input("Date", safe_date(dossier.get("Date")))
 categories = col3.text_input("Catégories", dossier.get("Categories", ""))
-
-# DEBUG date_dossier
-st.write("🔍 DEBUG — date_dossier :", date_dossier, type(date_dossier))
 
 col4, col5 = st.columns(2)
 sous_categories = col4.text_input("Sous-catégories", dossier.get("Sous-categories", ""))
@@ -94,8 +91,6 @@ col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
 # ---------------------------------------------------------
 # Acomptes
 # ---------------------------------------------------------
-st.subheader("🏦 Acomptes")
-
 colA1, colA2, colA3, colA4 = st.columns(4)
 ac1 = colA1.number_input("Acompte 1", value=to_float(dossier.get("Acompte 1")))
 ac2 = colA2.number_input("Acompte 2", value=to_float(dossier.get("Acompte 2")))
@@ -112,10 +107,7 @@ da4 = colD4.date_input("Date Acompte 4", safe_date(dossier.get("Date Acompte 4")
 # ESCROW
 # ---------------------------------------------------------
 st.subheader("💰 Escrow")
-
-escrow_flag = st.checkbox("Escrow actif ?", value=dossier["Escrow"])
-escrow_a_reclamer_flag = dossier["Escrow_a_reclamer"]
-escrow_reclame_flag = dossier["Escrow_reclame"]
+escrow_flag = st.checkbox("Escrow actif ?", value=normalize_bool(dossier.get("Escrow", False)))
 
 # ---------------------------------------------------------
 # STATUTS
@@ -123,9 +115,11 @@ escrow_reclame_flag = dossier["Escrow_reclame"]
 st.subheader("📦 Statuts du dossier")
 
 colS1, colS2, colS3, colS4, colS5 = st.columns(5)
-envoye = colS1.checkbox("Dossier envoyé", normalize_bool(dossier.get("Dossier envoye", dossier.get("Dossier envoyé", False))))
 
-st.write("🔍 DEBUG — Valeur envoyée lue :", envoye)
+envoye = colS1.checkbox(
+    "Dossier envoyé",
+    value=envoye_initial
+)
 
 accepte = colS2.checkbox("Dossier accepté", normalize_bool(dossier.get("Dossier accepte", False)))
 refuse = colS3.checkbox("Dossier refusé", normalize_bool(dossier.get("Dossier refuse", False)))
@@ -140,103 +134,89 @@ date_annule = colT4.date_input("Date annulation", safe_date(dossier.get("Date an
 date_rfe = colT5.date_input("Date RFE", safe_date(dossier.get("Date reclamation")))
 
 # ---------------------------------------------------------
-# SAUVEGARDE DES MODIFICATIONS
+# LOGIQUE ESCROW
+# ---------------------------------------------------------
+if envoye:
+    escrow_flag = False     # sort de "en cours"
+    escrow_a_reclamer = True
+    escrow_reclame = False
+else:
+    escrow_a_reclamer = normalize_bool(dossier.get("Escrow_a_reclamer", False))
+    escrow_reclame = normalize_bool(dossier.get("Escrow_reclame", False))
+
+# ---------------------------------------------------------
+# SAUVEGARDE
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications", type="primary"):
 
-    st.write("DEBUG — Sauvegarde en cours...")
-
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
-    # LOGIQUE
-    if envoye:
-        escrow_flag = False
-        escrow_a_reclamer_flag = True
+    # Données générales
+    df.loc[idx, "Nom"] = nom
+    df.loc[idx, "Date"] = date_dossier
+    df.loc[idx, "Categories"] = categories
+    df.loc[idx, "Sous-categories"] = sous_categories
+    df.loc[idx, "Visa"] = visa
 
-    # -----------------------------------------------------
-    # CHECKPOINTS de chaque écriture df.loc
-    # -----------------------------------------------------
-    try:
-        df.loc[idx, "Nom"] = nom
-        st.write("CHECK Nom OK")
-        
-        df.loc[idx, "Date"] = date_dossier
-        st.write("CHECK Date OK")
+    df.loc[idx, "Montant honoraires (US $)"] = honoraires
+    df.loc[idx, "Autres frais (US $)"] = frais
 
-        df.loc[idx, "Categories"] = categories
-        st.write("CHECK Categories OK")
+    df.loc[idx, "Acompte 1"] = ac1
+    df.loc[idx, "Acompte 2"] = ac2
+    df.loc[idx, "Acompte 3"] = ac3
+    df.loc[idx, "Acompte 4"] = ac4
 
-        df.loc[idx, "Sous-categories"] = sous_categories
-        st.write("CHECK Sous-cat OK")
+    df.loc[idx, "Date Acompte 1"] = da1
+    df.loc[idx, "Date Acompte 2"] = da2
+    df.loc[idx, "Date Acompte 3"] = da3
+    df.loc[idx, "Date Acompte 4"] = da4
 
-        df.loc[idx, "Visa"] = visa
-        st.write("CHECK Visa OK")
+    # ESCROW
+    df.loc[idx, "Escrow"] = bool(escrow_flag)
+    df.loc[idx, "Escrow_a_reclamer"] = bool(escrow_a_reclamer)
+    df.loc[idx, "Escrow_reclame"] = bool(escrow_reclame)
 
-        df.loc[idx, "Montant honoraires (US $)"] = honoraires
-        st.write("CHECK Hon OK")
+    # STATUTS
+    df.loc[idx, "Dossier envoye"] = bool(envoye)
+    df.loc[idx, "Dossier envoyé"] = bool(envoye)
 
-        df.loc[idx, "Autres frais (US $)"] = frais
-        st.write("CHECK Frais OK")
+    df.loc[idx, "Dossier accepte"] = bool(accepte)
+    df.loc[idx, "Dossier refuse"] = bool(refuse)
+    df.loc[idx, "Dossier Annule"] = bool(annule)
+    df.loc[idx, "RFE"] = bool(rfe)
 
-        df.loc[idx, "Acompte 1"] = ac1
-        st.write("CHECK A1 OK")
+    df.loc[idx, "Date envoi"] = date_envoye
+    df.loc[idx, "Date acceptation"] = date_accepte
+    df.loc[idx, "Date refus"] = date_refuse
+    df.loc[idx, "Date annulation"] = date_annule
+    df.loc[idx, "Date reclamation"] = date_rfe
 
-        df.loc[idx, "Acompte 2"] = ac2
-        st.write("CHECK A2 OK")
+    # Forcer type booléen une dernière fois (sécurité)
+    df["Dossier envoye"] = df["Dossier envoye"].astype(bool)
+    df["Dossier envoyé"] = df["Dossier envoyé"].astype(bool)
 
-        df.loc[idx, "Acompte 3"] = ac3
-        st.write("CHECK A3 OK")
-
-        df.loc[idx, "Acompte 4"] = ac4
-        st.write("CHECK A4 OK")
-
-        df.loc[idx, "Date Acompte 1"] = da1
-        st.write("CHECK DA1 OK")
-
-        df.loc[idx, "Date Acompte 2"] = da2
-        st.write("CHECK DA2 OK")
-
-        df.loc[idx, "Date Acompte 3"] = da3
-        st.write("CHECK DA3 OK")
-
-        df.loc[idx, "Date Acompte 4"] = da4
-        st.write("CHECK DA4 OK")
-
-        # ESCROW
-        df.loc[idx, "Escrow"] = bool(escrow_flag)
-        st.write("CHECK Escrow OK")
-
-        df.loc[idx, "Escrow_a_reclamer"] = bool(escrow_a_reclamer_flag)
-        st.write("CHECK Escrow a réclamer OK")
-
-        df.loc[idx, "Escrow_reclame"] = bool(escrow_reclame_flag)
-        st.write("CHECK Escrow réclamé OK")
-
-        # STATUTS
-        df.loc[idx, "Dossier envoye"] = envoye
-        df.loc[idx, "Dossier envoyé"] = envoye
-        st.write("CHECK Dossier envoye OK")
-
-    except Exception as e:
-        st.error(f"⛔ ERREUR D'ÉCRITURE df.loc : {e}")
-        st.stop()
-
-    # -----------------------------------------------------
-    # CHECKPOINT — conversion JSON
-    # -----------------------------------------------------
+    # Sauvegarde
     db["clients"] = df.to_dict(orient="records")
-    st.write("CHECKPOINT JSON OK")
+    save_database(db)
 
-    # -----------------------------------------------------
-    # CHECKPOINT — sauvegarde Dropbox
-    # -----------------------------------------------------
-    try:
-        save_database(db)
-        st.write("DEBUG — SAUVEGARDE OK")
-    except Exception as e:
-        st.error(f"⛔ ERREUR DE SAUVEGARDE : {e}")
-        st.stop()
-
-    st.write("DEBUG — Dernière ligne atteinte ✔")
     st.success("✔ Modifications enregistrées.")
+    st.rerun()
+
+# ---------------------------------------------------------
+# SUPPRESSION TOTALE ESCROW
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("🛑 Supprimer totalement l’Escrow pour ce dossier")
+
+if st.button("Supprimer l’Escrow"):
+    idx = df[df[DOSSIER_COL] == selected].index[0]
+
+    df.loc[idx, "Escrow"] = False
+    df.loc[idx, "Escrow_a_reclamer"] = False
+    df.loc[idx, "Escrow_reclame"] = False
+
+    db["clients"] = df.to_dict(orient="records")
+    save_database(db)
+
+    st.success("✔ Escrow supprimé pour ce dossier.")
     st.rerun()
