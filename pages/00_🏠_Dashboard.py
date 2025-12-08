@@ -1,114 +1,92 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-import streamlit as st
-from backend.dropbox_utils import get_dbx
-import json
-
-dbx = get_dbx()
-metadata, res = dbx.files_download(st.secrets["paths"]["DROPBOX_JSON"])
-
-st.subheader("📄 CONTENU ACTUEL DU JSON")
-st.code(res.content.decode("utf-8"))
-
 
 st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
 st.title("🏠 Dashboard — Berenbaum Law App")
 
 # ---------------------------------------------------------
-# 🔹 Charger la base JSON
+# 🔹 Chargement de la base
 # ---------------------------------------------------------
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+clients = db.get("clients", [])
 
-if clients.empty:
-    st.warning("Aucun dossier trouvé.")
+if not clients:
+    st.warning("Aucun dossier trouvé dans la base.")
     st.stop()
 
-# Convertir dates
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
+df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# 🔹 KPIs
+# 🔹 Colonnes obligatoires
 # ---------------------------------------------------------
-total_dossiers = len(clients)
-dossiers_envoyes = clients["Dossier envoye"].sum()
-escrow_en_cours = clients["Escrow"].sum()
-escrow_a_reclamer = clients["Escrow_a_reclamer"].sum()
-escrow_reclame = clients["Escrow_reclame"].sum()
+REQUIRED_BOOL_COLS = [
+    "Dossier envoye",
+    "Dossier accepte",
+    "Dossier refuse",
+    "Dossier Annule",
+    "Escrow",
+    "Escrow_a_reclamer",
+    "Escrow_reclame",
+]
 
-col1, col2, col3, col4, col5 = st.columns(5)
+for col in REQUIRED_BOOL_COLS:
+    if col not in df.columns:
+        df[col] = False
 
-col1.metric("📁 Total dossiers", total_dossiers)
-col2.metric("📨 Dossiers envoyés", dossiers_envoyes)
-col3.metric("💰 Escrow en cours", escrow_en_cours)
-col4.metric("🟧 Escrow à réclamer", escrow_a_reclamer)
-col5.metric("🟩 Escrow réclamé", escrow_reclame)
+# Normalisation booléens
+def normalize_bool(x):
+    if isinstance(x, bool):
+        return x
+    if str(x).lower() in ["true", "1", "1.0", "yes", "oui"]:
+        return True
+    return False
 
-st.markdown("---")
-
-# ---------------------------------------------------------
-# 🔹 Alerte : Escrow à réclamer
-# ---------------------------------------------------------
-if escrow_a_reclamer > 0:
-    st.warning(f"⚠️ {escrow_a_reclamer} dossier(s) ont un Escrow à réclamer.")
-
-# ---------------------------------------------------------
-# 🔹 Alerte : dossiers sans visa
-# ---------------------------------------------------------
-missing_visa = clients[clients["Visa"] == ""]
-if not missing_visa.empty:
-    st.error(f"❗ {len(missing_visa)} dossier(s) sans Visa renseigné.")
+for col in REQUIRED_BOOL_COLS:
+    df[col] = df[col].apply(normalize_bool)
 
 # ---------------------------------------------------------
-# 🔹 Graphique — Dossiers par mois
+# 🔹 Colonnes dates
 # ---------------------------------------------------------
-st.subheader("📅 Dossiers créés par mois")
+DATE_COLS = ["Date", "Date envoi", "Date acceptation", "Date refus"]
 
-clients["Mois"] = clients["Date"].dt.to_period("M").astype(str)
-
-df_month = clients.groupby("Mois").size().reset_index(name="Nombre")
-
-st.line_chart(df_month, x="Mois", y="Nombre")
-
-st.markdown("---")
+for col in DATE_COLS:
+    if col in df.columns:
+        df[col] = pd.to_datetime(df[col], errors="coerce")
 
 # ---------------------------------------------------------
-# 🔹 Répartition par Visa
+# 📊 KPIs
 # ---------------------------------------------------------
-st.subheader("🛂 Répartition des dossiers par type de Visa")
+st.subheader("📊 Indicateurs clés")
 
-df_visa = clients["Visa"].value_counts().reset_index()
-df_visa.columns = ["Visa", "Nombre"]
+total_dossiers = len(df)
+dossiers_envoyes = df["Dossier envoye"].sum()
+dossiers_acceptes = df["Dossier accepte"].sum()
+dossiers_refuses = df["Dossier refuse"].sum()
+dossiers_annules = df["Dossier Annule"].sum()
 
-st.bar_chart(df_visa, x="Visa", y="Nombre")
+escrow_en_cours = df["Escrow"].sum()
+escrow_a_reclamer = df["Escrow_a_reclamer"].sum()
+escrow_reclame = df["Escrow_reclame"].sum()
 
-st.markdown("---")
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Total dossiers", total_dossiers)
+k2.metric("Envoyés", dossiers_envoyes)
+k3.metric("Acceptés", dossiers_acceptes)
+k4.metric("Refusés", dossiers_refuses)
+
+k5, k6, k7 = st.columns(3)
+k5.metric("Annulés", dossiers_annules)
+k6.metric("Escrow en cours", escrow_en_cours)
+k7.metric("Escrow à réclamer", escrow_a_reclamer)
 
 # ---------------------------------------------------------
-# 🔹 Répartition par Catégorie
+# 📄 Tableau des derniers dossiers
 # ---------------------------------------------------------
-st.subheader("🧩 Répartition par catégorie")
+st.subheader("📄 Aperçu des derniers dossiers")
 
-df_cat = clients["Categories"].value_counts().reset_index()
-df_cat.columns = ["Catégorie", "Nombre"]
+affichage_cols = ["Dossier N", "Nom", "Date", "Visa", "Dossier envoye", "Dossier accepte", "Escrow"]
 
-st.bar_chart(df_cat, x="Catégorie", y="Nombre")
+existing_cols = [c for c in affichage_cols if c in df.columns]
 
-st.markdown("---")
-
-# ---------------------------------------------------------
-# 🔹 Tableau des alertes Escrow
-# ---------------------------------------------------------
-st.subheader("⚠️ Détails : Escrow à réclamer")
-
-if escrow_a_reclamer == 0:
-    st.info("Aucun Escrow à réclamer.")
-else:
-    st.dataframe(
-        clients[clients["Escrow_a_reclamer"] == True][
-            ["Dossier N", "Nom", "Date", "Visa", "Montant honoraires (US $)"]
-        ],
-        use_container_width=True
-    )
-
+st.dataframe(df[existing_cols].sort_values("Date", ascending=False), use_container_width=True)
