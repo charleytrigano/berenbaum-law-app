@@ -150,6 +150,14 @@ if st.button("Mettre en Escrow en cours"):
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications", type="primary"):
 
+    st.write("DEBUG — Avant mise à jour :", df[df[DOSSIER_COL] == selected])
+
+    # (Ton code de sauvegarde ici)
+
+    st.write("DEBUG — Après mise à jour :", df[df[DOSSIER_COL] == selected])
+
+    
+
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
     # -------- LOGIQUE AUTOMATIQUE : DOSSIER ENVOYÉ --------
