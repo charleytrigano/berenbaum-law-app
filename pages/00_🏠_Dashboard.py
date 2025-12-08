@@ -6,7 +6,7 @@ st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
 st.title("🏠 Dashboard — Berenbaum Law App")
 
 # ---------------------------------------------------------
-# 🔹 Chargement DB
+# 🔹 Charger base
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
@@ -18,7 +18,7 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# 🔹 Normalisation colonnes
+# 🔹 Normalisation colonnes manquantes
 # ---------------------------------------------------------
 BOOL_COLS = [
     "Dossier envoye",
@@ -30,10 +30,12 @@ BOOL_COLS = [
     "Escrow_reclame",
 ]
 
+# Ajouter colonnes manquantes
 for col in BOOL_COLS:
     if col not in df.columns:
         df[col] = False
 
+# Convertir en booléens corrects
 def normalize_bool(x):
     if isinstance(x, bool):
         return x
@@ -53,26 +55,40 @@ else:
 df["Année"] = df["Date"].dt.year.fillna(0).astype(int)
 
 # ---------------------------------------------------------
-# 🔹 SIDEBAR — Filtres
+# 🔍 FILTRES DIRECTEMENT SUR LA PAGE
 # ---------------------------------------------------------
-st.sidebar.header("🔍 Filtres")
+st.subheader("🔍 Filtres")
 
+col_f1, col_f2, col_f3 = st.columns(3)
+
+# ▪ Filtre Année
 annee_list = sorted(df["Année"].unique())
-annee = st.sidebar.selectbox("Année :", ["Toutes"] + [str(a) for a in annee_list if a != 0])
+annee = col_f1.selectbox(
+    "📅 Année",
+    ["Toutes"] + [str(a) for a in annee_list if a != 0]
+)
 
+# ▪ Filtre Catégorie
 categories = df.get("Categories", pd.Series([""])).fillna("")
-categorie = st.sidebar.selectbox("Catégorie :", ["Toutes"] + sorted(categories.unique()))
+categorie = col_f2.selectbox(
+    "📌 Catégorie",
+    ["Toutes"] + sorted(categories.unique())
+)
 
-statut = st.sidebar.selectbox("Statut :", [
-    "Tous",
-    "Envoyé",
-    "Accepté",
-    "Refusé",
-    "Annulé",
-    "Escrow en cours",
-    "Escrow à réclamer",
-    "Escrow réclamé",
-])
+# ▪ Filtre Statut
+statut = col_f3.selectbox(
+    "📂 Statut",
+    [
+        "Tous",
+        "Envoyé",
+        "Accepté",
+        "Refusé",
+        "Annulé",
+        "Escrow en cours",
+        "Escrow à réclamer",
+        "Escrow réclamé",
+    ]
+)
 
 # ---------------------------------------------------------
 # 🔹 Application des filtres
@@ -101,7 +117,7 @@ elif statut == "Escrow réclamé":
     df_filtered = df_filtered[df_filtered["Escrow_reclame"]]
 
 # ---------------------------------------------------------
-# 🔹 KPIs
+# 📊 KPIs
 # ---------------------------------------------------------
 st.subheader("📊 Indicateurs clés")
 
@@ -117,25 +133,20 @@ k6.metric("Escrow en cours", df_filtered["Escrow"].sum())
 k7.metric("Escrow à réclamer", df_filtered["Escrow_a_reclamer"].sum())
 k8.metric("Escrow réclamé", df_filtered["Escrow_reclame"].sum())
 
-# Finances
-if "Montant honoraires (US $)" in df_filtered.columns:
-    honoraires = df_filtered["Montant honoraires (US $)"].fillna(0).sum()
-else:
-    honoraires = 0
+# ---------------------------------------------------------
+# 💰 Finances
+# ---------------------------------------------------------
+st.subheader("💰 Finances")
 
-if "Autres frais (US $)" in df_filtered.columns:
-    frais = df_filtered["Autres frais (US $)"].fillna(0).sum()
-else:
-    frais = 0
+honoraires = df_filtered.get("Montant honoraires (US $)", pd.Series([0])).fillna(0).sum()
+frais = df_filtered.get("Autres frais (US $)", pd.Series([0])).fillna(0).sum()
 
-if "Acompte 1" in df_filtered.columns:
-    paiements = df_filtered[["Acompte 1","Acompte 2","Acompte 3","Acompte 4"]].fillna(0).sum().sum()
-else:
-    paiements = 0
+paiements = 0
+for col in ["Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"]:
+    if col in df_filtered.columns:
+        paiements += df_filtered[col].fillna(0).sum()
 
 solde = honoraires + frais - paiements
-
-st.subheader("💰 Finances")
 
 f1, f2, f3 = st.columns(3)
 f1.metric("Total facturé", f"${honoraires + frais:,.2f}")
@@ -143,11 +154,23 @@ f2.metric("Paiements reçus", f"${paiements:,.2f}")
 f3.metric("Solde restant", f"${solde:,.2f}")
 
 # ---------------------------------------------------------
-# 🔹 Tableau
+# 📄 Tableau
 # ---------------------------------------------------------
 st.subheader("📄 Liste des dossiers filtrés")
 
-cols = ["Dossier N", "Nom", "Date", "Visa", "Categories", "Dossier envoye", "Escrow"]
-exist = [c for c in cols if c in df_filtered.columns]
+colonnes = [
+    "Dossier N",
+    "Nom",
+    "Date",
+    "Categories",
+    "Visa",
+    "Dossier envoye",
+    "Escrow"
+]
 
-st.dataframe(df_filtered[exist].sort_values("Date", ascending=False), use_container_width=True)
+colonnes = [c for c in colonnes if c in df_filtered.columns]
+
+st.dataframe(
+    df_filtered[colonnes].sort_values("Date", ascending=False),
+    use_container_width=True
+)
