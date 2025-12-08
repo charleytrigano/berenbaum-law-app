@@ -1,6 +1,16 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
+import streamlit as st
+from backend.dropbox_utils import get_dbx
+import json
+
+dbx = get_dbx()
+metadata, res = dbx.files_download(st.secrets["paths"]["DROPBOX_JSON"])
+
+st.subheader("📄 CONTENU ACTUEL DU JSON")
+st.code(res.content.decode("utf-8"))
+
 
 st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
 st.title("🏠 Dashboard — Berenbaum Law App")
