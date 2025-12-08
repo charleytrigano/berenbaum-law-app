@@ -1,6 +1,15 @@
 import streamlit as st
 from backend.dropbox_utils import load_database, save_database
 
+import streamlit as st
+from backend.dropbox_utils import load_database
+import json
+
+db = load_database()
+st.write("📁 JSON utilisé :", st.secrets["paths"]["DROPBOX_JSON"])
+st.write("📄 Contenu DB chargé :", db)
+
+
 st.set_page_config(page_title="Berenbaum Law App", page_icon="📁", layout="wide")
 
 st.title("📊 Tableau de bord – Berenbaum Law App")
