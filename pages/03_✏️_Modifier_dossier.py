@@ -33,8 +33,13 @@ for col in ["Dossier envoye", "Dossier envoyé"]:
         df[col] = False
     df[col] = df[col].apply(normalize_bool)
 
+for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
+    if col not in df.columns:
+        df[col] = False
+    df[col] = df[col].apply(normalize_bool)
+
 # ---------------------------------------------------------
-# 🔹 Sélection du dossier
+# 🔹 Sélection dossier
 # ---------------------------------------------------------
 df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce").astype("Int64")
 liste = df[DOSSIER_COL].dropna().astype(int).sort_values().tolist()
@@ -100,9 +105,7 @@ da4 = colD4.date_input("Date Acompte 4", safe_date(dossier.get("Date Acompte 4")
 # ESCROW
 # ---------------------------------------------------------
 st.subheader("💰 Escrow")
-
-escrow_flag = normalize_bool(dossier.get("Escrow", False))
-escrow_checkbox = st.checkbox("Escrow actif ?", value=escrow_flag)
+escrow_checkbox = st.checkbox("Escrow actif ?", value=normalize_bool(dossier.get("Escrow", False)))
 
 # ---------------------------------------------------------
 # STATUTS DU DOSSIER
@@ -111,9 +114,10 @@ st.subheader("📦 Statuts du dossier")
 
 colS1, colS2, colS3, colS4, colS5 = st.columns(5)
 
-envoye = colS1.checkbox("Dossier envoyé", value=normalize_bool(
-    dossier.get("Dossier envoye", dossier.get("Dossier envoyé", False))
-))
+envoye = colS1.checkbox(
+    "Dossier envoyé",
+    value=normalize_bool(dossier.get("Dossier envoye", dossier.get("Dossier envoyé", False)))
+)
 
 accepte = colS2.checkbox("Dossier accepté", normalize_bool(dossier.get("Dossier accepte", False)))
 refuse = colS3.checkbox("Dossier refusé", normalize_bool(dossier.get("Dossier refuse", False)))
@@ -134,6 +138,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
+    # Infos générales
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -153,10 +158,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Date Acompte 3"] = da3
     df.loc[idx, "Date Acompte 4"] = da4
 
-    df.loc[idx, "Escrow"] = bool(escrow_checkbox)
-    df.loc[idx, "Escrow_a_reclamer"] = False
-    df.loc[idx, "Escrow_reclame"] = False
-
+    # STATUTS
     df.loc[idx, "Dossier envoye"] = bool(envoye)
     df.loc[idx, "Dossier envoyé"] = bool(envoye)
 
@@ -171,16 +173,27 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Date annulation"] = date_annule
     df.loc[idx, "Date reclamation"] = date_rfe
 
-    # FIN SAUVEGARDE
+    # ---------------------------------------------------------
+    # 🔥 LOGIQUE ESCROW AUTOMATIQUE
+    # ---------------------------------------------------------
+    if envoye:
+        df.loc[idx, "Escrow"] = False
+        df.loc[idx, "Escrow_a_reclamer"] = True
+        df.loc[idx, "Escrow_reclame"] = False
+    else:
+        df.loc[idx, "Escrow"] = bool(escrow_checkbox)
+
+    # ---------------------------------------------------------
+    # SAUVEGARDE
+    # ---------------------------------------------------------
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
     st.success("✔ Modifications enregistrées.")
     st.rerun()
 
-
 # ---------------------------------------------------------
-# 🔄 MODIFIER / SUPPRIMER L’ESCROW
+# 🔧 MODIFIER / SUPPRIMER L’ESCROW
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🔧 Modifier / Supprimer totalement l’Escrow pour ce dossier")
