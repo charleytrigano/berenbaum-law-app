@@ -18,19 +18,34 @@ if not clients:
 df = pd.DataFrame(clients)
 
 # ---------------------------------------------------------
-# NORMALISATION ROBUSTE
+# NORMALISATION ROBUSTE (Escrow + Dossier envoyé)
 # ---------------------------------------------------------
+
 def normalize_bool(x):
+    """Convertit proprement toutes les formes de vrai/faux en bool."""
     if isinstance(x, bool):
         return x
     if str(x).lower() in ["1", "true", "yes", "oui"]:
         return True
     return False
 
+# Normaliser Escrow / Escrow_a_reclamer / Escrow_reclame
 for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
     if col not in df.columns:
         df[col] = False
     df[col] = df[col].apply(normalize_bool)
+
+# Normaliser Dossier envoyé
+if "Dossier envoye" not in df.columns:
+    df["Dossier envoye"] = False
+
+df["Dossier envoye"] = df["Dossier envoye"].apply(normalize_bool)
+
+# ---------------------------------------------------------
+# LOGIQUE AUTOMATIQUE (RETIRÉE)
+# ---------------------------------------------------------
+# Option B : AUCUNE logique automatique ici.
+# Tout est contrôlé par Modifier_dossier.py.
 
 # ---------------------------------------------------------
 # TABLEAU : ESCROW EN COURS
@@ -39,8 +54,9 @@ st.subheader("📌 Escrow en cours")
 
 escrow_cours = df[
     (df["Escrow"] == True) &
+    (df["Escrow_reclame"] == False) &
     (df["Escrow_a_reclamer"] == False) &
-    (df["Escrow_reclame"] == False)
+    (df["Dossier envoye"] == False)
 ]
 
 st.dataframe(escrow_cours, use_container_width=True)
