@@ -1,202 +1,184 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
+from components.export_pdf import generate_pdf
+
+st.set_page_config(page_title="📄 Fiche dossier", page_icon="📄", layout="wide")
 
 # ---------------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="Fiche dossier", page_icon="📄", layout="wide")
-st.title("📄 Fiche dossier – Vue complète")
-
-# ---------------------------------------------------------
-# LOAD DATABASE
+# 🔹 Charger base
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
+df = pd.DataFrame(clients)
 
-if not clients:
+if df.empty:
     st.error("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients)
+# ---------------------------------------------------------
+# 🔹 Normalisation Dossier N
+# ---------------------------------------------------------
+df["Dossier N"] = pd.to_numeric(df["Dossier N"], errors="coerce").astype("Int64")
+nums = sorted(df["Dossier N"].dropna().astype(int).unique())
 
-# Nettoyage minimal
-df["Dossier N"] = pd.to_numeric(df["Dossier N"], errors="coerce")
-df = df.dropna(subset=["Dossier N"])
-df["Dossier N"] = df["Dossier N"].astype(int)
-
-nums = sorted(df["Dossier N"].unique())
+# ---------------------------------------------------------
+# 🔹 Sélection dossier
+# ---------------------------------------------------------
+st.header("📄 Fiche dossier")
 selected = st.selectbox("Sélectionner un dossier :", nums)
 
-row = df[df["Dossier N"] == selected].iloc[0].copy()
+row = df[df["Dossier N"] == selected].iloc[0]
 
 # ---------------------------------------------------------
-# HELPERS
+# UTILS
 # ---------------------------------------------------------
-def money(v):
+def money(x):
     try:
-        return f"${float(v):,.2f}"
+        return f"${float(x):,.2f}"
     except:
         return "$0.00"
 
-def parse_date(value):
-    try:
-        v = pd.to_datetime(value, errors="coerce")
-        if pd.isna(v):
-            return None
-        return v.date()
-    except:
-        return None
-
-def badge_status(solde, total):
-    if solde <= 0:
-        return "<span style='color:#22c55e; font-weight:bold;'>✔ Payé</span>"
-    elif solde < total:
-        return "<span style='color:#eab308; font-weight:bold;'>➖ Partiellement payé</span>"
-    else:
-        return "<span style='color:#ef4444; font-weight:bold;'>✘ Impayé</span>"
+def normalize_date(x):
+    return "" if x in ["None", None, "", "nan"] else str(x)
 
 # ---------------------------------------------------------
-# FACTURATION ↔ ACOMPTES (2 colonnes)
+# 🔹 TITRE
 # ---------------------------------------------------------
+st.markdown(f"""
+# 🧾 Dossier {row['Dossier N']}
+### 👤 {row['Nom']}
+""")
+
+# ---------------------------------------------------------
+# 🔹 FACTURATION + REGLEMENTS (sur 2 colonnes)
+# ---------------------------------------------------------
+st.subheader("💰 Facturation & Paiements")
+
+# Montants
 hon = float(row.get("Montant honoraires (US $)", 0))
 frais = float(row.get("Autres frais (US $)", 0))
 total = hon + frais
 
-ac_values = [
-    float(row.get("Acompte 1", 0)),
-    float(row.get("Acompte 2", 0)),
-    float(row.get("Acompte 3", 0)),
-    float(row.get("Acompte 4", 0)),
-]
+# Acomptes
+ac1 = float(row.get("Acompte 1", 0))
+ac2 = float(row.get("Acompte 2", 0))
+ac3 = float(row.get("Acompte 3", 0))
+ac4 = float(row.get("Acompte 4", 0))
 
-dates_ac = [
-    row.get("Date Acompte 1", ""),
-    row.get("Date Acompte 2", ""),
-    row.get("Date Acompte 3", ""),
-    row.get("Date Acompte 4", "")
-]
-
-modes_ac = [
-    row.get("Mode Acompte 1", ""),
-    row.get("Mode Acompte 2", ""),
-    row.get("Mode Acompte 3", ""),
-    row.get("Mode Acompte 4", "")
-]
-
-total_paid = sum(ac_values)
+total_paid = ac1 + ac2 + ac3 + ac4
 solde = total - total_paid
 
-badge = badge_status(solde, total)
+# Badge paiement
+if solde <= 0:
+    badge_pay = "🟢 **Payé**"
+elif total_paid == 0:
+    badge_pay = "🔴 **Impayé**"
+else:
+    badge_pay = "🟡 **Partiellement payé**"
 
 colF1, colF2 = st.columns(2)
 
-# ---------------------------------------------------------
-# COLONNE GAUCHE – FACTURATION
-# ---------------------------------------------------------
 with colF1:
-    st.markdown("### 💰 Facturation")
+    st.markdown("### 💵 Facturation")
+    st.write(f"**Honoraires :** {money(hon)}")
+    st.write(f"**Autres frais :** {money(frais)}")
+    st.write(f"**Total :** {money(total)}")
+    st.write(f"### 💳 Paiements : {badge_pay}")
+    st.write(f"**Total payé :** {money(total_paid)}")
+    st.write(f"**Solde restant :** {money(solde)}")
 
-    st.markdown(f"""
-    <div style="padding:15px; border-radius:10px; background:#1f2937;">
-        <p><b>Montant honoraires :</b> {money(hon)}</p>
-        <p><b>Autres frais :</b> {money(frais)}</p>
-        <hr style="border:0.5px solid #374151;">
-        <p><b>Total facturé :</b> {money(total)}</p>
-        <p><b>Total payé :</b> {money(total_paid)}</p>
-        <p><b>Solde restant :</b> {money(solde)}</p>
-        <p><b>Statut :</b> {badge}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# COLONNE DROITE – ACOMPTES & RÈGLEMENTS
-# ---------------------------------------------------------
 with colF2:
-    st.markdown("### 🏦 Acomptes & Paiements")
+    st.markdown("### 🏦 Acomptes & Modes de règlement")
 
-    for i in range(4):
+    def display_acompte(label, val, date, mode):
         st.markdown(f"""
-        <div style="padding:12px; margin-bottom:10px; border-radius:8px; background:#111827; border:1px solid #374151;">
-            <p><b>Acompte {i+1} :</b> {money(ac_values[i])}</p>
-            <p><b>Mode :</b> {modes_ac[i] or "—"}</p>
-            <p><b>Date :</b> {dates_ac[i] or "—"}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        **{label} :** {money(val)}  
+        📅 *{normalize_date(date)}*  
+        💳 *{mode if mode else "—"}*
+        """)
+
+    display_acompte("Acompte 1", ac1, row.get("Date Acompte 1"), row.get("mode de paiement"))
+    display_acompte("Acompte 2", ac2, row.get("Date Acompte 2"), row.get("mode de paiement2"))
+    display_acompte("Acompte 3", ac3, row.get("Date Acompte 3"), row.get("mode de paiement3"))
+    display_acompte("Acompte 4", ac4, row.get("Date Acompte 4"), row.get("mode de paiement4"))
 
 # ---------------------------------------------------------
-# INFORMATIONS GÉNÉRALES
-# ---------------------------------------------------------
-st.markdown("---")
-st.markdown("## 📌 Informations générales")
-
-st.markdown(f"""
-**Nom :** {row['Nom']}  
-**Catégorie :** {row.get("Categories", "")}  
-**Sous-catégorie :** {row.get("Sous-categories", "")}  
-**Visa :** {row.get("Visa", "")}  
-**Date création :** {row.get("Date", "")}
-""")
-
-# ---------------------------------------------------------
-# TIMELINE
+# 🔹 INFORMATIONS GÉNÉRALES
 # ---------------------------------------------------------
 st.markdown("---")
-st.markdown("## 🕓 Timeline du dossier")
+st.subheader("📚 Informations générales")
 
-def timeline(title, date):
-    return f"""
-    <div style="padding:10px; margin-bottom:12px; border-left:4px solid #3b82f6;">
-        <div style="font-weight:bold; color:#3b82f6;">{title}</div>
-        <div style="opacity:0.8;">{date}</div>
-    </div>
-    """
-
-st.markdown(timeline("📄 Dossier créé", row.get("Date", "")), unsafe_allow_html=True)
-
-if row.get("Escrow", False):
-    st.markdown(timeline("💰 Escrow ouvert", row.get("Date", "")), unsafe_allow_html=True)
-
-if row.get("Dossier envoye", False):
-    st.markdown(timeline("📤 Dossier envoyé", row.get("Date envoi", "")), unsafe_allow_html=True)
+st.write(f"**Catégorie :** {row.get('Categories', '')}")
+st.write(f"**Sous-catégorie :** {row.get('Sous-categories', '')}")
+st.write(f"**Visa :** {row.get('Visa', '')}")
+st.write(f"**Date de création :** {normalize_date(row.get('Date'))}")
 
 # ---------------------------------------------------------
-# ACTIONS
+# 🔹 STATUTS & ESCROW
 # ---------------------------------------------------------
 st.markdown("---")
-st.markdown("## ⚙️ Actions")
+st.subheader("📦 Statuts du dossier")
+
+colS1, colS2, colS3 = st.columns(3)
+
+with colS1:
+    st.write("**Envoyé :**", "✅" if row.get("Dossier envoye") else "❌")
+    st.write("**Accepté :**", "✅" if row.get("Dossier accepte") else "❌")
+
+with colS2:
+    st.write("**Refusé :**", "❌" if not row.get("Dossier refuse") else "⛔")
+    st.write("**RFE :**", "⚠️" if row.get("RFE") else "❌")
+
+with colS3:
+    st.write("**Escrow en cours :**", "💰" if row.get("Escrow") else "—")
+    st.write("**Escrow à réclamer :**", "📬" if row.get("Escrow_a_reclamer") else "—")
+    st.write("**Escrow réclamé :**", "✔️" if row.get("Escrow_reclame") else "—")
+
+# ---------------------------------------------------------
+# 🔹 TIMELINE
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("🕓 Timeline du dossier")
+
+timeline_html = "<div style='line-height:1.8;'>"
+
+if row.get("Date"):
+    timeline_html += f"<div>📄 <b>Dossier créé :</b> {row['Date']}</div>"
+
+if row.get("Escrow"):
+    timeline_html += "<div>💰 <b>Escrow ouvert</b></div>"
+
+if row.get("Dossier envoye"):
+    timeline_html += f"<div>📤 <b>Dossier envoyé :</b> {row.get('Date envoi','')}</div>"
+
+timeline_html += "</div>"
+
+st.markdown(timeline_html, unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 🔹 ACTIONS
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("⚙️ Actions")
 
 colA1, colA2, colA3 = st.columns(3)
 
 with colA1:
-    if st.button("✏️ Modifier ce dossier"):
+    if st.button("✏️ Modifier ce dossier", key="btn_edit"):
         st.switch_page("pages/03_✏️_Modifier_dossier.py")
 
 with colA2:
-    st.button("📄 Export PDF (à venir)")
-
-with colA3:
-    st.button("🗑️ Supprimer (sécurisé)", type="secondary")
-
-from components.export_pdf import generate_pdf
-
-colA1, colA2, colA3 = st.columns(3)
-
-with colA1:
-    if st.button("✏️ Modifier ce dossier"):
-        st.switch_page("pages/03_✏️_Modifier_dossier.py")
-
-with colA2:
-    if st.button("📄 Export PDF"):
+    if st.button("📄 Export PDF", key="btn_pdf"):
         fname = generate_pdf(row)
         with open(fname, "rb") as f:
             st.download_button(
                 label="⬇ Télécharger le PDF",
                 data=f,
                 file_name=f"Dossier_{row['Dossier N']}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                key="btn_pdf_dl"
             )
 
 with colA3:
-    st.button("🗑️ Supprimer (sécurisé)", type="secondary")
-
+    st.button("🗑️ Supprimer", key="btn_delete")
