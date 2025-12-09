@@ -151,57 +151,88 @@ with col3:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# 💰 FACTURATION & 🏦 RÈGLEMENTS + SOLDE + BADGE
+# 💰 FACTURATION & 🏦 RÈGLEMENTS — SUR LA MÊME LIGNE GARANTI
 # -------------------------------------------------------------------
+st.markdown("""
+    <style>
+        .two-columns {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+        }
+        .col-box {
+            flex: 1;
+            background-color: rgba(40,40,40,0.5);
+            padding: 18px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        @media (max-width: 900px) {
+            .two-columns {
+                flex-direction: column;      /* devient vertical sur mobile */
+            }
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 st.markdown("## 💰 Facturation & 🏦 Règlements")
 
-colF1, colF2 = st.columns(2)
+st.markdown("<div class='two-columns'>", unsafe_allow_html=True)
 
-# -------------------------------------------------------
-# 💰 FACTURATION
-# -------------------------------------------------------
-with colF1:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### 💰 Facturation")
+# -------------------------------------------------------------------
+# COLONNE 1 — FACTURATION
+# -------------------------------------------------------------------
+st.markdown("<div class='col-box'>", unsafe_allow_html=True)
+st.markdown("### 💰 Facturation")
 
-    honoraires = float(row.get("Montant honoraires (US $)", 0))
-    frais = float(row.get("Autres frais (US $)", 0))
-    total = honoraires + frais
+honoraires = float(row.get("Montant honoraires (US $)", 0))
+frais = float(row.get("Autres frais (US $)", 0))
+total = honoraires + frais
 
-    # Total acomptes encaissés
-    total_acomptes = 0
-    for i in range(1, 5):
-        try:
-            total_acomptes += float(row.get(f"Acompte {i}", 0))
-        except:
-            pass
+total_acomptes = sum([
+    float(row.get(f"Acompte {i}", 0)) for i in range(1, 5)
+])
 
-    # Solde restant
-    solde = total - total_acomptes
-    solde = round(solde, 2)
+solde = round(total - total_acomptes, 2)
 
-    # ---------------- BADGE STATUT ----------------
-    if solde == 0 and total > 0:
-        statut_badge = "<span style='background:#2ecc71;color:white;padding:6px 12px;border-radius:8px;'>🟢 Payé</span>"
-    elif total_acomptes > 0:
-        statut_badge = "<span style='background:#f1c40f;color:black;padding:6px 12px;border-radius:8px;'>🟡 Partiellement payé</span>"
-    else:
-        statut_badge = "<span style='background:#e74c3c;color:white;padding:6px 12px;border-radius:8px;'>🔴 Impayé</span>"
+# BADGE
+if solde == 0 and total > 0:
+    badge = "<span style='background:#2ecc71;color:white;padding:6px 12px;border-radius:8px;'>🟢 Payé</span>"
+elif total_acomptes > 0:
+    badge = "<span style='background:#f1c40f;color:black;padding:6px 12px;border-radius:8px;'>🟡 Partiellement payé</span>"
+else:
+    badge = "<span style='background:#e74c3c;color:white;padding:6px 12px;border-radius:8px;'>🔴 Impayé</span>"
 
-    # ---------------- AFFICHAGE -------------------
-    st.write("**Honoraires :** $", honoraires)
-    st.write("**Autres frais :** $", frais)
-    st.write("**Total facturé :** $", total)
+st.write("**Honoraires :** $", honoraires)
+st.write("**Autres frais :** $", frais)
+st.write("**Total facturé :** $", total)
 
+st.markdown("---")
+
+st.write("**Total acomptes reçus :** $", total_acomptes)
+st.write("**Solde restant :** $", solde)
+
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown(f"### Statut : {badge}", unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# -------------------------------------------------------------------
+# COLONNE 2 — ACOMPTES / RÈGLEMENTS
+# -------------------------------------------------------------------
+st.markdown("<div class='col-box'>", unsafe_allow_html=True)
+st.markdown("### 🏦 Règlements (Acomptes)")
+
+for i in range(1, 5):
+    st.write(f"#### Acompte {i}")
+    st.write(f"- **Montant :** {row.get(f'Acompte {i}', 0)}")
+    st.write(f"- **Mode :** {row.get(f'Mode Acompte {i}', '')}")
+    st.write(f"- **Date :** {row.get(f'Date Paiement {i}', '')}")
     st.markdown("---")
 
-    st.write("**Total acomptes reçus :** $", total_acomptes)
-    st.write("**Solde restant :** $", solde)
+st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f"### Statut : {statut_badge}", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 
 # -------------------------------------------------------
