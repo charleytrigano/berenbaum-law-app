@@ -98,6 +98,26 @@ da2 = colD2.date_input("Date Acompte 2", safe_date(dossier.get("Date Acompte 2")
 da3 = colD3.date_input("Date Acompte 3", safe_date(dossier.get("Date Acompte 3")))
 da4 = colD4.date_input("Date Acompte 4", safe_date(dossier.get("Date Acompte 4")))
 
+
+# ---------------------------------------------------------
+# 🔹 MODE DE RÈGLEMENT
+# ---------------------------------------------------------
+st.subheader("💳 Mode de règlement")
+
+modes = ["", "Chèque", "CB", "Virement", "Venmo"]
+
+mode_reglement = st.selectbox(
+    "Mode de paiement",
+    modes,
+    index=modes.index(dossier.get("mode_paiement", "")) if dossier.get("mode_paiement", "") in modes else 0
+)
+
+date_reglement = st.date_input(
+    "Date du paiement",
+    safe_date(dossier.get("date_paiement"))
+)
+
+
 # ---------------------------------------------------------
 # ESCROW
 # ---------------------------------------------------------
