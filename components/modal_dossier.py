@@ -1,10 +1,10 @@
 import streamlit as st
-import pandas as pd
 
 def show_dossier_modal(row):
-    with st.modal(f"Dossier {row['Dossier N']} — {row['Nom']}"):
+    exp = st.expander(f"📄 Dossier {row['Dossier N']} — {row['Nom']}", expanded=True)
+
+    with exp:
         st.header("📄 Informations générales")
-        st.write(f"**Nom :** {row['Nom']}")
         st.write(f"**Catégorie :** {row['Categories']}")
         st.write(f"**Sous-catégorie :** {row['Sous-categories']}")
         st.write(f"**Visa :** {row['Visa']}")
@@ -25,14 +25,10 @@ def show_dossier_modal(row):
         st.divider()
 
         st.header("🏦 Paiements")
-        total = (
-            float(row["Acompte 1"])
-            + float(row["Acompte 2"])
-            + float(row["Acompte 3"])
-            + float(row["Acompte 4"])
-        )
-        st.write(f"**Acompte total :** {total}$")
-        st.write(f"**Montant honoraires :** {row['Montant honoraires (US $)']}")
+        st.write(f"Acompte 1 : {row['Acompte 1']}")
+        st.write(f"Acompte 2 : {row['Acompte 2']}")
+        st.write(f"Acompte 3 : {row['Acompte 3']}")
+        st.write(f"Acompte 4 : {row['Acompte 4']}")
 
         st.divider()
 
@@ -40,9 +36,11 @@ def show_dossier_modal(row):
         st.write(f"Envoyé : {row['Dossier_envoye']}")
         st.write(f"Accepté : {row['Dossier accepte']}")
         st.write(f"Refusé : {row['Dossier refuse']}")
+        st.write(f"Annulé : {row['Dossier Annule']}")
+        st.write(f"RFE : {row['RFE']}")
 
         st.divider()
 
-        st.header("🛠️ Actions")
-        st.write("👉 [Modifier ce dossier](/03_✏️_Modifier_dossier)")
-        st.write("👉 [Voir escrow](/06_💰_Escrow)")
+        st.header("🔧 Actions rapides")
+        st.write("➡️ [Modifier ce dossier](/03_✏️_Modifier_dossier)")
+        st.write("➡️ [Voir Escrow](/06_💰_Escrow)")
