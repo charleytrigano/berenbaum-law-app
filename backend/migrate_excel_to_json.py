@@ -1,58 +1,50 @@
-import json
-import tempfile
 import pandas as pd
-import dropbox
-from utils.config import DROPBOX_TOKEN, DROPBOX_EXCEL_PATH, DROPBOX_JSON_PATH
+import json
+from backend.dropbox_utils import get_dbx
+import streamlit as st
+
+def read_excel_from_dropbox(path):
+    """Télécharge un fichier Excel depuis Dropbox et retourne un DataFrame."""
+    dbx = get_dbx()
+    try:
+        metadata, res = dbx.files_download(path)
+        content = res.content
+        return pd.read_excel(content)
+    except Exception as e:
+        st.error(f"❌ Erreur lecture fichier : {path} — {e}")
+        return None
 
 
-def migrate_all_sheets_to_json():
-    print("🔄 Migration Excel → JSON en cours…")
+def convert_all_excels_to_json():
+    """
+    Récupère tous les fichiers Excel mentionnés dans st.secrets["paths"]
+    et génère un JSON complet.
+    """
 
-    dbx = dropbox.Dropbox(DROPBOX_TOKEN)
+    p = st.secrets["paths"]
 
-    # 1️⃣ Télécharger Excel
-    print("📥 Téléchargement de l'Excel...")
-    _, res = dbx.files_download(DROPBOX_EXCEL_PATH)
+    clients_df = read_excel_from_dropbox(p["CLIENTS_FILE"])
+    visa_df = read_excel_from_dropbox(p["VISA_FILE"])
+    escrow_df = read_excel_from_dropbox(p["ESCROW_FILE"])
+    compta_df = read_excel_from_dropbox(p["COMPTA_FILE"])
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        tmp.write(res.content)
-        excel_path = tmp.name
-
-    # 2️⃣ Charger toutes les feuilles
-    print("📄 Lecture des feuilles...")
-    xls = pd.ExcelFile(excel_path)
-
-    json_data = {}
-
-    # Liste des feuilles attendues
-    mapping = {
-        "Clients": "clients",
-        "Visa": "visa",
-        "Escrow": "escrow",
-        "ComptaCli": "comptacli"
+    db_json = {
+        "clients": [],
+        "visa": [],
+        "escrow": [],
+        "compta": []
     }
 
-    for sheet_excel_name, json_key_name in mapping.items():
-        if sheet_excel_name not in xls.sheet_names:
-            print(f"⚠️ Feuille manquante dans Excel : {sheet_excel_name}")
-            json_data[json_key_name] = []
-            continue
+    if clients_df is not None:
+        db_json["clients"] = clients_df.fillna("").to_dict(orient="records")
 
-        print(f"✔ Conversion : {sheet_excel_name} → {json_key_name}")
+    if visa_df is not None:
+        db_json["visa"] = visa_df.fillna("").to_dict(orient="records")
 
-        df = pd.read_excel(xls, sheet_excel_name)
-        df = df.fillna("")  # nettoyer valeurs NaN
+    if escrow_df is not None:
+        db_json["escrow"] = escrow_df.fillna("").to_dict(orient="records")
 
-        json_data[json_key_name] = df.to_dict(orient="records")
+    if compta_df is not None:
+        db_json["compta"] = compta_df.fillna("").to_dict(orient="records")
 
-    # 3️⃣ Upload du nouveau JSON
-    print("📤 Upload du JSON...")
-    dbx.files_upload(
-        json.dumps(json_data, indent=4).encode("utf-8"),
-        DROPBOX_JSON_PATH,
-        mode=dropbox.files.WriteMode("overwrite")
-    )
-
-    print("✅ Migration terminée ! Votre base JSON est prête.")
-    return json_data
-
+    return db_json
