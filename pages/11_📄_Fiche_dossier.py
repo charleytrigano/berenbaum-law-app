@@ -1,355 +1,260 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-from components.export_pdf import export_dossier_pdf
 
+st.set_page_config(page_title="📄 Fiche dossier", page_icon="🗂️", layout="wide")
 
-# ---------------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="Fiche Dossier", page_icon="📄", layout="wide")
-
-
-# ---------------------------------------------------------
-# STYLES VISIONOS PREMIUM
-# ---------------------------------------------------------
-VISIONOS_CSS = """
-<style>
-
-.vcard {
-    background: rgba(255, 255, 255, 0.35);
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border-radius: 18px;
-    border: 1px solid rgba(209, 213, 219, 0.32);
-    padding: 22px 28px;
-    margin-bottom: 25px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
-}
-
-/* BADGES */
-.vbadge {
-    display:inline-block;
-    padding:6px 12px;
-    border-radius:12px;
-    font-size:0.78rem;
-    font-weight:600;
-    margin-right:6px;
-}
-.bgreen { background:#d1fae5; color:#065f46; }
-.byellow { background:#fef9c3; color:#92400e; }
-.bred { background:#fee2e2; color:#991b1b; }
-.bblue { background:#dbeafe; color:#1e3a8a; }
-.bgray { background:#e5e7eb; color:#374151; }
-
-/* TIMELINE CONTAINER */
-.timeline-container {
-    display: flex;
-    gap: 40px;
-    flex-wrap: wrap;
-}
-
-/* TIMELINE BOX */
-.timeline-box {
-    background: rgba(255,255,255,0.55);
-    backdrop-filter: blur(15px);
-    padding: 22px;
-    border-radius: 18px;
-    width: 45%;
-    min-width: 300px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
-}
-
-/* VERTICAL TIMELINE */
-.timeline {
-    border-left: 2px solid rgba(180,180,180,0.35);
-    margin-left: 20px;
-    padding-left: 12px;
-    position: relative;
-}
-
-/* ANIMATED FLOW */
-.timeline:after {
-    content: "";
-    position: absolute;
-    left: -2px;
-    top: 0;
-    width: 2px;
-    height: 100%;
-    background: linear-gradient(rgba(255,255,255,0), rgba(0,122,255,0.4), rgba(255,255,255,0));
-    animation: flow 3s linear infinite;
-}
-@keyframes flow {
-    0% { transform: translateY(-100%); }
-    100% { transform: translateY(100%); }
-}
-
-/* EVENT */
-.event {
-    position: relative;
-    margin-bottom: 26px;
-}
-
-/* DOT */
-.event:before {
-    content: "";
-    position: absolute;
-    left: -18px;
-    top: 4px;
-    width: 14px;
-    height: 14px;
-    background: rgba(255,255,255,0.9);
-    border-radius: 50%;
-    border: 2px solid rgba(150,150,150,0.5);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-}
-
-/* COLORED DOTS */
-.dot-green { border-color:#059669 !important; }
-.dot-red { border-color:#DC2626 !important; }
-.dot-blue { border-color:#2563EB !important; }
-.dot-yellow { border-color:#CA8A04 !important; }
-.dot-gray { border-color:#6B7280 !important; }
-
-/* TITLES */
-.event-title {
-    font-weight: 600;
-    font-size: 15px;
-    color: #1F2937;
-}
-
-/* DATES */
-.event-date {
-    font-size: 13px;
-    color: #6B7280;
-}
-
-</style>
-"""
-st.markdown(VISIONOS_CSS, unsafe_allow_html=True)
-
-
-
-# ---------------------------------------------------------
-# LOAD DATABASE
-# ---------------------------------------------------------
+# -------------------------------
+# LOAD DB
+# -------------------------------
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+df = pd.DataFrame(db.get("clients", []))
 
-if clients.empty:
+if df.empty:
     st.error("Aucun dossier trouvé.")
     st.stop()
 
 
-# ---------------------------------------------------------
-# READ SELECTED DOSSIER (Dashboard → Fiche)
-# ---------------------------------------------------------
-if "selected_dossier" in st.session_state:
-    selected_initial = st.session_state["selected_dossier"]
+# -------------------------------
+# THEME DETECTION (Dark / Light)
+# -------------------------------
+try:
+    theme = st.get_option("theme.base")
+except:
+    theme = "light"
+
+DARK = theme == "dark"
+
+if DARK:
+    V_BG = "rgba(30,30,30,0.45)"
+    V_BORDER = "rgba(255,255,255,0.10)"
+    V_TEXT = "#F9FAFB"
+    V_TEXT_SOFT = "#9CA3AF"
+    V_SHADOW = "rgba(0,0,0,0.6)"
 else:
-    selected_initial = None
+    V_BG = "rgba(255,255,255,0.35)"
+    V_BORDER = "rgba(0,0,0,0.12)"
+    V_TEXT = "#1F2937"
+    V_TEXT_SOFT = "#6B7280"
+    V_SHADOW = "rgba(0,0,0,0.1)"
 
 
-# ---------------------------------------------------------
-# SELECTBOX DOSSIERS
-# ---------------------------------------------------------
-st.title("📄 Fiche dossier")
+# -------------------------------
+# CSS VisionOS (Dark + Light)
+# -------------------------------
+st.markdown(
+    f"""
+<style>
 
-liste = clients["Dossier N"].dropna().astype(int).sort_values().tolist()
+.vcard {{
+    background: {V_BG};
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    border-radius: 18px;
+    border: 1px solid {V_BORDER};
+    padding: 26px;
+    margin-bottom: 28px;
+    box-shadow: 0 8px 24px {V_SHADOW};
+    color: {V_TEXT};
+}}
 
-selected = st.selectbox(
-    "Sélectionner un dossier :",
-    liste,
-    index = liste.index(selected_initial) if selected_initial in liste else 0
+.vtitle {{
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: {V_TEXT};
+}}
+
+.vlabel {{
+    font-weight: 600;
+    color: {V_TEXT_SOFT};
+}}
+
+.vvalue {{
+    font-size: 1.1rem;
+    color: {V_TEXT};
+}}
+
+.timeline-box {{
+    background: {V_BG};
+    backdrop-filter: blur(12px);
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid {V_BORDER};
+    box-shadow: 0 4px 14px {V_SHADOW};
+}}
+
+.timeline {{
+    border-left: 2px solid {V_TEXT_SOFT};
+    padding-left: 16px;
+}}
+
+.event {{
+    margin-bottom: 14px;
+    position: relative;
+}}
+
+.event:before {{
+    content: '';
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: {V_TEXT};
+    border: 2px solid {V_TEXT_SOFT};
+    position: absolute;
+    left: -22px;
+    top: 4px;
+}}
+
+.event-title {{
+    font-weight: 700;
+    color: {V_TEXT};
+}}
+
+.event-date {{
+    font-size: 0.9rem;
+    color: {V_TEXT_SOFT};
+}}
+
+.badge {{
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: .78rem;
+    font-weight: 600;
+    margin-right: 6px;
+}}
+
+.bgreen {{ background: #15803d; color: white; }}
+.byellow {{ background: #ca8a04; color: white; }}
+.bred {{ background: #b91c1c; color: white; }}
+.bblue {{ background: #1d4ed8; color: white; }}
+.bgray {{ background: #374151; color: white; }}
+
+</style>
+    """,
+    unsafe_allow_html=True,
 )
 
-d = clients[clients["Dossier N"] == selected].iloc[0]
+
+# -------------------------------
+# SELECT DOSSIER
+# -------------------------------
+nums = sorted(df["Dossier N"].astype(int).unique())
+selected = st.selectbox("Sélectionner un dossier", nums)
+
+d = df[df["Dossier N"] == selected].iloc[0]
 
 
-# ---------------------------------------------------------
-# BADGES — STATUT + ESCROW
-# ---------------------------------------------------------
-def badge(text, color):
-    return f"<span class='vbadge {color}'>{text}</span>"
-
-
-# Statut dossier
-if d.get("Dossier envoye"):
-    statut = badge("Envoyé", "bblue")
-elif d.get("Dossier accepte"):
-    statut = badge("Accepté", "bgreen")
-elif d.get("Dossier refuse"):
-    statut = badge("Refusé", "bred")
-else:
-    statut = badge("En cours", "bgray")
-
-# Statut Escrow
-if d.get("Escrow"):
-    escrow_badge = badge("Escrow en cours", "byellow")
-elif d.get("Escrow_a_reclamer"):
-    escrow_badge = badge("Escrow à réclamer", "bred")
-elif d.get("Escrow_reclame"):
-    escrow_badge = badge("Escrow réclamé", "bgreen")
-else:
-    escrow_badge = badge("Pas d'Escrow", "bgray")
-
-
-
-# ---------------------------------------------------------
-# HEADER VISIONOS
-# ---------------------------------------------------------
-st.markdown(f"""
-<div class='vcard'>
-    <h2>📁 Dossier {int(d['Dossier N'])} — {d['Nom']}</h2>
-    {statut} {escrow_badge}
+# -------------------------------
+# HEADER
+# -------------------------------
+st.markdown(
+    f"""
+<div class="vcard">
+    <div class="vtitle">📄 Dossier {d['Dossier N']} — {d['Nom']}</div>
 </div>
-""", unsafe_allow_html=True)
-
-
-
-# ---------------------------------------------------------
-# INFO GÉNÉRALES
-# ---------------------------------------------------------
-st.markdown("<div class='vcard'>", unsafe_allow_html=True)
-st.subheader("📄 Informations générales")
-
-col1, col2, col3 = st.columns(3)
-col1.write(f"**Catégorie :** {d.get('Categories','')}")
-col2.write(f"**Sous-catégorie :** {d.get('Sous-categories','')}")
-col3.write(f"**Visa :** {d.get('Visa','')}")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-
-# ---------------------------------------------------------
-# FACTURATION
-# ---------------------------------------------------------
-st.markdown("<div class='vcard'>", unsafe_allow_html=True)
-st.subheader("💰 Facturation")
-
-hon = float(d.get("Montant honoraires (US $)", 0))
-frais = float(d.get("Autres frais (US $)", 0))
-total = hon + frais
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Honoraires", f"${hon:,.0f}")
-c2.metric("Autres frais", f"${frais:,.0f}")
-c3.metric("Total facturé", f"${total:,.0f}")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-
-# ---------------------------------------------------------
-# ACOMPTES
-# ---------------------------------------------------------
-st.markdown("<div class='vcard'>", unsafe_allow_html=True)
-st.subheader("🏦 Acomptes")
-
-ac1 = float(d.get("Acompte 1",0))
-ac2 = float(d.get("Acompte 2",0))
-ac3 = float(d.get("Acompte 3",0))
-ac4 = float(d.get("Acompte 4",0))
-tot_ac = ac1 + ac2 + ac3 + ac4
-solde = total - tot_ac
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Total acomptes", f"${tot_ac:,.0f}")
-c2.metric("Solde dû", f"${solde:,.0f}")
-c3.write("")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-
-# ---------------------------------------------------------
-# TIMELINES (DOSSIER + ESCROW)
-# ---------------------------------------------------------
-
-# Build timeline events
-timeline_dossier = []
-timeline_escrow = []
-
-def add_ev(lst, label, date, icon, dot):
-    if date not in ["", None, "None", ""]:
-        lst.append((label, date, icon, dot))
-
-# Dossier timeline
-add_ev(timeline_dossier, "Dossier créé", d.get("Date"), "📄", "dot-blue")
-add_ev(timeline_dossier, "Envoyé", d.get("Date envoi"), "📨", "dot-blue")
-add_ev(timeline_dossier, "Accepté", d.get("Date acceptation"), "✅", "dot-green")
-add_ev(timeline_dossier, "Refusé", d.get("Date refus"), "❌", "dot-red")
-add_ev(timeline_dossier, "Annulé", d.get("Date annulation"), "🚫", "dot-gray")
-add_ev(timeline_dossier, "RFE", d.get("Date reclamation"), "📬", "dot-yellow")
-
-# Escrow timeline
-if d.get("Escrow"):
-    add_ev(timeline_escrow, "Escrow ouvert", d.get("Date"), "💰", "dot-yellow")
-if d.get("Escrow_a_reclamer"):
-    add_ev(timeline_escrow, "Escrow à réclamer", d.get("Date envoi"), "⚠️", "dot-red")
-if d.get("Escrow_reclame"):
-    add_ev(timeline_escrow, "Escrow réclamé", d.get("Date acceptation"), "🟢", "dot-green")
-
-
-# Render timelines
-st.markdown("<div class='timeline-container'>", unsafe_allow_html=True)
-
-
-# === TIMELINE DOSSIER ===
-st.markdown("<div class='timeline-box'>", unsafe_allow_html=True)
-st.subheader("📁 Timeline du dossier")
-
-html = "<div class='timeline'>"
-for label, date, icon, dot in timeline_dossier:
-    html += f"""
-    <div class='event {dot}'>
-        <div class='event-title'>{icon} {label}</div>
-        <div class='event-date'>{date}</div>
-    </div>
-    """
-html += "</div>"
-
-st.markdown(html, unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# === TIMELINE ESCROW ===
-st.markdown("<div class='timeline-box'>", unsafe_allow_html=True)
-st.subheader("💰 Timeline Escrow")
-
-html = "<div class='timeline'>"
-for label, date, icon, dot in timeline_escrow:
-    html += f"""
-    <div class='event {dot}'>
-        <div class='event-title'>{icon} {label}</div>
-        <div class='event-date'>{date}</div>
-    </div>
-    """
-html += "</div>"
-
-st.markdown(html, unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-
-# ---------------------------------------------------------
-# ACTIONS (incl. PDF EXPORT)
-# ---------------------------------------------------------
-st.markdown("<div class='vcard'>", unsafe_allow_html=True)
-st.subheader("⚙️ Actions")
-
-pdf = export_dossier_pdf(d)
-
-st.download_button(
-    "📄 Télécharger PDF",
-    data=pdf,
-    file_name=f"Dossier_{d['Dossier N']}.pdf",
-    mime="application/pdf",
-    type="primary"
+""",
+    unsafe_allow_html=True,
 )
 
-st.markdown("</div>", unsafe_allow_html=True)
+
+# -------------------------------
+# BADGES STATUTS
+# -------------------------------
+st.markdown("### 🏷️ Statuts")
+
+badges = ""
+
+if d.get("Dossier envoye"):
+    badges += "<span class='badge bblue'>Envoyé</span>"
+if d.get("Dossier accepte"):
+    badges += "<span class='badge bgreen'>Accepté</span>"
+if d.get("Dossier refuse"):
+    badges += "<span class='badge bred'>Refusé</span>"
+if d.get("Dossier Annule"):
+    badges += "<span class='badge bgray'>Annulé</span>"
+if d.get("RFE"):
+    badges += "<span class='badge byellow'>RFE</span>"
+
+if badges == "":
+    badges = "<span class='badge bgray'>Aucun statut</span>"
+
+st.markdown(f"<div class='vcard'>{badges}</div>", unsafe_allow_html=True)
+
+
+# -------------------------------
+# SECTION : Infos générales
+# -------------------------------
+st.markdown("### 🧾 Informations générales")
+
+with st.container():
+    st.markdown(
+        f"""
+<div class="vcard">
+    <div><span class="vlabel">Catégorie :</span> <span class="vvalue">{d['Categories']}</span></div>
+    <div><span class="vlabel">Sous-catégorie :</span> <span class="vvalue">{d['Sous-categories']}</span></div>
+    <div><span class="vlabel">Visa :</span> <span class="vvalue">{d['Visa']}</span></div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+# -------------------------------
+# SECTION : Paiements
+# -------------------------------
+st.markdown("### 💰 Paiements")
+
+restant = (d["Montant honoraires (US $)"] + d["Autres frais (US $)"]) - (
+    d["Acompte 1"] + d["Acompte 2"] + d["Acompte 3"] + d["Acompte 4"]
+)
+
+st.markdown(
+    f"""
+<div class="vcard">
+    <div><span class="vlabel">Honoraires :</span> {d['Montant honoraires (US $)']}$</div>
+    <div><span class="vlabel">Autres frais :</span> {d['Autres frais (US $)']}$</div>
+    <div><span class="vlabel">Total payé :</span> {d['Acompte 1'] + d['Acompte 2'] + d['Acompte 3'] + d['Acompte 4']}$</div>
+    <div><span class="vlabel">Solde restant :</span> <b>{restant}$</b></div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+
+# -------------------------------
+# TIMELINE
+# -------------------------------
+st.markdown("### 🕓 Timeline du dossier")
+
+events = []
+
+if d.get("Date"):
+    events.append(("📄 Dossier créé", d["Date"]))
+
+if d.get("Escrow"):
+    events.append(("💰 Escrow ouvert", d["Date"]))
+
+if d.get("Dossier envoye"):
+    events.append(("📤 Dossier envoyé", d.get("Date envoi", "")))
+
+if d.get("Dossier accepte"):
+    events.append(("✅ Dossier accepté", d.get("Date acceptation", "")))
+
+if d.get("Dossier refuse"):
+    events.append(("❌ Dossier refusé", d.get("Date refus", "")))
+
+# Render timeline
+timeline_html = "<div class='timeline-box'><div class='timeline'>"
+
+for title, date in events:
+    timeline_html += f"""
+        <div class="event">
+            <div class="event-title">{title}</div>
+            <div class="event-date">{date}</div>
+        </div>
+    """
+
+timeline_html += "</div></div>"
+
+st.markdown(timeline_html, unsafe_allow_html=True)
