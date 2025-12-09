@@ -1,69 +1,97 @@
 import streamlit as st
-from backend.dropbox_utils import load_database, save_database
+import pandas as pd
+import json
+from backend.dropbox_utils import get_dbx, load_database, save_database
+from backend.migrate_excel_to_json import convert_all_excels_to_json
 
-st.set_page_config(page_title="Paramètres", page_icon="⚙️", layout="wide")
-
-st.title("⚙️ Paramètres de l'application")
-
-st.markdown("""
-Bienvenue dans la page **Paramètres**.
-
-Ici vous pouvez :
-- 🔧 Vérifier l’état des données
-- 💾 Sauvegarder / réinitialiser
-- 🧪 Voir les informations système
-""")
-
-st.markdown("---")
+st.set_page_config(page_title="⚙️ Paramètres", page_icon="⚙️", layout="wide")
+st.title("⚙️ Paramètres & Outils avancés")
 
 # ---------------------------------------------------------
-# CHARGER BASE
+# Onglets de navigation
 # ---------------------------------------------------------
-try:
-    db = load_database()
-    st.success("Base chargée depuis Dropbox ✔")
-except:
-    st.error("Impossible de charger la base Dropbox.")
-    db = {"clients": [], "visa": [], "escrow": [], "compta": []}
-
-# ---------------------------------------------------------
-# INFOS SUR LA BASE
-# ---------------------------------------------------------
-st.subheader("📁 Informations sur la base")
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric("Clients", len(db.get("clients", [])))
-col2.metric("Visa", len(db.get("visa", [])))
-col3.metric("Escrow", len(db.get("escrow", [])))
-col4.metric("Comptabilité", len(db.get("compta", [])))
-
-st.markdown("---")
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🔐 Debug Secrets",
+    "🧪 Diagnostic Dropbox",
+    "📥 Import Excel → JSON",
+    "🔄 Synchronisation Dropbox"
+])
 
 # ---------------------------------------------------------
-# RÉINITIALISATION
+# TAB 1 - DEBUG SECRETS
 # ---------------------------------------------------------
-st.subheader("🧨 Réinitialiser la base (danger)")
+with tab1:
+    st.subheader("🔐 Visualisation des secrets utilisés")
 
-st.info(
-    "Cette option remet la base à zéro. "
-    "Toutes les données clients, Visa, Escrow, Comptabilité seront supprimées."
-)
+    try:
+        st.json(st.secrets)
+    except Exception as e:
+        st.error(f"Impossible de lire st.secrets : {e}")
 
-if st.button("❌ Réinitialiser totalement la base"):
-    save_database({"clients": [], "visa": [], "escrow": [], "compta": []})
-    st.success("Base réinitialisée ✔")
-
-st.markdown("---")
+    st.info("⚠️ Les valeurs critiques sont masquées automatiquement pour la sécurité.")
 
 # ---------------------------------------------------------
-# DEBUG SECRETS (Optionnel)
+# TAB 2 - DIAGNOSTIC DROPBOX
 # ---------------------------------------------------------
-st.subheader("🔒 Débogage des secrets")
+with tab2:
+    st.subheader("🧪 Analyse de connexion et lecture des fichiers Dropbox")
 
-if st.checkbox("Afficher les secrets (DEBUG)"):
-    st.json(st.secrets)
+    dbx = None
+    try:
+        dbx = get_dbx()
+        st.success("Connexion Dropbox OK ✔")
+    except Exception as e:
+        st.error(f"❌ Erreur connexion Dropbox : {e}")
 
-st.markdown("---")
+    st.write("### 📄 Fichier JSON configuré")
+    st.code(st.secrets["paths"]["DROPBOX_JSON"])
 
-st.success("Page Paramètres chargée correctement ✔")
+    if dbx:
+        try:
+            meta, res = dbx.files_download(st.secrets["paths"]["DROPBOX_JSON"])
+            content = res.content.decode("utf-8")
+            st.json(json.loads(content))
+            st.success("Lecture JSON Dropbox OK ✔")
+        except Exception as e:
+            st.error(f"❌ Erreur lecture JSON : {e}")
+
+# ---------------------------------------------------------
+# TAB 3 - IMPORT EXCEL
+# ---------------------------------------------------------
+with tab3:
+    st.subheader("📥 Importer les fichiers Excel et recréer le JSON")
+
+    st.write("""
+    Cet outil lit :  
+    - Clients.xlsx  
+    - Visa.xlsx  
+    - Escrow.xlsx  
+    - ComptaCli.xlsx  
+    et reconstruit entièrement *database.json*.
+    """)
+
+    if st.button("📥 Importer maintenant", type="primary"):
+        try:
+            new_db = convert_all_excels_to_json()
+            save_database(new_db)
+            st.success("✔ Import Excel terminé — JSON mis à jour.")
+            st.json(new_db)
+        except Exception as e:
+            st.error(f"❌ Erreur import : {e}")
+
+# ---------------------------------------------------------
+# TAB 4 - SYNCHRONISATION
+# ---------------------------------------------------------
+with tab4:
+    st.subheader("🔄 Forcer la synchronisation Dropbox")
+
+    st.write("Recharge la base actuelle et la renvoie dans Dropbox.")
+
+    if st.button("🔄 Synchroniser maintenant", type="primary"):
+        try:
+            db = load_database()
+            save_database(db)
+            st.success("✔ Synchronisation effectuée.")
+            st.json(db)
+        except Exception as e:
+            st.error(f"❌ Erreur synchronisation : {e}")
