@@ -175,11 +175,14 @@ st.markdown("</div>", unsafe_allow_html=True)
 # ---------------------------------------------------------
 # 📎 ACTIONS
 # ---------------------------------------------------------
-st.markdown("<div class='vcard'>", unsafe_allow_html=True)
-st.subheader("⚙️ Actions")
+from components.export_pdf import export_dossier_pdf
 
-col1, col2, col3 = st.columns(3)
-col1.button("✏️ Modifier ce dossier", key="edit_btn")
-col2.button("📄 Exporter en PDF", key="pdf_btn")
-col3.button("🗑️ Supprimer", key="delete_btn")
-st.markdown("</div>", unsafe_allow_html=True)
+pdf_buffer = export_dossier_pdf(d)
+
+st.download_button(
+    label="📄 Télécharger PDF",
+    data=pdf_buffer,
+    file_name=f"Dossier_{d['Dossier N']}.pdf",
+    mime="application/pdf",
+    type="primary"
+)
