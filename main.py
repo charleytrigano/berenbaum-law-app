@@ -5,6 +5,20 @@ import streamlit as st
 from backend.dropbox_utils import load_database
 import json
 
+import streamlit as st
+from PIL import Image
+
+# --- LOGO DANS LE SIDEBAR ---
+with st.sidebar:
+    try:
+        logo = Image.open("assets/logo.png")
+        st.image(logo, width=120)
+    except Exception as e:
+        st.write("⚠️ Logo non trouvé :", e)
+
+    st.markdown("## ")
+
+
 db = load_database()
 st.write("📁 JSON utilisé :", st.secrets["paths"]["DROPBOX_JSON"])
 st.write("📄 Contenu DB chargé :", db)
