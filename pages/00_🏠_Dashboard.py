@@ -2,124 +2,148 @@ import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
 
-# ---------------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
-st.title("🏠 Tableau de bord — Berenbaum Law")
+st.set_page_config(page_title="🏠 Dashboard", page_icon="🏠", layout="wide")
 
 # ---------------------------------------------------------
-# LOAD DATABASE
+# UTILS
+# ---------------------------------------------------------
+def safe_float(x):
+    try:
+        return float(x)
+    except:
+        return 0.0
+
+def safe_int(x):
+    try:
+        return int(float(x))
+    except:
+        return 0
+
+def normalize(x):
+    if isinstance(x, bool):
+        return x
+    if str(x).lower() in ["true", "1", "yes", "oui"]:
+        return True
+    return False
+
+# ---------------------------------------------------------
+# LOAD DB
 # ---------------------------------------------------------
 db = load_database()
 clients = pd.DataFrame(db.get("clients", []))
 
 if clients.empty:
-    st.info("Aucun dossier trouvé.")
+    st.error("Aucun dossier trouvé.")
     st.stop()
 
 # ---------------------------------------------------------
 # NORMALISATION
 # ---------------------------------------------------------
-clients["Dossier N"] = pd.to_numeric(clients["Dossier N"], errors="coerce")
+clients["Dossier N"] = clients["Dossier N"].apply(safe_int)
 
-def to_bool(x):
-    if isinstance(x, bool):
-        return x
-    return str(x).lower() in ["yes", "true", "1", "oui"]
-
-for col in ["Dossier envoye", "Dossier accepte", "Dossier refuse", 
-            "Dossier Annule", "RFE", "Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
+for col in ["Dossier envoye", "Dossier accepte", "Dossier refuse", "Escrow"]:
     if col not in clients.columns:
         clients[col] = False
-    clients[col] = clients[col].apply(to_bool)
+    clients[col] = clients[col].apply(normalize)
 
 # ---------------------------------------------------------
-# COMPUTE KPI
+# FILTRES (bandeau horizontal)
 # ---------------------------------------------------------
-total_dossiers = len(clients)
-envoyes = clients["Dossier envoye"].sum()
-acceptes = clients["Dossier accepte"].sum()
-refuses = clients["Dossier refuse"].sum()
-annules = clients["Dossier Annule"].sum()
-en_escrow = clients["Escrow"].sum()
+st.markdown("## 🔍 Filtres")
+
+colF1, colF2, colF3 = st.columns(3)
+
+# ➤ Filtre Catégorie
+cat_list = ["Toutes"] + sorted([c for c in clients["Categories"].unique() if c not in ["", None]])
+selected_cat = colF1.selectbox("Catégorie", cat_list)
+
+df = clients.copy()
+
+if selected_cat != "Toutes":
+    df = df[df["Categories"] == selected_cat]
+
+# ➤ Filtre Sous-catégorie
+ss_list = ["Toutes"] + sorted([s for s in df["Sous-categories"].unique() if s not in ["", None]])
+selected_ss = colF2.selectbox("Sous-catégorie", ss_list)
+
+if selected_ss != "Toutes":
+    df = df[df["Sous-categories"] == selected_ss]
+
+# ➤ Filtre Visa
+visa_list = ["Toutes"] + sorted([v for v in df["Visa"].unique() if v not in ["", None]])
+selected_visa = colF3.selectbox("Visa", visa_list)
+
+if selected_visa != "Toutes":
+    df = df[df["Visa"] == selected_visa]
 
 # ---------------------------------------------------------
-# KPI DISPLAY (VisionOS)
+# KPI Section
 # ---------------------------------------------------------
-st.write("""
-<style>
-.kpi-card {
-    background: rgba(255,255,255,0.4);
-    backdrop-filter: blur(14px);
-    border-radius: 16px;
-    padding: 20px;
-    text-align: center;
-    box-shadow: 0px 4px 20px rgba(0,0,0,0.1);
-    cursor:pointer;
-    transition:0.2s;
-}
-.kpi-card:hover {
-    transform:scale(1.02);
-}
-.kpi-number {
-    font-size:30px;
-    font-weight:700;
-}
-.kpi-label {
-    font-size:16px;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown("## 📊 Indicateurs")
 
-kpi_cols = st.columns(6)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
-KPIS = [
-    ("📁", total_dossiers, "Dossiers"),
-    ("📨", envoyes, "Envoyés"),
-    ("✅", acceptes, "Acceptés"),
-    ("❌", refuses, "Refusés"),
-    ("🚫", annules, "Annulés"),
-    ("💰", en_escrow, "Escrow en cours"),
-]
+# KPI values
+total_dossiers = len(df)
+envoyes = df["Dossier envoye"].sum()
+acceptes = df["Dossier accepte"].sum()
+refuses = df["Dossier refuse"].sum()
+escrow = df["Escrow"].sum()
+total_hon = df["Montant honoraires (US $)"].apply(safe_float).sum()
 
-for i, (icon, number, label) in enumerate(KPIS):
-    with kpi_cols[i]:
+def kpi_box(col, title, value, color):
+    col.markdown(
+        f"""
+        <div style="
+            background-color:{color};
+            padding:12px;
+            border-radius:10px;
+            text-align:center;
+            color:white;
+            font-size:14px;">
+            <div style="font-size:16px;"><b>{title}</b></div>
+            <div style="font-size:22px; margin-top:6px;">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+kpi_box(col1, "Total dossiers", total_dossiers, "#444")
+kpi_box(col2, "Envoyés", envoyes, "#2b6cb0")
+kpi_box(col3, "Acceptés", acceptes, "#38a169")
+kpi_box(col4, "Refusés", refuses, "#e53e3e")
+kpi_box(col5, "Escrow en cours", escrow, "#d69e2e")
+kpi_box(col6, "Honoraires totaux", f"${total_hon:,.0f}", "#805ad5")
+
+# ---------------------------------------------------------
+# LISTE DES DOSSIERS (CARTES INTERACTIVES)
+# ---------------------------------------------------------
+st.markdown("## 📁 Liste des dossiers filtrés")
+
+for i, (_, row) in enumerate(df.iterrows()):
+    with st.container():
         st.markdown(
             f"""
-            <div class="kpi-card">
-                <div class="kpi-number">{icon} {number}</div>
-                <div class="kpi-label">{label}</div>
-            </div>
-            """, unsafe_allow_html=True
-        )
-
-# ---------------------------------------------------------
-# LISTE DES DOSSIERS (VisionOS Cards)
-# ---------------------------------------------------------
-st.subheader("📂 Tous les dossiers")
-
-for i, row in clients.sort_values("Dossier N").iterrows():
-    dnum = int(row["Dossier N"])
-    nom = row.get("Nom", "")
-
-    with st.container():
-        cols = st.columns([4, 1])
-        cols[0].markdown(
-            f"""
             <div style="
-                background:rgba(255,255,255,0.5);
-                backdrop-filter:blur(14px);
-                border-radius:16px;
-                padding:14px;
-                margin-bottom:12px;">
-                <b>Dossier {dnum}</b> — {nom}<br>
-                <span style="font-size:13px;color:#666;">Click → Voir fiche</span>
+                border:1px solid #444;
+                padding:15px;
+                border-radius:10px;
+                margin-bottom:10px;">
+                <b>Dossier {row['Dossier N']} — {row['Nom']}</b><br>
+                <span style='opacity:0.7;'>{row.get('Categories','')} → {row.get('Sous-categories','')} → {row.get('Visa','')}</span>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        if cols[1].button("👁️ Voir", key=f"view_{dnum}"):
-            st.session_state["selected_dossier"] = dnum
+        # Bouton voir dossier (clé unique)
+        st.button(
+            f"👁️ Voir dossier {row['Dossier N']}",
+            key=f"view_btn_{i}",
+            on_click=lambda r=row: st.session_state.update({"selected_dossier": r["Dossier N"]})
+        )
+
+        # Si clic → redirection vers Fiche dossier
+        if st.session_state.get("selected_dossier") == row["Dossier N"]:
             st.switch_page("pages/11_📄_Fiche_dossier.py")
+
