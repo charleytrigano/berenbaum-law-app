@@ -26,6 +26,78 @@ clients = clients.dropna(subset=["Date"])
 
 
 # ---------------------------------------------------------
+# FILTRES AVANCÉS (Catégories → Sous-catégories → Visa → Statuts)
+# ---------------------------------------------------------
+st.markdown("### 🎛️ Filtres avancés")
+
+# --- Catégories ---
+categories_list = ["Toutes"] + sorted([c for c in clients["Categories"].dropna().unique() if c])
+selected_cat = st.selectbox("Catégorie", categories_list)
+
+# Dernier filtrage
+filtered = clients.copy()
+
+if selected_cat != "Toutes":
+    filtered = filtered[filtered["Categories"] == selected_cat]
+
+# --- Sous-catégories ---
+if selected_cat != "Toutes":
+    souscats_list = ["Toutes"] + sorted([s for s in filtered["Sous-categories"].dropna().unique() if s])
+else:
+    souscats_list = ["Toutes"] + sorted([s for s in clients["Sous-categories"].dropna().unique() if s])
+
+selected_souscat = st.selectbox("Sous-catégorie", souscats_list)
+
+if selected_souscat != "Toutes":
+    filtered = filtered[filtered["Sous-categories"] == selected_souscat]
+
+# --- Visa ---
+if selected_souscat != "Toutes":
+    visa_list = ["Tous"] + sorted([v for v in filtered["Visa"].dropna().unique() if v])
+elif selected_cat != "Toutes":
+    visa_list = ["Tous"] + sorted([v for v in clients[clients["Categories"] == selected_cat]["Visa"].dropna().unique() if v])
+else:
+    visa_list = ["Tous"] + sorted([v for v in clients["Visa"].dropna().unique() if v])
+
+selected_visa = st.selectbox("Visa", visa_list)
+
+if selected_visa != "Tous":
+    filtered = filtered[filtered["Visa"] == selected_visa]
+
+# --- Statuts ---
+status_list = [
+    "Tous",
+    "Envoyé",
+    "Accepté",
+    "Refusé",
+    "Annulé",
+    "Escrow en cours",
+    "Escrow à réclamer",
+    "Escrow réclamé",
+]
+selected_status = st.selectbox("Statut du dossier", status_list)
+
+if selected_status == "Envoyé":
+    filtered = filtered[filtered["Dossier envoye"] == True]
+elif selected_status == "Accepté":
+    filtered = filtered[filtered["Dossier accepte"] == True]
+elif selected_status == "Refusé":
+    filtered = filtered[filtered["Dossier refuse"] == True]
+elif selected_status == "Annulé":
+    filtered = filtered[filtered["Dossier Annule"] == True]
+elif selected_status == "Escrow en cours":
+    filtered = filtered[filtered["Escrow"] == True]
+elif selected_status == "Escrow à réclamer":
+    filtered = filtered[filtered["Escrow_a_reclamer"] == True]
+elif selected_status == "Escrow réclamé":
+    filtered = filtered[filtered["Escrow_reclame"] == True]
+
+# Enfin on remplace le dataframe du Dashboard par filtered :
+clients_filtered = filtered.copy()
+
+
+
+# ---------------------------------------------------------
 # KPI BOX COMPONENT
 # ---------------------------------------------------------
 def kpi_box(col, title, value, color):
