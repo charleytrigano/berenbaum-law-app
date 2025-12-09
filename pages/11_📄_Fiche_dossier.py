@@ -177,3 +177,26 @@ with colA2:
 
 with colA3:
     st.button("🗑️ Supprimer (sécurisé)", type="secondary")
+
+from components.export_pdf import generate_pdf
+
+colA1, colA2, colA3 = st.columns(3)
+
+with colA1:
+    if st.button("✏️ Modifier ce dossier"):
+        st.switch_page("pages/03_✏️_Modifier_dossier.py")
+
+with colA2:
+    if st.button("📄 Export PDF"):
+        fname = generate_pdf(row)
+        with open(fname, "rb") as f:
+            st.download_button(
+                label="⬇ Télécharger le PDF",
+                data=f,
+                file_name=f"Dossier_{row['Dossier N']}.pdf",
+                mime="application/pdf"
+            )
+
+with colA3:
+    st.button("🗑️ Supprimer (sécurisé)", type="secondary")
+
