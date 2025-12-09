@@ -3,10 +3,10 @@ import pandas as pd
 from backend.dropbox_utils import load_database
 
 st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
-st.title("🏠 Dashboard — Berenbaum Law App")
+st.markdown("<h1 style='margin-bottom:0px;'>🏠 Dashboard — Berenbaum Law App</h1>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 🔹 Charger base
+# 🔹 Charger data
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
@@ -20,16 +20,12 @@ df = pd.DataFrame(clients)
 visa_df = pd.DataFrame(visa_raw)
 
 # ---------------------------------------------------------
-# 🔹 Normalisation colonnes manquantes
+# Normalisation
 # ---------------------------------------------------------
 BOOL_COLS = [
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
+    "Dossier envoye", "Dossier accepte",
+    "Dossier refuse", "Dossier Annule",
+    "Escrow", "Escrow_a_reclamer", "Escrow_reclame"
 ]
 
 def normalize_bool(x):
@@ -42,94 +38,102 @@ for col in BOOL_COLS:
         df[col] = False
     df[col] = df[col].apply(normalize_bool)
 
-# Date
 if "Date" in df.columns:
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-else:
-    df["Date"] = pd.NaT
-
 df["Année"] = df["Date"].dt.year.fillna(0).astype(int)
+df["Mois"] = df["Date"].dt.strftime("%Y-%m")
+df["Trimestre"] = df["Date"].dt.to_period("Q").astype(str)
+df["Semestre"] = df["Date"].dt.to_period("6M").astype(str)
 
 # ---------------------------------------------------------
-# 🔍 FILTRES DÉPENDANTS
+# 🔍 FILTRES AVANCÉS
 # ---------------------------------------------------------
 st.subheader("🔍 Filtres avancés")
 
-col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+colA, colB, colC, colD = st.columns(4)
 
-# Année
-annees = sorted(df["Année"].unique())
-annee = col_f1.selectbox("📅 Année", ["Toutes"] + [str(a) for a in annees if a > 0])
-
-# Catégories dépendant du VISA.CSV ou VISA.JSON
-if "Categories" in visa_df.columns:
-    liste_cat = sorted(visa_df["Categories"].dropna().unique())
-else:
-    liste_cat = sorted(df["Categories"].dropna().unique())
-
-categorie = col_f2.selectbox("📌 Catégorie", ["Toutes"] + liste_cat)
+# Catégories dépendantes
+cat_list = sorted(visa_df["Categories"].dropna().unique())
+categorie = colA.selectbox("📌 Catégorie", ["Toutes"] + cat_list)
 
 # Sous-catégories dépendantes
 if categorie != "Toutes":
-    souscats = sorted(
-        visa_df[visa_df["Categories"] == categorie]["Sous-categories"]
-        .dropna()
-        .unique()
-    )
+    sous_list = sorted(visa_df[visa_df["Categories"] == categorie]["Sous-categories"].dropna().unique())
 else:
-    souscats = sorted(visa_df["Sous-categories"].dropna().unique())
+    sous_list = sorted(visa_df["Sous-categories"].dropna().unique())
 
-sous_categorie = col_f3.selectbox("📁 Sous-catégorie", ["Toutes"] + souscats)
+sous_categorie = colB.selectbox("📁 Sous-catégorie", ["Toutes"] + sous_list)
 
-# Visas dépendants
+# Visa dépendant
 if sous_categorie != "Toutes":
-    visas = sorted(
-        visa_df[visa_df["Sous-categories"] == sous_categorie]["Visa"]
-        .dropna()
-        .unique()
-    )
+    visa_list = sorted(visa_df[visa_df["Sous-categories"] == sous_categorie]["Visa"].dropna().unique())
 else:
-    visas = sorted(visa_df["Visa"].dropna().unique())
+    visa_list = sorted(visa_df["Visa"].dropna().unique())
 
-visa_filter = col_f4.selectbox("🛂 Visa", ["Toutes"] + visas)
+visa_filter = colC.selectbox("🛂 Visa", ["Toutes"] + visa_list)
 
 # Statut
-statut = col_f5.selectbox(
+statut = colD.selectbox(
     "📂 Statut",
     [
-        "Tous",
-        "Envoyé",
-        "Accepté",
-        "Refusé",
-        "Annulé",
-        "Escrow en cours",
-        "Escrow à réclamer",
-        "Escrow réclamé",
+        "Tous", "Envoyé", "Accepté", "Refusé",
+        "Annulé", "Escrow en cours", "Escrow à réclamer", "Escrow réclamé"
     ]
 )
+
+# ---------------------------------------------------------
+# 🔍 FILTRE : COMPARAISON ENTRE PERIODES
+# ---------------------------------------------------------
+st.subheader("🕒 Comparaison entre périodes")
+
+colP1, colP2, colP3 = st.columns(3)
+
+type_periode = colP1.selectbox(
+    "Type de période",
+    ["Aucune comparaison", "Mois", "Trimestre", "Semestre", "Date à date", "Années multiples"]
+)
+
+# --- sélection des périodes selon le type ---
+
+periode_A = periode_B = None
+
+if type_periode == "Mois":
+    mois_list = sorted(df["Mois"].dropna().unique())
+    periode_A = colP2.selectbox("Période A", mois_list)
+    periode_B = colP3.selectbox("Période B", mois_list)
+
+elif type_periode == "Trimestre":
+    tri_list = sorted(df["Trimestre"].dropna().unique())
+    periode_A = colP2.selectbox("Période A", tri_list)
+    periode_B = colP3.selectbox("Période B", tri_list)
+
+elif type_periode == "Semestre":
+    sem_list = sorted(df["Semestre"].dropna().unique())
+    periode_A = colP2.selectbox("Période A", sem_list)
+    periode_B = colP3.selectbox("Période B", sem_list)
+
+elif type_periode == "Date à date":
+    periode_A = colP2.date_input("Début → Fin (A)", [])
+    periode_B = colP3.date_input("Début → Fin (B)", [])
+
+elif type_periode == "Années multiples":
+    annees = sorted(df["Année"].unique())
+    periodes = colP2.multiselect("Sélectionner jusqu'à 5 années", annees, max_selections=5)
 
 # ---------------------------------------------------------
 # 🔹 APPLICATION DES FILTRES SUR LES DOSSIERS
 # ---------------------------------------------------------
 df_filtered = df.copy()
 
-# Année
-if annee != "Toutes":
-    df_filtered = df_filtered[df_filtered["Année"] == int(annee)]
-
-# Catégorie
 if categorie != "Toutes":
     df_filtered = df_filtered[df_filtered["Categories"] == categorie]
 
-# Sous-catégorie
 if sous_categorie != "Toutes":
     df_filtered = df_filtered[df_filtered["Sous-categories"] == sous_categorie]
 
-# Visa
 if visa_filter != "Toutes":
     df_filtered = df_filtered[df_filtered["Visa"] == visa_filter]
 
-# Statut
 if statut == "Envoyé":
     df_filtered = df_filtered[df_filtered["Dossier envoye"]]
 elif statut == "Accepté":
@@ -146,41 +150,37 @@ elif statut == "Escrow réclamé":
     df_filtered = df_filtered[df_filtered["Escrow_reclame"]]
 
 # ---------------------------------------------------------
-# 📊 KPIs
+# 🎨 KPIs COLORÉS (NOUVEAU DESIGN)
 # ---------------------------------------------------------
+
+def kpi_box(label, value, color):
+    html = f"""
+    <div style="
+        background:{color};
+        padding:15px;
+        border-radius:12px;
+        text-align:center;
+        color:white;
+        font-size:15px;">
+        <span>{label}</span><br>
+        <span style='font-size:22px; font-weight:bold;'>{value}</span>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
 st.subheader("📊 Indicateurs clés")
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Total dossiers", len(df_filtered))
-k2.metric("Envoyés", df_filtered["Dossier envoye"].sum())
-k3.metric("Acceptés", df_filtered["Dossier accepte"].sum())
-k4.metric("Refusés", df_filtered["Dossier refuse"].sum())
+col1, col2, col3, col4 = st.columns(4)
+kpi_box("Total dossiers", len(df_filtered), "#2c3e50")
+kpi_box("Envoyés", df_filtered["Dossier envoye"].sum(), "#2980b9")
+kpi_box("Acceptés", df_filtered["Dossier accepte"].sum(), "#27ae60")
+kpi_box("Refusés", df_filtered["Dossier refuse"].sum(), "#c0392b")
 
-k5, k6, k7, k8 = st.columns(4)
-k5.metric("Annulés", df_filtered["Dossier Annule"].sum())
-k6.metric("Escrow en cours", df_filtered["Escrow"].sum())
-k7.metric("Escrow à réclamer", df_filtered["Escrow_a_reclamer"].sum())
-k8.metric("Escrow réclamé", df_filtered["Escrow_reclame"].sum())
-
-# ---------------------------------------------------------
-# 💰 FINANCES
-# ---------------------------------------------------------
-st.subheader("💰 Finances")
-
-honoraires = df_filtered.get("Montant honoraires (US $)", pd.Series([0])).fillna(0).sum()
-frais = df_filtered.get("Autres frais (US $)", pd.Series([0])).fillna(0).sum()
-
-paiements = 0
-for col in ["Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"]:
-    if col in df_filtered.columns:
-        paiements += df_filtered[col].fillna(0).sum()
-
-solde = honoraires + frais - paiements
-
-f1, f2, f3 = st.columns(3)
-f1.metric("Total facturé", f"${honoraires + frais:,.2f}")
-f2.metric("Paiements reçus", f"${paiements:,.2f}")
-f3.metric("Solde restant", f"${solde:,.2f}")
+col5, col6, col7, col8 = st.columns(4)
+kpi_box("Annulés", df_filtered["Dossier Annule"].sum(), "#8e44ad")
+kpi_box("Escrow en cours", df_filtered["Escrow"].sum(), "#16a085")
+kpi_box("À réclamer", df_filtered["Escrow_a_reclamer"].sum(), "#d35400")
+kpi_box("Réclamé", df_filtered["Escrow_reclame"].sum(), "#7f8c8d")
 
 # ---------------------------------------------------------
 # 📄 TABLEAU FINAL
