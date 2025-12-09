@@ -1,46 +1,65 @@
 import streamlit as st
-from backend.dropbox_utils import load_database, save_database
-
-import streamlit as st
-from backend.dropbox_utils import load_database
-import json
-
-import streamlit as st
 from PIL import Image
+from backend.dropbox_utils import load_database
 
-# --- LOGO DANS LE SIDEBAR ---
+# ---------------------------------------------------------
+# 🔧 CONFIGURATION INITIALE
+# ---------------------------------------------------------
+st.set_page_config(
+    page_title="Berenbaum Law App",
+    page_icon="📁",
+    layout="wide"
+)
+
+# ---------------------------------------------------------
+# 🎨 LOGO DANS LE SIDEBAR
+# ---------------------------------------------------------
 with st.sidebar:
+    st.markdown("### ")
+
     try:
         logo = Image.open("assets/logo.png")
-        st.image(logo, width=120)
+        st.image(logo, width=140)
     except Exception as e:
-        st.write("⚠️ Logo non trouvé :", e)
+        st.error(f"⚠️ Logo non trouvé : {e}")
 
-    st.markdown("## ")
-
-
-db = load_database()
-st.write("📁 JSON utilisé :", st.secrets["paths"]["DROPBOX_JSON"])
-st.write("📄 Contenu DB chargé :", db)
+    st.markdown("---")
+    st.markdown("### 🧭 Navigation")
+    st.write("Utilisez le menu à gauche pour naviguer dans l’application.")
+    st.markdown("---")
 
 
-st.set_page_config(page_title="Berenbaum Law App", page_icon="📁", layout="wide")
-
-st.title("📊 Tableau de bord – Berenbaum Law App")
-st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
-
-# Charger la base depuis Dropbox
+# ---------------------------------------------------------
+# 📦 CHARGEMENT BASE DROPBOX
+# ---------------------------------------------------------
 try:
     db = load_database()
     st.success("Base de données chargée depuis Dropbox ✔")
 except Exception as e:
-    st.error(f"Erreur lors du chargement de Dropbox : {e}")
+    st.error(f"❌ Erreur chargement Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-# Aperçu tableau de bord
-st.subheader("Aperçu des dossiers")
+# Debug affichage JSON utilisé
+st.caption(f"JSON utilisé : `{st.secrets['paths']['DROPBOX_JSON']}`")
 
-if "clients" in db and len(db["clients"]) > 0:
-    st.dataframe(db["clients"], use_container_width=True)
+# ---------------------------------------------------------
+# 🏠 PAGE D'ACCUEIL
+# ---------------------------------------------------------
+st.title("📊 Tableau de bord — Berenbaum Law App")
+st.write("Bienvenue dans l’application professionnelle de gestion des dossiers.")
+
+# Aperçu rapide des dossiers
+clients = db.get("clients", [])
+
+if not clients:
+    st.warning("Aucun dossier trouvé.")
 else:
-    st.info("Aucun dossier trouvé.")
+    st.subheader("📁 Aperçu des dossiers")
+    st.dataframe(clients, width="stretch")
+
+
+# ---------------------------------------------------------
+# 🛈 Notes / Footer
+# ---------------------------------------------------------
+st.markdown("---")
+st.caption("© 2025 — Berenbaum, P.A. Law Firm — Application interne de gestion des dossiers.")
