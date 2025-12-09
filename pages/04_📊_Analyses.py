@@ -2,314 +2,194 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from backend.dropbox_utils import load_database
+from utils.visa_filters import clean_visa_df
 
-st.set_page_config(page_title="📊 Analyses", page_icon="📊", layout="wide")
-st.title("📊 Analyses & Comparaisons")
-
+# ---------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------
+st.set_page_config(page_title="Analyses & Statistiques", page_icon="📊", layout="wide")
+st.title("📊 Analyses & Statistiques – Berenbaum Law App")
 
 # ---------------------------------------------------------
 # LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+clients = db.get("clients", [])
 
-if clients.empty:
-    st.error("Aucun dossier trouvé.")
+if not clients:
+    st.warning("Aucun dossier trouvé.")
     st.stop()
 
+df = pd.DataFrame(clients)
+
+# Nettoyage Date
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
 # ---------------------------------------------------------
-# CLEAN DATES
+# NORMALISATION DES CHAMPS
 # ---------------------------------------------------------
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
-clients = clients.dropna(subset=["Date"])
+bool_cols = ["Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"]
+for c in bool_cols:
+    if c not in df:
+        df[c] = False
+    df[c] = df[c].astype(bool)
 
+numeric_cols = ["Montant honoraires (US $)", "Autres frais (US $)", "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"]
+for c in numeric_cols:
+    df[c] = pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0)
+
+df["Total facture"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
+df["Total acomptes"] = df[["Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"]].sum(axis=1)
+df["Solde"] = df["Total facture"] - df["Total acomptes"]
 
 # ---------------------------------------------------------
-# FILTRES AVANCÉS (Catégories → Sous-catégories → Visa → Statuts)
+# 🔎 FILTRES SIMPLES
 # ---------------------------------------------------------
-st.markdown("### 🎛️ Filtres avancés")
+st.subheader("🎚️ Filtres")
 
-# --- Catégories ---
-categories_list = ["Toutes"] + sorted([c for c in clients["Categories"].dropna().unique() if c])
-selected_cat = st.selectbox("Catégorie", categories_list)
+colf1, colf2, colf3, colf4 = st.columns(4)
 
-# Dernier filtrage
-filtered = clients.copy()
+# Catégorie
+cats = ["(Toutes)"] + sorted([c for c in df["Categories"].dropna().unique() if c != ""])
+categorie = colf1.selectbox("Catégorie :", cats)
 
-if selected_cat != "Toutes":
-    filtered = filtered[filtered["Categories"] == selected_cat]
-
-# --- Sous-catégories ---
-if selected_cat != "Toutes":
-    souscats_list = ["Toutes"] + sorted([s for s in filtered["Sous-categories"].dropna().unique() if s])
+# Sous-catégorie dépendante
+if categorie != "(Toutes)":
+    souscats = ["(Toutes)"] + sorted(df[df["Categories"] == categorie]["Sous-categories"].unique())
 else:
-    souscats_list = ["Toutes"] + sorted([s for s in clients["Sous-categories"].dropna().unique() if s])
+    souscats = ["(Toutes)"] + sorted(df["Sous-categories"].dropna().unique())
+sous_categorie = colf2.selectbox("Sous-catégorie :", souscats)
 
-selected_souscat = st.selectbox("Sous-catégorie", souscats_list)
-
-if selected_souscat != "Toutes":
-    filtered = filtered[filtered["Sous-categories"] == selected_souscat]
-
-# --- Visa ---
-if selected_souscat != "Toutes":
-    visa_list = ["Tous"] + sorted([v for v in filtered["Visa"].dropna().unique() if v])
-elif selected_cat != "Toutes":
-    visa_list = ["Tous"] + sorted([v for v in clients[clients["Categories"] == selected_cat]["Visa"].dropna().unique() if v])
+# Visa dépendant
+if sous_categorie != "(Toutes)":
+    visas = ["(Toutes)"] + sorted(df[df["Sous-categories"] == sous_categorie]["Visa"].unique())
 else:
-    visa_list = ["Tous"] + sorted([v for v in clients["Visa"].dropna().unique() if v])
+    visas = ["(Toutes)"] + sorted(df["Visa"].dropna().unique())
+visa = colf3.selectbox("Visa :", visas)
 
-selected_visa = st.selectbox("Visa", visa_list)
+# Statut
+statuts = ["(Tous)", "Envoyés", "Acceptés", "Refusés", "Annulés"]
+statut = colf4.selectbox("Statut dossier :", statuts)
 
-if selected_visa != "Tous":
-    filtered = filtered[filtered["Visa"] == selected_visa]
+# ✔ Application filtres
+fdf = df.copy()
 
-# --- Statuts ---
-status_list = [
-    "Tous",
-    "Envoyé",
-    "Accepté",
-    "Refusé",
-    "Annulé",
-    "Escrow en cours",
-    "Escrow à réclamer",
-    "Escrow réclamé",
-]
-selected_status = st.selectbox("Statut du dossier", status_list)
+if categorie != "(Toutes)":
+    fdf = fdf[fdf["Categories"] == categorie]
 
-if selected_status == "Envoyé":
-    filtered = filtered[filtered["Dossier envoye"] == True]
-elif selected_status == "Accepté":
-    filtered = filtered[filtered["Dossier accepte"] == True]
-elif selected_status == "Refusé":
-    filtered = filtered[filtered["Dossier refuse"] == True]
-elif selected_status == "Annulé":
-    filtered = filtered[filtered["Dossier Annule"] == True]
-elif selected_status == "Escrow en cours":
-    filtered = filtered[filtered["Escrow"] == True]
-elif selected_status == "Escrow à réclamer":
-    filtered = filtered[filtered["Escrow_a_reclamer"] == True]
-elif selected_status == "Escrow réclamé":
-    filtered = filtered[filtered["Escrow_reclame"] == True]
+if sous_categorie != "(Toutes)":
+    fdf = fdf[fdf["Sous-categories"] == sous_categorie]
 
-# Enfin on remplace le dataframe du Dashboard par filtered :
-clients_filtered = filtered.copy()
+if visa != "(Toutes)":
+    fdf = fdf[fdf["Visa"] == visa]
 
-
+if statut == "Envoyés":
+    fdf = fdf[fdf["Dossier envoye"] == True]
+elif statut == "Acceptés":
+    fdf = fdf[fdf["Dossier accepte"] == True]
+elif statut == "Refusés":
+    fdf = fdf[fdf["Dossier refuse"] == True]
+elif statut == "Annulés":
+    fdf = fdf[fdf["Dossier Annule"] == True]
 
 # ---------------------------------------------------------
-# KPI BOX COMPONENT
+# 🌟 KPI PRINCIPAUX
 # ---------------------------------------------------------
-def kpi_box(col, title, value, color):
-    col.markdown(
-        f"""
-        <div style="
-            background:{color};
-            padding:14px;
-            border-radius:12px;
-            text-align:center;
-            color:white;
-            box-shadow:0 0 8px rgba(0,0,0,0.25);
-        ">
-            <div style="font-size:15px; font-weight:600;">{title}</div>
-            <div style="font-size:22px; margin-top:6px;"><b>{value}</b></div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+st.subheader("🌟 KPI Globaux (Filtres appliqués)")
 
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+
+k1.metric("Total dossiers", len(fdf))
+k2.metric("Envoyés", fdf["Dossier envoye"].sum())
+k3.metric("Acceptés", fdf["Dossier accepte"].sum())
+k4.metric("Refusés", fdf["Dossier refuse"].sum())
+k5.metric("Honoraires (US$)", f"{fdf['Montant honoraires (US $)'].sum():,.0f}")
+k6.metric("Solde total dû", f"{fdf['Solde'].sum():,.0f}")
 
 # ---------------------------------------------------------
-# KPI GLOBALS (AVANT FILTRES)
+# 🔥 TABLEAU DÉTAILLÉ FILTRÉ
 # ---------------------------------------------------------
-st.subheader("📌 Indicateurs globaux")
-
-colK1, colK2, colK3, colK4, colK5, colK6 = st.columns(6)
-
-total_dossiers = len(clients)
-total_hon = clients["Montant honoraires (US $)"].astype(float).sum()
-total_frais = clients["Autres frais (US $)"].astype(float).sum()
-total_paid = (
-    clients["Acompte 1"].astype(float).sum()
-    + clients["Acompte 2"].astype(float).sum()
-    + clients["Acompte 3"].astype(float).sum()
-    + clients["Acompte 4"].astype(float).sum()
-)
-total_solde = (total_hon + total_frais) - total_paid
-total_escrow = clients["Escrow"].sum() if "Escrow" in clients else 0
-
-kpi_box(colK1, "Dossiers", total_dossiers, "#4A5568")
-kpi_box(colK2, "Honoraires", f"${total_hon:,.0f}", "#2B6CB0")
-kpi_box(colK3, "Frais", f"${total_frais:,.0f}", "#3182CE")
-kpi_box(colK4, "Payé", f"${total_paid:,.0f}", "#38A169")
-kpi_box(colK5, "Solde", f"${total_solde:,.0f}", "#D69E2E")
-kpi_box(colK6, "Escrow", total_escrow, "#9B2C2C")
-
+st.subheader("📄 Dossiers filtrés")
+st.dataframe(fdf, use_container_width=True)
 
 # ---------------------------------------------------------
-# BUILDER : PERIODE
-# ---------------------------------------------------------
-def get_period_label(date, mode):
-    if mode == "Mois":
-        return date.strftime("%Y-%m")
-    if mode == "Trimestre":
-        q = (date.month - 1) // 3 + 1
-        return f"{date.year}-T{q}"
-    if mode == "Semestre":
-        s = 1 if date.month <= 6 else 2
-        return f"{date.year}-S{s}"
-    if mode == "Année":
-        return str(date.year)
-    return ""
-
-
-# ---------------------------------------------------------
-# FILTRES COMPARATIFS
+# 📊 COMPARAISON MULTI-PÉRIODES
 # ---------------------------------------------------------
 st.markdown("---")
-st.subheader("🔎 Filtres de comparaison entre périodes")
+st.header("⏱️ Comparaison Multi-Périodes")
 
-colA, colB = st.columns(2)
+type_periode = st.selectbox("Type de période :", ["Mois", "Trimestre", "Année", "Date à date"])
 
-mode = colA.selectbox(
-    "Type de période",
-    ["Mois", "Trimestre", "Semestre", "Année", "Date à date"],
-)
+# Génération des périodes
+df["Mois"] = df["Date"].dt.to_period("M").astype(str)
+df["Trimestre"] = df["Date"].dt.to_period("Q").astype(str)
+df["Année"] = df["Date"].dt.year.astype(str)
 
-n_periods = colB.slider(
-    "Nombre de périodes à comparer", min_value=2, max_value=5, value=2
-)
-
-period_inputs = []
-
-
-# MODE : DATE À DATE
-if mode == "Date à date":
-    st.info("Sélectionnez 2 à 5 intervalles de dates personnalisés.")
-
-    for i in range(n_periods):
-        st.markdown(f"### Période {i+1}")
-        d1 = st.date_input(f"Début P{i+1}")
-        d2 = st.date_input(f"Fin P{i+1}")
-        period_inputs.append((d1, d2))
+if type_periode != "Date à date":
+    liste_periodes = sorted(df[type_periode].dropna().unique())
+    choix = st.multiselect("Périodes :", liste_periodes, max_selections=5)
 
 else:
-    unique_periods = sorted(
-        clients["Date"].apply(lambda d: get_period_label(d, mode)).unique()
-    )
+    colD1, colD2 = st.columns(2)
+    d1 = colD1.date_input("Date début")
+    d2 = colD2.date_input("Date fin")
+    choix = [(d1, d2)]
 
-    st.info("Sélectionnez les périodes (2 à 5).")
-
-    for i in range(n_periods):
-        p = st.selectbox(f"Période {i+1}", unique_periods, key=f"p{i}")
-        period_inputs.append(p)
-
+if not choix:
+    st.info("Sélectionnez au moins une période.")
+    st.stop()
 
 # ---------------------------------------------------------
-# EXTRACTION DES DONNEES PAR PERIODE
+# 📌 Construction de la comparaison
 # ---------------------------------------------------------
-def filter_period(df, period, mode):
-    if mode == "Date à date":
-        start, end = period
-        if not (start and end):
-            return pd.DataFrame()
-        return df[(df["Date"] >= pd.Timestamp(start)) & (df["Date"] <= pd.Timestamp(end))]
+resultats = []
 
-    mask = df["Date"].apply(lambda d: get_period_label(d, mode) == period)
-    return df[mask]
+for periode in choix:
 
-
-period_data = []
-period_labels = []
-
-for p in period_inputs:
-    dfp = filter_period(clients, p, mode)
-    period_data.append(dfp)
-    if mode == "Date à date":
-        period_labels.append(f"{p[0]} → {p[1]}")
+    if type_periode == "Date à date":
+        f = df[(df["Date"] >= pd.to_datetime(periode[0])) & (df["Date"] <= pd.to_datetime(periode[1]))]
+        lib = f"{periode[0]} → {periode[1]}"
     else:
-        period_labels.append(p)
+        f = df[df[type_periode] == periode]
+        lib = periode
 
+    resultats.append({
+        "Période": lib,
+        "Dossiers": len(f),
+        "Envoyés": f["Dossier envoye"].sum(),
+        "Acceptés": f["Dossier accepte"].sum(),
+        "Refusés": f["Dossier refuse"].sum(),
+        "Honoraires (US$)": f["Montant honoraires (US $)"].sum()
+    })
 
-# ---------------------------------------------------------
-# TABLEAU COMPARATIF
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📘 Tableau comparatif")
-
-kpi_table = []
-
-for label, dfp in zip(period_labels, period_data):
-    hon = dfp["Montant honoraires (US $)"].astype(float).sum()
-    frais = dfp["Autres frais (US $)"].astype(float).sum()
-
-    paid = (
-        dfp["Acompte 1"].astype(float).sum()
-        + dfp["Acompte 2"].astype(float).sum()
-        + dfp["Acompte 3"].astype(float).sum()
-        + dfp["Acompte 4"].astype(float).sum()
-    )
-
-    solde = (hon + frais) - paid
-
-    escrow = dfp["Escrow"].sum() if "Escrow" in dfp else 0
-
-    kpi_table.append(
-        {
-            "Période": label,
-            "Nb dossiers": len(dfp),
-            "Honoraires": hon,
-            "Frais": frais,
-            "Payé": paid,
-            "Solde": solde,
-            "Escrow": escrow,
-        }
-    )
-
-kpi_df = pd.DataFrame(kpi_table)
-st.dataframe(kpi_df, width="stretch")
-
+comp_df = pd.DataFrame(resultats)
 
 # ---------------------------------------------------------
-# GRAPH 1 : BARRES COMPARATIVES
+# ⭐ KPI COMPARATIFS
 # ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📊 Comparatif par période (Barres)")
+st.subheader("⭐ KPI Comparatifs")
 
-bar_df = kpi_df.melt(id_vars="Période", var_name="Indicateur", value_name="Valeur")
+cols = st.columns(len(comp_df))
 
-fig1 = px.bar(
-    bar_df,
+for i, (_, r) in enumerate(comp_df.iterrows()):
+    cols[i].metric(r["Période"], f"{r['Dossiers']} dossiers", f"{r['Honoraires (US$)']:,.0f} $")
+
+# ---------------------------------------------------------
+# 📊 GRAPH COMPARATIF
+# ---------------------------------------------------------
+st.subheader("📊 Graphique comparatif")
+
+fig = px.bar(
+    comp_df,
     x="Période",
-    y="Valeur",
-    color="Indicateur",
+    y=["Dossiers", "Acceptés", "Envoyés"],
     barmode="group",
-    title="Comparaison des indicateurs par période",
-    text_auto=".2s",
+    text_auto=True,
 )
-
-st.plotly_chart(fig1, use_container_width=True)
-
+st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------
-# GRAPH 2 : LIGNE MULTI-PÉRIODE
+# 📄 TABLEAU COMPARATIF
 # ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📈 Evolution du nombre de dossiers")
-
-evol_df = pd.DataFrame(
-    {
-        "Période": period_labels,
-        "Nb dossiers": [len(dfp) for dfp in period_data],
-    }
-)
-
-fig2 = px.line(
-    evol_df,
-    x="Période",
-    y="Nb dossiers",
-    markers=True,
-    title="Évolution du nombre de dossiers",
-)
-
-st.plotly_chart(fig2, use_container_width=True)
+st.subheader("📄 Tableau comparatif")
+st.dataframe(comp_df, use_container_width=True)
