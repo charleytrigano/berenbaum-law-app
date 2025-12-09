@@ -1,20 +1,16 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import load_database, save_database
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-import tempfile
-import os
+from backend.dropbox_utils import load_database
 
-# -------------------------------------------------------------------
-# ⚙ CONFIG
-# -------------------------------------------------------------------
-st.set_page_config(page_title="📄 Fiche dossier", page_icon="📄", layout="wide")
-st.title("📄 Fiche dossier")
+# ---------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------
+st.set_page_config(page_title="Fiche dossier", page_icon="📄", layout="wide")
+st.title("📄 Fiche dossier – Vue complète")
 
-# -------------------------------------------------------------------
-# 📂 CHARGEMENT DATABASE
-# -------------------------------------------------------------------
+# ---------------------------------------------------------
+# LOAD DATABASE
+# ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
 
@@ -24,304 +20,160 @@ if not clients:
 
 df = pd.DataFrame(clients)
 
-# -------------------------------------------------------------------
-# 🛠 NORMALISATION NUMÉROS
-# -------------------------------------------------------------------
+# Nettoyage minimal
 df["Dossier N"] = pd.to_numeric(df["Dossier N"], errors="coerce")
-nums = sorted(df["Dossier N"].dropna().astype(int).unique())
+df = df.dropna(subset=["Dossier N"])
+df["Dossier N"] = df["Dossier N"].astype(int)
 
-if not nums:
-    st.error("Aucun numéro de dossier valide.")
-    st.stop()
+nums = sorted(df["Dossier N"].unique())
+selected = st.selectbox("Sélectionner un dossier :", nums)
 
-selected = st.selectbox("Sélectionner un dossier", nums)
-row = df[df["Dossier N"] == selected].iloc[0]
+row = df[df["Dossier N"] == selected].iloc[0].copy()
 
-# -------------------------------------------------------------------
-# 🌗 CSS STYLE (MODE SOMBRE)
-# -------------------------------------------------------------------
-st.markdown("""
-    <style>
-        .card {
-            background-color: rgba(40,40,40,0.5);
-            padding: 18px;
-            border-radius: 12px;
-            margin-bottom: 12px;
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-        .timeline {
-            border-left: 3px solid #6ea8fe;
-            padding-left: 20px;
-            margin-top: 20px;
-        }
-        .event-title {
-            font-weight: 600;
-            color: #6ea8fe;
-        }
-        .event-date {
-            font-size: 13px;
-            opacity: 0.8;
-        }
-    </style>
-""", unsafe_allow_html=True)
+# ---------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------
+def money(v):
+    try:
+        return f"${float(v):,.2f}"
+    except:
+        return "$0.00"
 
-# -------------------------------------------------------------------
-# 🧾 EXPORT PDF
-# -------------------------------------------------------------------
-def export_pdf(d):
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    c = canvas.Canvas(tmp.name, pagesize=letter)
-    width, height = letter
+def parse_date(value):
+    try:
+        v = pd.to_datetime(value, errors="coerce")
+        if pd.isna(v):
+            return None
+        return v.date()
+    except:
+        return None
 
-    y = height - 50
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(50, y, f"Dossier {int(d['Dossier N'])} — {d['Nom']}")
-    y -= 40
+def badge_status(solde, total):
+    if solde <= 0:
+        return "<span style='color:#22c55e; font-weight:bold;'>✔ Payé</span>"
+    elif solde < total:
+        return "<span style='color:#eab308; font-weight:bold;'>➖ Partiellement payé</span>"
+    else:
+        return "<span style='color:#ef4444; font-weight:bold;'>✘ Impayé</span>"
 
-    c.setFont("Helvetica", 12)
-
-    def add(label, value):
-        nonlocal y
-        c.drawString(50, y, f"{label}: {value}")
-        y -= 20
-
-    for k, v in d.items():
-        add(k, v)
-
-    c.save()
-    return tmp.name
-
-# -------------------------------------------------------------------
-# 🧾 BOUTONS ACTIONS
-# -------------------------------------------------------------------
-colA, colB, colC = st.columns(3)
-
-if colA.button("📄 Exporter en PDF"):
-    pdf_path = export_pdf(row)
-    with open(pdf_path, "rb") as f:
-        st.download_button("⬇️ Télécharger le PDF", f, file_name=f"dossier_{selected}.pdf")
-    os.unlink(pdf_path)
-
-if colB.button("✏️ Modifier ce dossier"):
-    st.query_params["dossier"] = selected
-    st.switch_page("pages/03_✏️_Modifier_dossier.py")
-
-if colC.button("🗑️ Supprimer ce dossier"):
-    st.session_state["confirm_delete"] = True
-
-if st.session_state.get("confirm_delete", False):
-    st.error("⚠️ Confirmer la suppression du dossier ? Action irréversible.")
-    cc1, cc2 = st.columns(2)
-
-    if cc1.button("❌ Oui, supprimer définitivement"):
-        df = df[df["Dossier N"] != selected]
-        db["clients"] = df.to_dict(orient="records")
-        save_database(db)
-        st.success("✔ Dossier supprimé.")
-        st.session_state["confirm_delete"] = False
-        st.rerun()
-
-    if cc2.button("Annuler"):
-        st.session_state["confirm_delete"] = False
-
-# -------------------------------------------------------------------
-# 📌 Informations générales
-# -------------------------------------------------------------------
-st.markdown("## 📌 Informations générales")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.write("**Client :**", row.get("Nom"))
-    st.write("**Dossier N° :**", int(row["Dossier N"]))
-    st.write("**Créé le :**", row.get("Date"))
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col2:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.write("**Catégorie :**", row.get("Categories", ""))
-    st.write("**Sous-catégorie :**", row.get("Sous-categories", ""))
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col3:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.write("**Visa :**", row.get("Visa", ""))
-    st.write("**Mode de règlement :** Dernier acompte", "")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# -------------------------------------------------------------------
-# 💰 FACTURATION & 🏦 RÈGLEMENTS — SUR LA MÊME LIGNE GARANTI
-# -------------------------------------------------------------------
-st.markdown("""
-    <style>
-        .two-columns {
-            display: flex;
-            gap: 20px;
-            width: 100%;
-        }
-        .col-box {
-            flex: 1;
-            background-color: rgba(40,40,40,0.5);
-            padding: 18px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-        @media (max-width: 900px) {
-            .two-columns {
-                flex-direction: column;      /* devient vertical sur mobile */
-            }
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown("## 💰 Facturation & 🏦 Règlements")
-
-st.markdown("<div class='two-columns'>", unsafe_allow_html=True)
-
-# -------------------------------------------------------------------
-# COLONNE 1 — FACTURATION
-# -------------------------------------------------------------------
-st.markdown("<div class='col-box'>", unsafe_allow_html=True)
-st.markdown("### 💰 Facturation")
-
-honoraires = float(row.get("Montant honoraires (US $)", 0))
+# ---------------------------------------------------------
+# FACTURATION ↔ ACOMPTES (2 colonnes)
+# ---------------------------------------------------------
+hon = float(row.get("Montant honoraires (US $)", 0))
 frais = float(row.get("Autres frais (US $)", 0))
-total = honoraires + frais
+total = hon + frais
 
-total_acomptes = sum([
-    float(row.get(f"Acompte {i}", 0)) for i in range(1, 5)
-])
+ac_values = [
+    float(row.get("Acompte 1", 0)),
+    float(row.get("Acompte 2", 0)),
+    float(row.get("Acompte 3", 0)),
+    float(row.get("Acompte 4", 0)),
+]
 
-solde = round(total - total_acomptes, 2)
+dates_ac = [
+    row.get("Date Acompte 1", ""),
+    row.get("Date Acompte 2", ""),
+    row.get("Date Acompte 3", ""),
+    row.get("Date Acompte 4", "")
+]
 
-# BADGE
-if solde == 0 and total > 0:
-    badge = "<span style='background:#2ecc71;color:white;padding:6px 12px;border-radius:8px;'>🟢 Payé</span>"
-elif total_acomptes > 0:
-    badge = "<span style='background:#f1c40f;color:black;padding:6px 12px;border-radius:8px;'>🟡 Partiellement payé</span>"
-else:
-    badge = "<span style='background:#e74c3c;color:white;padding:6px 12px;border-radius:8px;'>🔴 Impayé</span>"
+modes_ac = [
+    row.get("Mode Acompte 1", ""),
+    row.get("Mode Acompte 2", ""),
+    row.get("Mode Acompte 3", ""),
+    row.get("Mode Acompte 4", "")
+]
 
-st.write("**Honoraires :** $", honoraires)
-st.write("**Autres frais :** $", frais)
-st.write("**Total facturé :** $", total)
+total_paid = sum(ac_values)
+solde = total - total_paid
 
-st.markdown("---")
+badge = badge_status(solde, total)
 
-st.write("**Total acomptes reçus :** $", total_acomptes)
-st.write("**Solde restant :** $", solde)
+colF1, colF2 = st.columns(2)
 
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown(f"### Statut : {badge}", unsafe_allow_html=True)
+# ---------------------------------------------------------
+# COLONNE GAUCHE – FACTURATION
+# ---------------------------------------------------------
+with colF1:
+    st.markdown("### 💰 Facturation")
 
-st.markdown("</div>", unsafe_allow_html=True)
-
-# -------------------------------------------------------------------
-# COLONNE 2 — ACOMPTES / RÈGLEMENTS
-# -------------------------------------------------------------------
-st.markdown("<div class='col-box'>", unsafe_allow_html=True)
-st.markdown("### 🏦 Règlements (Acomptes)")
-
-for i in range(1, 5):
-    st.write(f"#### Acompte {i}")
-    st.write(f"- **Montant :** {row.get(f'Acompte {i}', 0)}")
-    st.write(f"- **Mode :** {row.get(f'Mode Acompte {i}', '')}")
-    st.write(f"- **Date :** {row.get(f'Date Paiement {i}', '')}")
-    st.markdown("---")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# -------------------------------------------------------
-# 🏦 REGLEMENTS
-# -------------------------------------------------------
-with colF2:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### 🏦 Règlements (Acomptes)")
-
-    for i in range(1, 5):
-        montant = row.get(f"Acompte {i}", 0)
-        mode = row.get(f"Mode Acompte {i}", "")
-        date = row.get(f"Date Paiement {i}", "")
-
-        st.write(f"#### Acompte {i}")
-        st.write(f"- **Montant :** {montant}")
-        st.write(f"- **Mode :** {mode}")
-        st.write(f"- **Date :** {date}")
-        st.markdown("---")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# -------------------------------------------------------------------
-# 🕓 TIMELINE
-# -------------------------------------------------------------------
-st.markdown("## 🕓 Timeline du dossier")
-st.markdown("<div class='timeline'>", unsafe_allow_html=True)
-
-# Création
-st.markdown(f"""
-<div class='event'>
-  <div class='event-title'>📄 Dossier créé</div>
-  <div class='event-date'>{row.get("Date","")}</div>
-</div>
-""", unsafe_allow_html=True)
-
-# Escrow ouvert
-if row.get("Escrow", False):
     st.markdown(f"""
-    <div class='event'>
-      <div class='event-title'>💰 Escrow ouvert</div>
-      <div class='event-date'>{row.get("Date","")}</div>
+    <div style="padding:15px; border-radius:10px; background:#1f2937;">
+        <p><b>Montant honoraires :</b> {money(hon)}</p>
+        <p><b>Autres frais :</b> {money(frais)}</p>
+        <hr style="border:0.5px solid #374151;">
+        <p><b>Total facturé :</b> {money(total)}</p>
+        <p><b>Total payé :</b> {money(total_paid)}</p>
+        <p><b>Solde restant :</b> {money(solde)}</p>
+        <p><b>Statut :</b> {badge}</p>
     </div>
     """, unsafe_allow_html=True)
 
-# Acomptes
-for i in range(1, 4 + 1):
-    if float(row.get(f"Acompte {i}", 0)) > 0:
+# ---------------------------------------------------------
+# COLONNE DROITE – ACOMPTES & RÈGLEMENTS
+# ---------------------------------------------------------
+with colF2:
+    st.markdown("### 🏦 Acomptes & Paiements")
+
+    for i in range(4):
         st.markdown(f"""
-        <div class='event'>
-          <div class='event-title'>💳 Paiement Acompte {i} — {row.get(f"Mode Acompte {i}", "")}</div>
-          <div class='event-date'>{row.get(f"Date Paiement {i}", "")}</div>
+        <div style="padding:12px; margin-bottom:10px; border-radius:8px; background:#111827; border:1px solid #374151;">
+            <p><b>Acompte {i+1} :</b> {money(ac_values[i])}</p>
+            <p><b>Mode :</b> {modes_ac[i] or "—"}</p>
+            <p><b>Date :</b> {dates_ac[i] or "—"}</p>
         </div>
         """, unsafe_allow_html=True)
 
-# Envoi
+# ---------------------------------------------------------
+# INFORMATIONS GÉNÉRALES
+# ---------------------------------------------------------
+st.markdown("---")
+st.markdown("## 📌 Informations générales")
+
+st.markdown(f"""
+**Nom :** {row['Nom']}  
+**Catégorie :** {row.get("Categories", "")}  
+**Sous-catégorie :** {row.get("Sous-categories", "")}  
+**Visa :** {row.get("Visa", "")}  
+**Date création :** {row.get("Date", "")}
+""")
+
+# ---------------------------------------------------------
+# TIMELINE
+# ---------------------------------------------------------
+st.markdown("---")
+st.markdown("## 🕓 Timeline du dossier")
+
+def timeline(title, date):
+    return f"""
+    <div style="padding:10px; margin-bottom:12px; border-left:4px solid #3b82f6;">
+        <div style="font-weight:bold; color:#3b82f6;">{title}</div>
+        <div style="opacity:0.8;">{date}</div>
+    </div>
+    """
+
+st.markdown(timeline("📄 Dossier créé", row.get("Date", "")), unsafe_allow_html=True)
+
+if row.get("Escrow", False):
+    st.markdown(timeline("💰 Escrow ouvert", row.get("Date", "")), unsafe_allow_html=True)
+
 if row.get("Dossier envoye", False):
-    st.markdown(f"""
-<div class='event'>
-  <div class='event-title'>✈️ Dossier envoyé</div>
-  <div class='event-date'>{row.get("Date envoi","")}</div>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown(timeline("📤 Dossier envoyé", row.get("Date envoi", "")), unsafe_allow_html=True)
 
-# Acceptation
-if row.get("Dossier accepte", False):
-    st.markdown(f"""
-<div class='event'>
-  <div class='event-title'>✅ Accepté</div>
-  <div class='event-date'>{row.get("Date acceptation","")}</div>
-</div>
-""", unsafe_allow_html=True)
+# ---------------------------------------------------------
+# ACTIONS
+# ---------------------------------------------------------
+st.markdown("---")
+st.markdown("## ⚙️ Actions")
 
-# Refus
-if row.get("Dossier refuse", False):
-    st.markdown(f"""
-<div class='event'>
-  <div class='event-title'>❌ Refusé</div>
-  <div class='event-date'>{row.get("Date refus","")}</div>
-</div>
-""", unsafe_allow_html=True)
+colA1, colA2, colA3 = st.columns(3)
 
-# RFE
-if row.get("RFE", False):
-    st.markdown(f"""
-<div class='event'>
-  <div class='event-title'>📩 RFE reçue</div>
-  <div class='event-date'>{row.get("Date reclamation","")}</div>
-</div>
-""", unsafe_allow_html=True)
+with colA1:
+    if st.button("✏️ Modifier ce dossier"):
+        st.switch_page("pages/03_✏️_Modifier_dossier.py")
 
-st.markdown("</div>", unsafe_allow_html=True)
+with colA2:
+    st.button("📄 Export PDF (à venir)")
+
+with colA3:
+    st.button("🗑️ Supprimer (sécurisé)", type="secondary")
