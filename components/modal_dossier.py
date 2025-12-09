@@ -1,23 +1,28 @@
 import streamlit as st
 
 def show_dossier_modal(row):
-    exp = st.expander(f"📄 Dossier {row['Dossier N']} — {row['Nom']}", expanded=True)
+    # Sécurité : convertir en dictionnaire si Series
+    if hasattr(row, "to_dict"):
+        row = row.to_dict()
+
+    # Titre du bloc
+    exp = st.expander(f"📄 Dossier {row.get('Dossier N', '?')} — {row.get('Nom', '?')}", expanded=True)
 
     with exp:
         st.header("📄 Informations générales")
-        st.write(f"**Catégorie :** {row['Categories']}")
-        st.write(f"**Sous-catégorie :** {row['Sous-categories']}")
-        st.write(f"**Visa :** {row['Visa']}")
-        st.write(f"**Date :** {row['Date']}")
+        st.write(f"**Catégorie :** {row.get('Categories')}")
+        st.write(f"**Sous-catégorie :** {row.get('Sous-categories')}")
+        st.write(f"**Visa :** {row.get('Visa')}")
+        st.write(f"**Date :** {row.get('Date')}")
 
         st.divider()
 
         st.header("💰 Escrow")
-        if row["Escrow"]:
+        if row.get("Escrow"):
             st.success("Escrow en cours")
-        elif row["Escrow_a_reclamer"]:
+        elif row.get("Escrow_a_reclamer"):
             st.warning("Escrow à réclamer")
-        elif row["Escrow_reclame"]:
+        elif row.get("Escrow_reclame"):
             st.info("Escrow réclamé")
         else:
             st.error("Aucun escrow")
@@ -25,22 +30,27 @@ def show_dossier_modal(row):
         st.divider()
 
         st.header("🏦 Paiements")
-        st.write(f"Acompte 1 : {row['Acompte 1']}")
-        st.write(f"Acompte 2 : {row['Acompte 2']}")
-        st.write(f"Acompte 3 : {row['Acompte 3']}")
-        st.write(f"Acompte 4 : {row['Acompte 4']}")
+        total = 0
+        for k in ["Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"]:
+            try:
+                total += float(row.get(k, 0))
+            except:
+                pass
+            st.write(f"{k} : {row.get(k)}")
+
+        st.write(f"**Total acomptes : {total} $**")
 
         st.divider()
 
         st.header("📦 Statuts")
-        st.write(f"Envoyé : {row['Dossier_envoye']}")
-        st.write(f"Accepté : {row['Dossier accepte']}")
-        st.write(f"Refusé : {row['Dossier refuse']}")
-        st.write(f"Annulé : {row['Dossier Annule']}")
-        st.write(f"RFE : {row['RFE']}")
+        st.write(f"Envoyé : {row.get('Dossier_envoye')}")
+        st.write(f"Accepté : {row.get('Dossier accepte')}")
+        st.write(f"Refusé : {row.get('Dossier refuse')}")
+        st.write(f"Annulé : {row.get('Dossier Annule')}")
+        st.write(f"RFE : {row.get('RFE')}")
 
         st.divider()
 
-        st.header("🔧 Actions rapides")
+        st.header("🛠️ Actions rapides")
         st.write("➡️ [Modifier ce dossier](/03_✏️_Modifier_dossier)")
         st.write("➡️ [Voir Escrow](/06_💰_Escrow)")
