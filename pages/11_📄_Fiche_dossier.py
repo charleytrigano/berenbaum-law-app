@@ -151,28 +151,75 @@ with col3:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# 💰 Facturation & Acomptes
+# 💰 FACTURATION & 🏦 RÈGLEMENTS + SOLDE + BADGE
 # -------------------------------------------------------------------
-st.markdown("## 💰 Facturation")
+st.markdown("## 💰 Facturation & 🏦 Règlements")
 
-colF1, colF2, colF3 = st.columns(3)
+colF1, colF2 = st.columns(2)
 
+# -------------------------------------------------------
+# 💰 FACTURATION
+# -------------------------------------------------------
 with colF1:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.write("**Honoraires :** $", row.get("Montant honoraires (US $)", 0))
-    st.write("**Autres frais :** $", row.get("Autres frais (US $)", 0))
-    total = float(row.get("Montant honoraires (US $)", 0)) + float(row.get("Autres frais (US $)", 0))
+    st.markdown("### 💰 Facturation")
+
+    honoraires = float(row.get("Montant honoraires (US $)", 0))
+    frais = float(row.get("Autres frais (US $)", 0))
+    total = honoraires + frais
+
+    # Total acomptes encaissés
+    total_acomptes = 0
+    for i in range(1, 5):
+        try:
+            total_acomptes += float(row.get(f"Acompte {i}", 0))
+        except:
+            pass
+
+    # Solde restant
+    solde = total - total_acomptes
+    solde = round(solde, 2)
+
+    # ---------------- BADGE STATUT ----------------
+    if solde == 0 and total > 0:
+        statut_badge = "<span style='background:#2ecc71;color:white;padding:6px 12px;border-radius:8px;'>🟢 Payé</span>"
+    elif total_acomptes > 0:
+        statut_badge = "<span style='background:#f1c40f;color:black;padding:6px 12px;border-radius:8px;'>🟡 Partiellement payé</span>"
+    else:
+        statut_badge = "<span style='background:#e74c3c;color:white;padding:6px 12px;border-radius:8px;'>🔴 Impayé</span>"
+
+    # ---------------- AFFICHAGE -------------------
+    st.write("**Honoraires :** $", honoraires)
+    st.write("**Autres frais :** $", frais)
     st.write("**Total facturé :** $", total)
+
+    st.markdown("---")
+
+    st.write("**Total acomptes reçus :** $", total_acomptes)
+    st.write("**Solde restant :** $", solde)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f"### Statut : {statut_badge}", unsafe_allow_html=True)
+
     st.markdown("</div>", unsafe_allow_html=True)
 
-with colF3:
+
+# -------------------------------------------------------
+# 🏦 REGLEMENTS
+# -------------------------------------------------------
+with colF2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.write("### 🏦 Acomptes")
+    st.markdown("### 🏦 Règlements (Acomptes)")
 
     for i in range(1, 5):
-        st.write(f"**Acompte {i} :**", row.get(f"Acompte {i}", 0))
-        st.write(f"Mode :** {row.get(f'Mode Acompte {i}', '')}")
-        st.write(f"Date :** {row.get(f'Date Paiement {i}', '')}")
+        montant = row.get(f"Acompte {i}", 0)
+        mode = row.get(f"Mode Acompte {i}", "")
+        date = row.get(f"Date Paiement {i}", "")
+
+        st.write(f"#### Acompte {i}")
+        st.write(f"- **Montant :** {montant}")
+        st.write(f"- **Mode :** {mode}")
+        st.write(f"- **Date :** {date}")
         st.markdown("---")
 
     st.markdown("</div>", unsafe_allow_html=True)
