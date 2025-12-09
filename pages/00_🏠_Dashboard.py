@@ -1,248 +1,121 @@
+# 00_🏠_Dashboard.py
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+from utils.filters import (
+    filter_by_category,
+    filter_by_period,
+    build_period_options,
+)
+from components.kpi_cards import display_kpi_row
+from components.modal_dossier import show_dossier_modal
 from backend.dropbox_utils import load_database
 
-# ---------------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------------
 st.set_page_config(page_title="Dashboard", page_icon="🏠", layout="wide")
-st.markdown("<h1 style='margin-bottom:0px;'>🏠 Dashboard — Berenbaum Law App</h1>", unsafe_allow_html=True)
+st.title("🏠 Tableau de bord – Berenbaum Law")
+
 
 # ---------------------------------------------------------
-# LOAD DATABASE
+# 🔹 LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
-clients = db.get("clients", [])
-visa_raw = db.get("visa", [])
+clients = pd.DataFrame(db.get("clients", []))
 
-if not clients:
-    st.warning("Aucun dossier trouvé dans la base.")
+if clients.empty:
+    st.warning("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients)
-visa_df = pd.DataFrame(visa_raw)
+# Normalisation
+clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
+
+for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame", "Dossier_envoye"]:
+    if col not in clients.columns:
+        clients[col] = False
+    clients[col] = clients[col].apply(lambda x: True if str(x).lower() in ["true", "1"] else False)
+
 
 # ---------------------------------------------------------
-# NORMALISATION COLONNES
+# 🔹 KPI ROW
 # ---------------------------------------------------------
-BOOL_COLS = [
-    "Dossier envoye", "Dossier accepte", "Dossier refuse",
-    "Dossier Annule", "Escrow", "Escrow_a_reclamer", "Escrow_reclame", "RFE"
-]
+collected = {
+    "total": len(clients),
+    "envoyes": clients["Dossier_envoye"].sum(),
+    "acceptes": clients["Dossier accepte"].sum() if "Dossier accepte" in clients else 0,
+    "refuses": clients["Dossier refuse"].sum() if "Dossier refuse" in clients else 0,
+    "escrow_en_cours": clients[clients["Escrow"] == True].shape[0],
+    "escrow_a_reclamer": clients[clients["Escrow_a_reclamer"] == True].shape[0],
+}
 
-def normalize_bool(x):
-    if isinstance(x, bool): return x
-    if str(x).lower() in ["1", "true", "oui", "yes"]: return True
-    return False
+display_kpi_row(collected)
 
-for col in BOOL_COLS:
-    if col not in df.columns:
-        df[col] = False
-    df[col] = df[col].apply(normalize_bool)
-
-# Dates
-if "Date" not in df.columns:
-    df["Date"] = None
-
-df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-df["Année"]     = df["Date"].dt.year.fillna(0).astype(int)
-df["Mois"]      = df["Date"].dt.strftime("%Y-%m")
-df["Trimestre"] = df["Date"].dt.to_period("Q").astype(str)
-df["Semestre"]  = df["Date"].dt.to_period("6M").astype(str)
 
 # ---------------------------------------------------------
-# 🔍 FILTRES AVANCÉS AVEC LIENS CATÉGORIES → SOUS-CATÉGORIES → VISA
+# 🔹 FILTERS
 # ---------------------------------------------------------
-st.subheader("🔍 Filtres avancés")
+st.subheader("🎛️ Filtres")
 
-colA, colB, colC, colD = st.columns(4)
+categories = sorted(clients["Categories"].dropna().unique())
+selected_cat = st.selectbox("Catégorie", ["Toutes"] + categories)
 
-# FILTRE Année
-annees = sorted(df["Année"].unique())
-annee = colA.selectbox("📅 Année", ["Toutes"] + [str(a) for a in annees if a > 0])
+filtered = filter_by_category(clients, selected_cat)
 
-# FILTRE Catégorie
-if "Categories" in visa_df.columns:
-    cat_list = sorted(visa_df["Categories"].dropna().unique())
-else:
-    cat_list = sorted(df["Categories"].dropna().unique())
+# Sous-catégories
+subcats = sorted(filtered["Sous-categories"].dropna().unique())
+selected_sub = st.selectbox("Sous-catégorie", ["Toutes"] + subcats)
 
-categorie = colB.selectbox("📌 Catégorie", ["Toutes"] + cat_list)
+if selected_sub != "Toutes":
+    filtered = filtered[filtered["Sous-categories"] == selected_sub]
 
-# FILTRE Sous-catégories dépendantes
-if categorie != "Toutes":
-    sous_list = sorted(
-        visa_df[visa_df["Categories"] == categorie]["Sous-categories"]
-        .dropna().unique()
-    )
-else:
-    sous_list = sorted(visa_df["Sous-categories"].dropna().unique())
+# Visas
+visas = sorted(filtered["Visa"].dropna().unique())
+selected_visa = st.selectbox("Visa", ["Tous"] + visas)
 
-sous_categorie = colC.selectbox("📁 Sous-catégorie", ["Toutes"] + sous_list)
-
-# FILTRE Visa dépendant
-if sous_categorie != "Toutes":
-    visa_list = sorted(
-        visa_df[visa_df["Sous-categories"] == sous_categorie]["Visa"]
-        .dropna().unique()
-    )
-else:
-    visa_list = sorted(visa_df["Visa"].dropna().unique())
-
-visa_filter = colD.selectbox("🛂 Visa", ["Toutes"] + visa_list)
+if selected_visa != "Tous":
+    filtered = filtered[filtered["Visa"] == selected_visa]
 
 # ---------------------------------------------------------
-# FILTRE STATUT
+# 🔹 PERIOD FILTER (Années / Date à date / Mois / Trimestre / Semestre)
 # ---------------------------------------------------------
-st.subheader("📂 Filtre statut")
+st.subheader("📅 Filtre temporel")
 
-statut = st.selectbox(
-    "Statut dossier",
-    [
-        "Tous", "Envoyé", "Accepté", "Refusé",
-        "Annulé", "Escrow en cours", "Escrow à réclamer", "Escrow réclamé", "RFE"
-    ]
-)
+period_type = st.selectbox("Type de période", ["Aucune", "Mois", "Trimestre", "Semestre", "Date à date", "Comparaison multi-années"])
+
+if period_type != "Aucune":
+    filtered = filter_by_period(filtered, period_type)
+
 
 # ---------------------------------------------------------
-# COMPARAISON ENTRE PERIODES
+# 🔹 TABLE — DOSSIERS LIST
 # ---------------------------------------------------------
-st.subheader("🕒 Comparaison entre périodes")
+st.subheader("📋 Liste des dossiers")
 
-colP1, colP2, colP3 = st.columns(3)
+def badge(row):
+    if row["Dossier_envoye"]:
+        return "📤 Envoyé"
+    if row["Escrow"]:
+        return "💰 Escrow"
+    return "🗂️ Ouvert"
 
-type_periode = colP1.selectbox(
-    "Type de période",
-    ["Aucune comparaison", "Mois", "Trimestre", "Semestre", "Date à date", "Années multiples"]
-)
+filtered["Badge"] = filtered.apply(badge, axis=1)
 
-periode_A = periode_B = None
+display_df = filtered[[
+    "Dossier N",
+    "Nom",
+    "Categories",
+    "Sous-categories",
+    "Visa",
+    "Date",
+    "Badge",
+    "Montant honoraires (US $)",
+    "Acompte 1",
+    "Acompte 2",
+    "Acompte 3",
+    "Acompte 4",
+]]
 
-if type_periode == "Mois":
-    mois_list = sorted(df["Mois"].dropna().unique())
-    periode_A = colP2.selectbox("Période A", mois_list)
-    periode_B = colP3.selectbox("Période B", mois_list)
+# Bouton modal
+for i, row in filtered.iterrows():
+    st.button(f"👁️ Voir dossier {row['Dossier N']}", key=f"btn_{row['Dossier N']}",
+              on_click=lambda r=row: show_dossier_modal(r))
 
-elif type_periode == "Trimestre":
-    tri_list = sorted(df["Trimestre"].dropna().unique())
-    periode_A = colP2.selectbox("Période A", tri_list)
-    periode_B = colP3.selectbox("Période B", tri_list)
-
-elif type_periode == "Semestre":
-    sem_list = sorted(df["Semestre"].dropna().unique())
-    periode_A = colP2.selectbox("Période A", sem_list)
-    periode_B = colP3.selectbox("Période B", sem_list)
-
-elif type_periode == "Date à date":
-    periode_A = colP2.date_input("Début → Fin (A)")
-    periode_B = colP3.date_input("Début → Fin (B)")
-
-elif type_periode == "Années multiples":
-    annees = sorted(df["Année"].unique())
-    periodes = colP2.multiselect("Sélectionner jusqu'à 5 années", annees, max_selections=5)
-
-# ---------------------------------------------------------
-# APPLICATION DES FILTRES
-# ---------------------------------------------------------
-df_filtered = df.copy()
-
-if annee != "Toutes":
-    df_filtered = df_filtered[df_filtered["Année"] == int(annee)]
-
-if categorie != "Toutes":
-    df_filtered = df_filtered[df_filtered["Categories"] == categorie]
-
-if sous_categorie != "Toutes":
-    df_filtered = df_filtered[df_filtered["Sous-categories"] == sous_categorie]
-
-if visa_filter != "Toutes":
-    df_filtered = df_filtered[df_filtered["Visa"] == visa_filter]
-
-# STATUT
-if statut == "Envoyé":
-    df_filtered = df_filtered[df_filtered["Dossier envoye"]]
-elif statut == "Accepté":
-    df_filtered = df_filtered[df_filtered["Dossier accepte"]]
-elif statut == "Refusé":
-    df_filtered = df_filtered[df_filtered["Dossier refuse"]]
-elif statut == "Annulé":
-    df_filtered = df_filtered[df_filtered["Dossier Annule"]]
-elif statut == "Escrow en cours":
-    df_filtered = df_filtered[df_filtered["Escrow"]]
-elif statut == "Escrow à réclamer":
-    df_filtered = df_filtered[df_filtered["Escrow_a_reclamer"]]
-elif statut == "Escrow réclamé":
-    df_filtered = df_filtered[df_filtered["Escrow_reclame"]]
-elif statut == "RFE":
-    df_filtered = df_filtered[df_filtered["RFE"]]
-
-# ---------------------------------------------------------
-# KPI CARDS — PREMIUM VERSION (6 PAR LIGNE)
-# ---------------------------------------------------------
-st.subheader("📊 Indicateurs clés")
-
-def kpi_card(label, value, color, icon, page):
-    html = f"""
-    <a href="/{page}" target="_self" style="text-decoration:none;">
-    <div style="
-        background:{color};
-        padding:10px;
-        border-radius:12px;
-        text-align:center;
-        color:white;
-        min-height:73px;
-        box-shadow:0px 2px 6px rgba(0,0,0,0.2);
-        transition:0.15s;
-    " onmouseover="this.style.transform='scale(1.03)'"
-      onmouseout="this.style.transform='scale(1)'">
-        <div style="font-size:17px; margin-bottom:3px;">{icon}</div>
-        <div style="font-size:13px; line-height:14px;">{label}</div>
-        <div style="font-size:18px; font-weight:bold; margin-top:2px;">{value}</div>
-    </div></a>
-    """
-    return html
-
-# CALCUL FINANCIER
-honoraires = df_filtered.get("Montant honoraires (US $)", pd.Series([0])).fillna(0).sum()
-frais = df_filtered.get("Autres frais (US $)", pd.Series([0])).fillna(0).sum()
-
-paiements = 0
-for col in ["Acompte 1","Acompte 2","Acompte 3","Acompte 4"]:
-    if col in df_filtered.columns:
-        paiements += df_filtered[col].fillna(0).sum()
-
-solde = honoraires + frais - paiements
-
-line1 = st.columns(6)
-line2 = st.columns(6)
-
-line1[0].markdown(kpi_card("Total", len(df_filtered), "#2c3e50", "📁", "01_📁_Liste_dossiers"), unsafe_allow_html=True)
-line1[1].markdown(kpi_card("Envoyés", df_filtered["Dossier envoye"].sum(), "#2980b9", "📤", "01_📁_Liste_dossiers"), unsafe_allow_html=True)
-line1[2].markdown(kpi_card("Acceptés", df_filtered["Dossier accepte"].sum(), "#27ae60", "✅", "01_📁_Liste_dossiers"), unsafe_allow_html=True)
-line1[3].markdown(kpi_card("Refusés", df_filtered["Dossier refuse"].sum(), "#c0392b", "⛔", "01_📁_Liste_dossiers"), unsafe_allow_html=True)
-line1[4].markdown(kpi_card("Annulés", df_filtered["Dossier Annule"].sum(), "#8e44ad", "❌", "01_📁_Liste_dossiers"), unsafe_allow_html=True)
-line1[5].markdown(kpi_card("RFE", df_filtered["RFE"].sum() if "RFE" in df_filtered else 0, "#d35400", "⚠️", "01_📁_Liste_dossiers"), unsafe_allow_html=True)
-
-line2[0].markdown(kpi_card("Escrow en cours", df_filtered["Escrow"].sum(), "#16a085", "💰", "06_💰_Escrow"), unsafe_allow_html=True)
-line2[1].markdown(kpi_card("À réclamer", df_filtered["Escrow_a_reclamer"].sum(), "#e67e22", "📩", "06_💰_Escrow"), unsafe_allow_html=True)
-line2[2].markdown(kpi_card("Réclamé", df_filtered["Escrow_reclame"].sum(), "#7f8c8d", "📬", "06_💰_Escrow"), unsafe_allow_html=True)
-line2[3].markdown(kpi_card("Honoraires", f"{honoraires:,.0f}$", "#34495e", "💵", "08_📒_Comptabilite"), unsafe_allow_html=True)
-line2[4].markdown(kpi_card("Paiements", f"{paiements:,.0f}$", "#1abc9c", "🏦", "08_📒_Comptabilite"), unsafe_allow_html=True)
-line2[5].markdown(kpi_card("Solde", f"{solde:,.0f}$", "#d35400", "🧾", "08_📒_Comptabilite"), unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# TABLEAU FINAL
-# ---------------------------------------------------------
-st.subheader("📄 Liste des dossiers filtrés")
-
-colonnes = [
-    "Dossier N", "Nom", "Date", "Categories", "Sous-categories",
-    "Visa", "Dossier envoye", "Escrow"
-]
-
-colonnes = [c for c in colonnes if c in df_filtered.columns]
-
-st.dataframe(
-    df_filtered[colonnes].sort_values("Date", ascending=False),
-    use_container_width=True
-)
+st.dataframe(display_df, use_container_width=True)
