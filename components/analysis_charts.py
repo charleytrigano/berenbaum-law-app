@@ -52,6 +52,10 @@ def monthly_hist(df, date_col="Date", amount_col="Montant honoraires (US $)"):
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df["Mois"] = df[date_col].dt.to_period("M").astype(str)
+    # Normalisation du nom de la colonne "Dossier envoye"
+if "Dossier_envoye" in df.columns:
+    df.rename(columns={"Dossier_envoye": "Dossier envoye"}, inplace=True)
+
 
     grouped = df.groupby("Mois")[amount_col].sum().reset_index()
 
