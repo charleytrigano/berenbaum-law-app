@@ -1,23 +1,23 @@
 import streamlit as st
 
 # ======================================================
-# 🎨 STYLE PREMIUM - VERSION STABLE (sans animation)
+# 🎨 KPI CARD – VERSION B (Premium Stable)
 # ======================================================
 
 def kpi_card(title: str, value, icon: str = "📁"):
-    """Affiche un KPI premium statique (Version B)"""
+    """Affiche une carte KPI premium (sans HTML visible)."""
 
-    st.markdown(f"""
+    html = f"""
     <div style="
-        background: rgba(184,134,11,0.10);
+        background: rgba(184,134,11,0.12);
         border: 1px solid rgba(184,134,11,0.35);
         padding: 14px 18px;
         border-radius: 12px;
-        min-width: 180px;
+        width: 100%;
         text-align: center;
         box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-    ">
-
+        ">
+        
         <div style="font-size: 28px; margin-bottom: 4px;">
             {icon}
         </div>
@@ -41,4 +41,6 @@ def kpi_card(title: str, value, icon: str = "📁"):
         </div>
 
     </div>
-    """, unsafe_allow_html=True)
+    """
+
+    st.markdown(html, unsafe_allow_html=True)
