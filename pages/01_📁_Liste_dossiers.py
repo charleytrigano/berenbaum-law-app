@@ -1,167 +1,125 @@
 import streamlit as st
-from utils.sidebar import render_sidebar
-render_sidebar()
 import pandas as pd
 from backend.dropbox_utils import load_database
+from utils.sidebar import render_sidebar
 
+# ---------------------------------------------------------
+# Sidebar avec logo
+# ---------------------------------------------------------
+render_sidebar()
 
-
-
-st.set_page_config(page_title="Liste des dossiers", page_icon="📁", layout="wide")
+# ---------------------------------------------------------
+# Page config
+# ---------------------------------------------------------
+st.set_page_config(page_title="📁 Liste des dossiers", page_icon="📁", layout="wide")
 st.title("📁 Liste des dossiers")
 
 # ---------------------------------------------------------
-# 🔹 Chargement base
+# Charger DB
 # ---------------------------------------------------------
 db = load_database()
-clients = db.get("clients", [])
+clients = pd.DataFrame(db.get("clients", []))
 
-if not clients:
+if clients.empty:
     st.warning("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients)
+# ---------------------------------------------------------
+# Normalisation colonnes
+# ---------------------------------------------------------
+clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
+clients["Année"] = clients["Date"].dt.year
+
+# Mapping des colonnes
+rename_map = {
+    "Dossier_envoye": "Dossier envoye",
+    "Dossier envoyé": "Dossier envoye"
+}
+clients.rename(columns=rename_map, inplace=True)
+
+# Si colonne manquante → créer
+for col in ["Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"]:
+    if col not in clients.columns:
+        clients[col] = False
 
 # ---------------------------------------------------------
-# 🔹 Normalisation colonnes manquantes
+# 🎛️ FILTRES AVANCÉS (haut de page)
 # ---------------------------------------------------------
-REQUIRED_BOOL_COLS = [
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
-]
+st.subheader("🎛️ Filtres")
 
-for col in REQUIRED_BOOL_COLS:
-    if col not in df.columns:
-        df[col] = False
+col1, col2, col3, col4, col5 = st.columns(5)
 
+# 1️⃣ Année
+annees = ["Toutes"] + sorted(clients["Année"].dropna().unique().tolist())
+annee = col1.selectbox("Année", annees)
 
-def normalize_bool(x):
-    if isinstance(x, bool):
-        return x
-    if str(x).lower() in ["true", "1", "1.0", "yes", "oui"]:
-        return True
-    return False
+# 2️⃣ Catégorie
+categories = ["Toutes"] + sorted([c for c in clients["Categories"].dropna().unique() if c != ""])
+cat = col2.selectbox("Catégorie", categories)
 
+# 3️⃣ Sous-catégorie dépendante
+if cat != "Toutes":
+    souscats = ["Toutes"] + sorted(clients[clients["Categories"] == cat]["Sous-categories"].dropna().unique())
+else:
+    souscats = ["Toutes"] + sorted(clients["Sous-categories"].dropna().unique())
 
-for col in REQUIRED_BOOL_COLS:
-    df[col] = df[col].apply(normalize_bool)
+sous = col3.selectbox("Sous-catégorie", souscats)
 
-# ---------------------------------------------------------
-# 🔹 Colonnes dates
-# ---------------------------------------------------------
-DATE_COLS = ["Date", "Date envoi", "Date acceptation", "Date refus"]
+# 4️⃣ Visa dépendant
+if sous != "Toutes":
+    visas = ["Toutes"] + sorted(clients[clients["Sous-categories"] == sous]["Visa"].dropna().unique())
+else:
+    visas = ["Toutes"] + sorted(clients["Visa"].dropna().unique())
 
-for col in DATE_COLS:
-    if col in df.columns:
-        df[col] = pd.to_datetime(df[col], errors="coerce")
+visa = col4.selectbox("Visa", visas)
+
+# 5️⃣ Statut
+statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
+statut = col5.selectbox("Statut", statuts)
 
 # ---------------------------------------------------------
-# 🔹 Badges graphiques
+# 🔍 APPLICATION DES FILTRES
 # ---------------------------------------------------------
-def badge(row):
-
-    if row.get("Dossier Annule", False):
-        return "❌ Annulé"
-    if row.get("Dossier refuse", False):
-        return "⛔ Refusé"
-    if row.get("Dossier accepte", False):
-        return "✅ Accepté"
-    if row.get("Dossier envoye", False):
-        return "📤 Envoyé"
-    if row.get("Escrow", False):
-        return "💰 Escrow"
-
-    return "📝 En cours"
-
-
-df["Statut"] = df.apply(badge, axis=1)
-
-# ---------------------------------------------------------
-# 🔎 FILTRES
-# ---------------------------------------------------------
-st.sidebar.header("🔍 Filtres")
+df = clients.copy()
 
 # Année
-years = sorted(df["Date"].dropna().dt.year.unique())
-year_filter = st.sidebar.multiselect("Filtrer par année", years)
+if annee != "Toutes":
+    df = df[df["Année"] == annee]
+
+# Catégorie
+if cat != "Toutes":
+    df = df[df["Categories"] == cat]
+
+# Sous-catégorie
+if sous != "Toutes":
+    df = df[df["Sous-categories"] == sous]
 
 # Visa
-visa_filter = st.sidebar.multiselect(
-    "Filtrer par visa", sorted(df["Visa"].dropna().unique())
-)
-
-# Catégories
-cat_filter = st.sidebar.multiselect(
-    "Filtrer par catégorie", sorted(df["Categories"].dropna().unique())
-)
+if visa != "Toutes":
+    df = df[df["Visa"] == visa]
 
 # Statut
-status_filter = st.sidebar.multiselect(
-    "Filtrer par statut", ["📝 En cours", "📤 Envoyé", "✅ Accepté", "⛔ Refusé", "❌ Annulé", "💰 Escrow"]
-)
-
-# Escrow
-escrow_filter = st.sidebar.selectbox(
-    "Filtrer Escrow", ["Tous", "En cours", "À réclamer", "Réclamé"]
-)
-
-# Appliquer filtres
-filtered = df.copy()
-
-if year_filter:
-    filtered = filtered[filtered["Date"].dt.year.isin(year_filter)]
-
-if visa_filter:
-    filtered = filtered[filtered["Visa"].isin(visa_filter)]
-
-if cat_filter:
-    filtered = filtered[filtered["Categories"].isin(cat_filter)]
-
-if status_filter:
-    filtered = filtered[filtered["Statut"].isin(status_filter)]
-
-if escrow_filter == "En cours":
-    filtered = filtered[filtered["Escrow"] == True]
-elif escrow_filter == "À réclamer":
-    filtered = filtered[filtered["Escrow_a_reclamer"] == True]
-elif escrow_filter == "Réclamé":
-    filtered = filtered[filtered["Escrow_reclame"] == True]
+if statut != "Tous":
+    statut_map = {
+        "Envoyé": "Dossier envoye",
+        "Accepté": "Dossier accepte",
+        "Refusé": "Dossier refuse",
+        "Annulé": "Dossier Annule",
+        "RFE": "RFE"
+    }
+    df = df[df[statut_map[statut]] == True]
 
 # ---------------------------------------------------------
-# 📊 KPIs
+# Résultat
 # ---------------------------------------------------------
-st.subheader("📊 Indicateurs clés")
+st.markdown(f"### 📄 {len(df)} dossier(s) trouvé(s)")
 
-col1, col2, col3, col4 = st.columns(4)
+df_display = df[[
+    "Dossier N", "Nom", "Date",
+    "Categories", "Sous-categories", "Visa",
+    "Montant honoraires (US $)", "Autres frais (US $)",
+    "Dossier envoye", "Dossier accepte", "Dossier refuse",
+    "Escrow"
+]]
 
-col1.metric("Total dossiers", len(df))
-col2.metric("Envoyés", df["Dossier envoye"].sum())
-col3.metric("Acceptés", df["Dossier accepte"].sum())
-col4.metric("Refusés", df["Dossier refuse"].sum())
-
-col5, col6, col7 = st.columns(3)
-
-col5.metric("Annulés", df["Dossier Annule"].sum())
-col6.metric("Escrow en cours", df["Escrow"].sum())
-col7.metric("Escrow à réclamer", df["Escrow_a_reclamer"].sum())
-
-# ---------------------------------------------------------
-# 🔹 TABLEAU FINAL
-# ---------------------------------------------------------
-st.subheader("📄 Liste des dossiers")
-
-colonnes_affichage = [
-    "Dossier N",
-    "Nom",
-    "Date",
-    "Categories",
-    "Visa",
-    "Statut",
-]
-
-st.dataframe(filtered[colonnes_affichage], use_container_width=True)
+st.dataframe(df_display, use_container_width=True, height=600)
