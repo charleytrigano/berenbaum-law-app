@@ -69,6 +69,42 @@ def monthly_hist(df, date_col="Date", amount_col="Montant honoraires (US $)"):
 
     return apply_theme(fig)
 
+def multi_year_line(df_grouped):
+    """
+    df_grouped doit contenir : Année, Mois, Montant honoraires (US $)
+    """
+
+    if df_grouped.empty:
+        return go.Figure()
+
+    df = df_grouped.copy()
+
+    # Sécurisation du type
+    df["Année"] = pd.to_numeric(df["Année"], errors="coerce")
+    df["Mois"] = pd.to_numeric(df["Mois"], errors="coerce")
+
+    fig = go.Figure()
+
+    for year in sorted(df["Année"].dropna().unique()):
+        subset = df[df["Année"] == year]
+
+        fig.add_trace(go.Scatter(
+            x=subset["Mois"],
+            y=subset["Montant honoraires (US $)"],
+            mode="lines+markers",
+            name=str(int(year)),
+            line=dict(width=3)
+        ))
+
+    fig.update_layout(
+        title="Comparaison multi-années",
+        xaxis_title="Mois",
+        yaxis_title="Revenus ($)"
+    )
+
+    return apply_theme(fig)
+
+
 # ===========================================================
 # 📊 2 — Comparaison multi-années (revenus)
 # ===========================================================
