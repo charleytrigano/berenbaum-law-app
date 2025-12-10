@@ -1,43 +1,41 @@
 import streamlit as st
 
-def kpi_card(label, value, emoji):
+def kpi_card(label: str, value, icon: str = "📁"):
     """
-    Affiche un KPI premium en style 'gold'
-    avec HTML sécurisé compatible Streamlit Cloud.
+    Affiche une carte KPI premium gold + dark mode.
     """
 
     html = f"""
     <div style="
-        padding:16px;
-        border-radius:12px;
-        background-color:#1A1A1A;
-        border:1px solid #3A3A3A;
-        text-align:center;
-        box-shadow:0 0 12px rgba(255,215,100,0.08);
+        background: linear-gradient(145deg, #1c1c1c, #0f0f0f);
+        border: 1px solid rgba(255, 215, 0, 0.25);
+        padding: 16px 20px;
+        border-radius: 14px;
+        box-shadow: 0px 4px 14px rgba(0,0,0,0.45);
+        text-align: center;
+        margin-bottom: 18px;
     ">
-        
-        <div style="font-size:28px; margin-bottom:4px;">
-            {emoji}
+        <div style="font-size: 30px; margin-bottom: 4px;">
+            {icon}
         </div>
 
         <div style="
-            font-size:15px;
-            font-weight:500;
-            color:#D8B86A;
-            margin-bottom:6px;
-            white-space:nowrap;
+            font-size: 15px;
+            font-weight: 500;
+            color: #D8B86A;
+            margin-bottom: 6px;
+            white-space: nowrap;
         ">
             {label}
         </div>
 
         <div style="
-            font-size:28px;
-            font-weight:700;
-            color:#FFD777;
+            font-size: 28px;
+            font-weight: 700;
+            color: #FFD777;
         ">
             {value:,}
         </div>
-
     </div>
     """
 
