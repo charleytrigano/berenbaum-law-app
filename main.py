@@ -1,9 +1,27 @@
 import streamlit as st
+import os
 from PIL import Image
-from backend.dropbox_utils import load_database
+from backend.dropbox_utils import load_database, save_database
 
 # ---------------------------------------------------------
-# 🔧 CONFIGURATION INITIALE
+# 🖼️ LOGO DANS LE SIDEBAR (chemin ABSOLU — fonctionne toujours)
+# ---------------------------------------------------------
+with st.sidebar:
+    try:
+        current_dir = os.path.dirname(__file__)              # dossier courant
+        logo_path = os.path.join(current_dir, "assets", "logo.png")
+
+        logo = Image.open(logo_path)
+        st.image(logo, width=140)
+
+    except Exception as e:
+        st.warning(f"⚠️ Logo non trouvé : {e}")
+
+    st.markdown("## ")
+
+
+# ---------------------------------------------------------
+# 🔧 CONFIGURATION DE LA PAGE
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Berenbaum Law App",
@@ -11,53 +29,44 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------------------------------------------------
-# 🎨 LOGO DANS LE SIDEBAR
-# ---------------------------------------------------------
-with st.sidebar:
-    try:
-        logo = Image.open("assets/logo.png")
-        st.image(logo, width=120)
-    except Exception as e:
-        st.write("⚠️ Logo non trouvé :", e)
-
-    st.markdown("---")
-    st.markdown("### 🧭 Navigation")
-    st.write("Utilisez le menu à gauche pour naviguer dans l’application.")
-    st.markdown("---")
+st.title("📊 Tableau de bord – Berenbaum Law App")
+st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
 
 # ---------------------------------------------------------
-# 📦 CHARGEMENT BASE DROPBOX
+# 🔄 CHARGEMENT BASE DE DONNÉES DROPBOX
 # ---------------------------------------------------------
 try:
     db = load_database()
     st.success("Base de données chargée depuis Dropbox ✔")
 except Exception as e:
-    st.error(f"❌ Erreur chargement Dropbox : {e}")
+    st.error(f"Erreur lors du chargement Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-# Debug affichage JSON utilisé
-st.caption(f"JSON utilisé : `{st.secrets['paths']['DROPBOX_JSON']}`")
 
 # ---------------------------------------------------------
-# 🏠 PAGE D'ACCUEIL
+# 🔍 DEBUG OPTIONNEL : chemins & contenus DB
 # ---------------------------------------------------------
-st.title("📊 Tableau de bord — Berenbaum Law App")
-st.write("Bienvenue dans l’application professionnelle de gestion des dossiers.")
+with st.expander("📁 JSON utilisé & Contenu brut (Debug)"):
+    try:
+        st.write("📁 JSON utilisé :", st.secrets["paths"]["DROPBOX_JSON"])
+    except:
+        st.error("Impossible de lire le chemin JSON dans secrets.toml")
 
-# Aperçu rapide des dossiers
-clients = db.get("clients", [])
+    st.json(db)
 
-if not clients:
-    st.warning("Aucun dossier trouvé.")
+
+# ---------------------------------------------------------
+# 🧾 APERÇU DU TABLEAU DE BORD
+# ---------------------------------------------------------
+st.subheader("📁 Aperçu des dossiers")
+
+if "clients" in db and len(db["clients"]) > 0:
+    st.dataframe(db["clients"], height=500, use_container_width=True)
 else:
-    st.subheader("📁 Aperçu des dossiers")
-    st.dataframe(clients, width="stretch")
+    st.info("Aucun dossier trouvé.")
 
 
 # ---------------------------------------------------------
-# 🛈 Notes / Footer
+# FIN DU FICHIER
 # ---------------------------------------------------------
-st.markdown("---")
-st.caption("© 2025 — Berenbaum, P.A. Law Firm — Application interne de gestion des dossiers.")
