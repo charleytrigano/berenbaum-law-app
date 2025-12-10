@@ -1,5 +1,9 @@
 import streamlit as st
 
+from utils.sidebar import render_sidebar
+render_sidebar()
+
+
 st.set_page_config(page_title="❓ Aide", page_icon="❓", layout="wide")
 st.title("❓ Centre d'aide — Berenbaum Law App")
 
