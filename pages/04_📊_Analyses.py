@@ -128,6 +128,49 @@ selected_years = colT2.multiselect(
     years,
     default=years[-2:] if len(years) >= 2 else years
 )
+# ---------------------------------------------------------
+# 🧠 TRAITEMENT DES PÉRIODES TEMPORELLES
+# ---------------------------------------------------------
+
+df_time = df.copy()
+
+# Sélection années (pour Multi-Années)
+if selected_years:
+    df_time = df_time[df_time["Année"].isin(selected_years)]
+
+# Préparation des périodes mensuelles
+df_time["Month"] = df_time["Date"].dt.month
+df_time["Quarter"] = df_time["Date"].dt.quarter
+df_time["Semester"] = df_time["Date"].dt.month.map(lambda x: 1 if x <= 6 else 2)
+
+# Période : Mois
+if periode_type == "Mois":
+    df_grouped = df_time.groupby(["Année", "Month"])["Montant honoraires (US $)"].sum().reset_index()
+
+# Période : Trimestre
+elif periode_type == "Trimestre":
+    df_grouped = df_time.groupby(["Année", "Quarter"])["Montant honoraires (US $)"].sum().reset_index()
+    df_grouped.rename(columns={"Quarter": "Période"}, inplace=True)
+
+# Période : Semestre
+elif periode_type == "Semestre":
+    df_grouped = df_time.groupby(["Année", "Semester"])["Montant honoraires (US $)"].sum().reset_index()
+    df_grouped.rename(columns={"Semester": "Période"}, inplace=True)
+
+# Période : Année
+elif periode_type == "Année":
+    df_grouped = df_time.groupby(["Année"])["Montant honoraires (US $)"].sum().reset_index()
+    df_grouped["Période"] = df_grouped["Année"]
+
+# Période : Date à date
+elif periode_type == "Date à date":
+    d1 = st.date_input("Date début", df_time["Date"].min())
+    d2 = st.date_input("Date fin", df_time["Date"].max())
+
+    df_range = df_time[(df_time["Date"] >= pd.to_datetime(d1)) & (df_time["Date"] <= pd.to_datetime(d2))]
+    df_grouped = df_range.groupby(["Année", "Month"])["Montant honoraires (US $)"].sum().reset_index()
+
+
 
 # ---------------------------------------------------------
 # 🔢 KPI PREMIUM (luxury gold cards) — 1 seule ligne
@@ -199,10 +242,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 with tab1:
-    st.plotly_chart(monthly_hist(df), use_container_width=True)
+    st.plotly_chart(monthly_hist(df_grouped), use_container_width=True)
 
 with tab2:
-    st.plotly_chart(multi_year_line(df), use_container_width=True)
+    st.plotly_chart(multi_year_line(df_grouped), use_container_width=True)
 
 with tab3:
     st.plotly_chart(category_donut(df), use_container_width=True)
