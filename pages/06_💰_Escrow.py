@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
+from utils.sidebar import render_sidebar
+render_sidebar()
+
+
 st.set_page_config(page_title="Gestion des Escrows", page_icon="💰", layout="wide")
 st.title("💰 Gestion des Escrows")
 
