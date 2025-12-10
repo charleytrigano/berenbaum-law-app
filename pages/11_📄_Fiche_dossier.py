@@ -107,8 +107,7 @@ with colF2:
     display_acompte("Acompte 2", ac2, row.get("Date Acompte 2"), row.get("mode de paiement2"))
     display_acompte("Acompte 3", ac3, row.get("Date Acompte 3"), row.get("mode de paiement3"))
     display_acompte("Acompte 4", ac4, row.get("Date Acompte 4"), row.get("mode de paiement4"))
-
-# -----------------------------
+    # -----------------------------
 # 📝 COMMENTAIRE DU DOSSIER
 # -----------------------------
 
@@ -133,6 +132,8 @@ if commentaire:
     )
 else:
     st.info("Aucun commentaire n’a été enregistré pour ce dossier.")
+
+
 
 
 # ---------------------------------------------------------
