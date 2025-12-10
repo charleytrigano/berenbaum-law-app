@@ -165,6 +165,8 @@ if st.button("💾 Enregistrer le dossier", type="primary"):
         "Date refus": "",
         "Date annulation": "",
         "Date reclamation": "",
+        "Commentaire": commentaire,
+
     }
 
     clients.append(new_entry)
