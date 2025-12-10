@@ -81,6 +81,8 @@ col6, col7, col8 = st.columns(3)
 honoraires = col6.number_input("Montant honoraires (US $)", value=to_float(dossier.get("Montant honoraires (US $)", 0)))
 frais = col7.number_input("Autres frais (US $)", value=to_float(dossier.get("Autres frais (US $)", 0)))
 col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
+commentaire = st.text_area("📝 Commentaire", dossier.get("Commentaire", ""))
+
 
 # ---------------------------------------------------------
 # 🏦 Acomptes + Modes + Dates
@@ -157,6 +159,8 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     df.loc[idx, "Montant honoraires (US $)"] = honoraires
     df.loc[idx, "Autres frais (US $)"] = frais
+    df.loc[idx, "Commentaire"] = commentaire
+
 
     # Acomptes
     for i in range(1, 5):
