@@ -6,14 +6,9 @@ import pandas as pd
 # 🎨 THEME LUXE – COULEURS PREMIUM
 # ================================================
 COLOR_GOLD = "#B8860B"
-COLOR_GOLD_SOFT = "#8C6A18"
-COLOR_BG = "#111111"
 COLOR_TEXT = "#E6E6E6"
 COLOR_GRID = "rgba(255,255,255,0.08)"
 
-# ================================================
-# 🔧 PALETTE DÉDIÉE POUR MULTI-ANNÉES
-# ================================================
 PALETTE = [
     "#B8860B",  # Gold deep
     "#8C6A18",  # Gold soft
@@ -29,18 +24,18 @@ def apply_theme(fig):
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=COLOR_TEXT, size=14),
+        font=dict(color=COLOR_TEXT),
         margin=dict(l=20, r=20, t=40, b=20),
-        xaxis=dict(gridcolor=COLOR_GRID, zerolinecolor=COLOR_GRID),
-        yaxis=dict(gridcolor=COLOR_GRID, zerolinecolor=COLOR_GRID),
+        xaxis=dict(gridcolor=COLOR_GRID),
+        yaxis=dict(gridcolor=COLOR_GRID),
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
             bordercolor=COLOR_GRID,
-            borderwidth=1,
-            font=dict(color=COLOR_TEXT),
+            borderwidth=1
         )
     )
     return fig
+
 
 # ===========================================================
 # 📊 1 — Histogramme mensuel premium
@@ -52,10 +47,6 @@ def monthly_hist(df, date_col="Date", amount_col="Montant honoraires (US $)"):
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df["Mois"] = df[date_col].dt.to_period("M").astype(str)
-
-    # Normalisation du nom de la colonne "Dossier envoye"
-    if "Dossier_envoye" in df.columns:
-        df.rename(columns={"Dossier_envoye": "Dossier envoye"}, inplace=True)
 
     grouped = df.groupby("Mois")[amount_col].sum().reset_index()
 
@@ -69,70 +60,37 @@ def monthly_hist(df, date_col="Date", amount_col="Montant honoraires (US $)"):
 
     return apply_theme(fig)
 
+
+# ===========================================================
+# 📊 2 — Comparaison multi-années (version patchée)
+# ===========================================================
 def multi_year_line(df_grouped):
     """
     df_grouped doit contenir : Année, Mois, Montant honoraires (US $)
     """
-
     if df_grouped.empty:
         return go.Figure()
 
     df = df_grouped.copy()
 
-    # Sécurisation du type
     df["Année"] = pd.to_numeric(df["Année"], errors="coerce")
     df["Mois"] = pd.to_numeric(df["Mois"], errors="coerce")
 
     fig = go.Figure()
 
-    for year in sorted(df["Année"].dropna().unique()):
-        subset = df[df["Année"] == year]
-
-        fig.add_trace(go.Scatter(
-            x=subset["Mois"],
-            y=subset["Montant honoraires (US $)"],
-            mode="lines+markers",
-            name=str(int(year)),
-            line=dict(width=3)
-        ))
-
-    fig.update_layout(
-        title="Comparaison multi-années",
-        xaxis_title="Mois",
-        yaxis_title="Revenus ($)"
-    )
-
-    return apply_theme(fig)
-
-
-# ===========================================================
-# 📊 2 — Comparaison multi-années (revenus)
-# ===========================================================
-def multi_year_line(df):
-    if df.empty:
-        return go.Figure()
-
-    df = df.copy()
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df["Année"] = df["Date"].dt.year
-    df["Mois"] = df["Date"].dt.month
-
-    grouped = df.groupby(["Année", "Mois"])["Montant honoraires (US $)"].sum().reset_index()
-
-    fig = go.Figure()
-
-    for i, year in enumerate(sorted(grouped["Année"].unique())):
-        sub = grouped[grouped["Année"] == year]
+    for i, year in enumerate(sorted(df["Année"].dropna().unique())):
+        sub = df[df["Année"] == year]
         fig.add_trace(go.Scatter(
             x=sub["Mois"],
             y=sub["Montant honoraires (US $)"],
             mode="lines+markers",
-            name=str(year),
+            name=str(int(year)),
             line=dict(color=PALETTE[i % len(PALETTE)], width=3)
         ))
 
     fig.update_layout(title="Comparaison multi-années")
     return apply_theme(fig)
+
 
 # ===========================================================
 # 📊 3 — Donut catégories
@@ -155,15 +113,12 @@ def category_donut(df):
         color_discrete_sequence=px.colors.sequential.Oranges
     )
 
-    fig.update_layout(
-        title="Répartition par catégories",
-        legend_title="Catégories"
-    )
-
+    fig.update_layout(title="Répartition par catégories")
     return apply_theme(fig)
 
+
 # ===========================================================
-# 📊 4 — Heatmap mensuelle (Volume dossiers)
+# 📊 4 — Heatmap mensuelle
 # ===========================================================
 def heatmap_month(df):
     if df.empty:
@@ -185,15 +140,15 @@ def heatmap_month(df):
     fig = px.imshow(
         pivot,
         color_continuous_scale=["#2b2b2b", COLOR_GOLD],
-        aspect="auto",
-        labels=dict(color="Nombre de dossiers")
+        labels=dict(color="Nb dossiers")
     )
 
     fig.update_layout(title="Heatmap activité mensuelle")
     return apply_theme(fig)
 
+
 # ===========================================================
-# 📊 5 — Bar chart comparatif (catégories)
+# 📊 5 — Bar chart revenus / catégories
 # ===========================================================
 def category_bars(df):
     if df.empty:
