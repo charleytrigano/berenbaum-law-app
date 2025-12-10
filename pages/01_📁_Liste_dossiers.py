@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
 
+from utils.sidebar import render_sidebar
+render_sidebar()
+
+
 st.set_page_config(page_title="Liste des dossiers", page_icon="📁", layout="wide")
 st.title("📁 Liste des dossiers")
 
