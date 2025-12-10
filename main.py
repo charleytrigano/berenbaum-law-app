@@ -4,6 +4,9 @@ import os
 
 # IMPORTS BACKEND
 from backend.dropbox_utils import load_database, save_database
+from utils.sidebar import render_sidebar
+render_sidebar()
+
 
 
 # ----------------------------------------------------------
@@ -15,32 +18,6 @@ st.set_page_config(
     layout="wide"
 )
 
-
-# ----------------------------------------------------------
-# LOGO EN HAUT DU SIDEBAR
-# ----------------------------------------------------------
-with st.sidebar:
-    st.markdown("### ")  # petit espace haute
-
-    candidate_paths = [
-        "assets/logo.png",
-        "./assets/logo.png",
-        "/mount/src/berenbaum-law-app/assets/logo.png",
-        "/mount/src/assets/logo.png"
-    ]
-
-    logo_loaded = False
-    for p in candidate_paths:
-        if os.path.exists(p):
-            st.image(p, width=140)
-            logo_loaded = True
-            break
-
-    if not logo_loaded:
-        st.error("⚠️ Logo introuvable")
-        st.write("Chemin courant :", os.getcwd())
-
-    st.markdown("---")
 
 
 # ----------------------------------------------------------
