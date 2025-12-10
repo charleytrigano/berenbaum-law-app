@@ -2,8 +2,12 @@ import streamlit as st
 from PIL import Image
 import os
 
+# IMPORTS BACKEND
+from backend.dropbox_utils import load_database, save_database
+
+
 # ----------------------------------------------------------
-# CONFIG APP EN PREMIER (sinon le sidebar se réinitialise)
+# CONFIG APP EN PREMIER (IMPORTANT)
 # ----------------------------------------------------------
 st.set_page_config(
     page_title="Berenbaum Law App",
@@ -11,11 +15,12 @@ st.set_page_config(
     layout="wide"
 )
 
+
 # ----------------------------------------------------------
 # LOGO EN HAUT DU SIDEBAR
 # ----------------------------------------------------------
 with st.sidebar:
-    st.markdown("### ")  # petit espace haut
+    st.markdown("### ")  # petit espace haute
 
     candidate_paths = [
         "assets/logo.png",
@@ -24,37 +29,27 @@ with st.sidebar:
         "/mount/src/assets/logo.png"
     ]
 
-    loaded = False
+    logo_loaded = False
     for p in candidate_paths:
         if os.path.exists(p):
             st.image(p, width=140)
-            loaded = True
+            logo_loaded = True
             break
 
-    if not loaded:
+    if not logo_loaded:
         st.error("⚠️ Logo introuvable")
         st.write("Chemin courant :", os.getcwd())
 
-    st.markdown("---")  # séparation esthétique
+    st.markdown("---")
 
 
-
-# ---------------------------------------------------------
-# 🔧 CONFIGURATION DE LA PAGE
-# ---------------------------------------------------------
-st.set_page_config(
-    page_title="Berenbaum Law App",
-    page_icon="📁",
-    layout="wide"
-)
-
+# ----------------------------------------------------------
+# AFFICHAGE DU CONTENU PRINCIPAL
+# ----------------------------------------------------------
 st.title("📊 Tableau de bord – Berenbaum Law App")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
-
-# ---------------------------------------------------------
-# 🔄 CHARGEMENT BASE DE DONNÉES DROPBOX
-# ---------------------------------------------------------
+# Charger la base depuis Dropbox
 try:
     db = load_database()
     st.success("Base de données chargée depuis Dropbox ✔")
@@ -62,30 +57,5 @@ except Exception as e:
     st.error(f"Erreur lors du chargement Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-
-# ---------------------------------------------------------
-# 🔍 DEBUG OPTIONNEL : chemins & contenus DB
-# ---------------------------------------------------------
-with st.expander("📁 JSON utilisé & Contenu brut (Debug)"):
-    try:
-        st.write("📁 JSON utilisé :", st.secrets["paths"]["DROPBOX_JSON"])
-    except:
-        st.error("Impossible de lire le chemin JSON dans secrets.toml")
-
-    st.json(db)
-
-
-# ---------------------------------------------------------
-# 🧾 APERÇU DU TABLEAU DE BORD
-# ---------------------------------------------------------
-st.subheader("📁 Aperçu des dossiers")
-
-if "clients" in db and len(db["clients"]) > 0:
-    st.dataframe(db["clients"], height=500, use_container_width=True)
-else:
-    st.info("Aucun dossier trouvé.")
-
-
-# ---------------------------------------------------------
-# FIN DU FICHIER
-# ---------------------------------------------------------
+# DEBUG (si tu veux)
+# st.json(db)
