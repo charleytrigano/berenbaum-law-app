@@ -1,19 +1,15 @@
 import streamlit as st
 import pandas as pd
 from backend.dropbox_utils import load_database
-
 from components.kpi_cards import kpi_card
 from components.analysis_charts import (
-    monthly_hist,
-    multi_year_line,
-    category_donut,
-    heatmap_month,
-    category_bars
+    monthly_hist, multi_year_line, category_donut,
+    heatmap_month, category_bars
 )
 from utils.sidebar import render_sidebar
 
 # ---------------------------------------------------------
-# 🎨 SIDEBAR PREMIUM (Logo + Navigation)
+# 🎨 SIDEBAR PREMIUM
 # ---------------------------------------------------------
 render_sidebar()
 
@@ -29,7 +25,7 @@ st.title("📊 Analyses statistiques – Tableau de bord avancé")
 db = load_database()
 clients = pd.DataFrame(db.get("clients", []))
 
-# Harmonisation colonnes
+# Normalisation colonnes statut
 rename_map = {
     "Dossier_envoye": "Dossier envoye",
     "Dossier Envoye": "Dossier envoye",
@@ -37,7 +33,6 @@ rename_map = {
 }
 clients.rename(columns=rename_map, inplace=True)
 
-# Créer la colonne si manquante
 if "Dossier envoye" not in clients.columns:
     clients["Dossier envoye"] = False
 
@@ -46,7 +41,7 @@ if clients.empty:
     st.stop()
 
 # ---------------------------------------------------------
-# 🧹 Normalisation dates
+# 🧹 Normalisation dates & colonnes
 # ---------------------------------------------------------
 clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
 clients["Année"] = clients["Date"].dt.year
@@ -71,9 +66,7 @@ if cat != "Tous":
         clients[clients["Categories"] == cat]["Sous-categories"].dropna().unique()
     )
 else:
-    souscats = ["Tous"] + sorted(
-        clients["Sous-categories"].dropna().unique()
-    )
+    souscats = ["Tous"] + sorted(clients["Sous-categories"].dropna().unique())
 sous = col2.selectbox("Sous-catégorie", souscats)
 
 # Visa dépendant
@@ -85,7 +78,7 @@ else:
     visas = ["Tous"] + sorted(clients["Visa"].dropna().unique())
 visa = col3.selectbox("Visa", visas)
 
-# Statut
+# Statuts
 statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
 statut = col4.selectbox("Statut du dossier", statuts)
 
@@ -129,37 +122,37 @@ years = sorted(df["Année"].dropna().unique())
 selected_years = colT2.multiselect(
     "Comparer jusqu’à 5 années",
     years,
-    default=years[-2:] if len(years) >= 2 else years
+    default=years[-2:] if len(years) >= 2 else years,
 )
 
 # ---------------------------------------------------------
-# 🔢 KPI PREMIUM (luxury gold cards)
+# 🔢 KPI GOLD PREMIUM
 # ---------------------------------------------------------
 st.subheader("📈 Indicateurs clés")
 
-colA, colB, colC = st.columns(3)
-colD, colE, colF = st.columns(3)
+colK1, colK2, colK3 = st.columns(3)
+colK4, colK5, colK6 = st.columns(3)
 
-with colA:
+with colK1:
     kpi_card("Total dossiers filtrés", len(df), "📁")
 
-with colB:
+with colK2:
     kpi_card("Chiffre d’affaires (Filtré)", int(df["Montant honoraires (US $)"].sum()), "💰")
 
-with colC:
+with colK3:
     kpi_card("Dossiers envoyés", int(df["Dossier envoye"].sum()), "📤")
 
-with colD:
+with colK4:
     kpi_card("Dossiers acceptés", int(df["Dossier accepte"].sum()), "✅")
 
-with colE:
+with colK5:
     kpi_card("Dossiers refusés", int(df["Dossier refuse"].sum()), "❌")
 
-with colF:
+with colK6:
     kpi_card("Dossiers en Escrow", int(df["Escrow"].sum()), "💼")
 
 # ---------------------------------------------------------
-# 📊 GRAPHES
+# 📊 GRAPHIQUES PREMIUM
 # ---------------------------------------------------------
 st.subheader("📊 Graphiques interactifs")
 
@@ -168,7 +161,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 Courbes multi-années",
     "🎯 Répartition catégories",
     "🔥 Heatmap activité",
-    "📊 Revenus par catégories",
+    "📊 Revenus par catégories"
 ])
 
 with tab1:
@@ -187,18 +180,23 @@ with tab5:
     st.plotly_chart(category_bars(df), use_container_width=True)
 
 # ---------------------------------------------------------
-# 📋 TABLEAU FINAL
+# 📋 TABLEAU DES DOSSIERS FILTRÉS
 # ---------------------------------------------------------
 st.subheader("📋 Détails des dossiers filtrés")
 
-df_display = df[[
+columns_to_show = [
     "Dossier N", "Nom", "Date",
     "Categories", "Sous-categories", "Visa",
     "Montant honoraires (US $)", "Autres frais (US $)",
     "Dossier envoye", "Dossier accepte", "Dossier refuse",
     "Escrow"
-]]
+]
 
-st.dataframe(df_display, height=450, use_container_width=True)
+df_display = df[columns_to_show]
 
+st.dataframe(df_display, height=400, use_container_width=True)
+
+# ---------------------------------------------------------
+# FIN
+# ---------------------------------------------------------
 st.markdown("### 🌟 Tableau de bord premium — Berenbaum Law App")
