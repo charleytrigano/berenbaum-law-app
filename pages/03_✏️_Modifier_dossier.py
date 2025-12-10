@@ -226,7 +226,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         df.loc[idx, f"Date Paiement {i}"] = date_inputs[i]
 
     # Statuts
-    df.loc[idx, "Dossier envoye"] = bool(envoye)
+    df.loc[idx, "Dossier_envoye"] = bool(envoye)
     df.loc[idx, "Dossier accepte"] = bool(accepte)
     df.loc[idx, "Dossier refuse"] = bool(refuse)
     df.loc[idx, "Dossier Annule"] = bool(annule)
