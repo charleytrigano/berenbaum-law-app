@@ -1,44 +1,44 @@
 import streamlit as st
 
-# ==========================================================
-# 🎨 KPI CARD – Version premium stable (ne fuite JAMAIS en brut)
-# ==========================================================
-
-def kpi_card(label, value, icon):
+def kpi_card(label, value, emoji):
+    """
+    Affiche un KPI premium en style 'gold'
+    avec HTML sécurisé compatible Streamlit Cloud.
+    """
 
     html = f"""
     <div style="
-        background: rgba(255, 255, 255, 0.06);
-        padding: 14px 18px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow: 0 0 8px rgba(255,255,255,0.05);
-        text-align: left;
-        min-height: 95px;
+        padding:16px;
+        border-radius:12px;
+        background-color:#1A1A1A;
+        border:1px solid #3A3A3A;
+        text-align:center;
+        box-shadow:0 0 12px rgba(255,215,100,0.08);
     ">
-        <div style="font-size: 26px; margin-bottom: 4px;">
-            {icon}
+        
+        <div style="font-size:28px; margin-bottom:4px;">
+            {emoji}
         </div>
 
         <div style="
-            font-size: 15px;
-            font-weight: 500;
-            color: #D8B86A;
-            margin-bottom: 6px;
-            white-space: nowrap;
+            font-size:15px;
+            font-weight:500;
+            color:#D8B86A;
+            margin-bottom:6px;
+            white-space:nowrap;
         ">
             {label}
         </div>
 
         <div style="
-            font-size: 28px;
-            font-weight: 700;
-            color: #FFD777;
+            font-size:28px;
+            font-weight:700;
+            color:#FFD777;
         ">
             {value:,}
         </div>
+
     </div>
     """
 
-    # 👉 Ce mode d'affichage est le SEUL correct :
     st.markdown(html, unsafe_allow_html=True)
