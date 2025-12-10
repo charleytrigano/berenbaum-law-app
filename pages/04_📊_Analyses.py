@@ -130,20 +130,60 @@ selected_years = colT2.multiselect(
 )
 
 # ---------------------------------------------------------
-# 🔢 KPI OR PREMIUM
+# 🔢 KPI PREMIUM (luxury gold cards) — 1 seule ligne
 # ---------------------------------------------------------
 st.subheader("📈 Indicateurs clés")
 
-colK1, colK2, colK3 = st.columns(3)
-colK4, colK5, colK6 = st.columns(3)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
-kpi_card("Total dossiers filtrés", len(df), "📁")
-kpi_card("Chiffre d’affaires (Filtré)", int(df["Montant honoraires (US $)"].sum()), "💰")
-kpi_card("Dossiers envoyés", int(df["Dossier envoye"].sum()), "📤")
+with col1:
+    kpi_card(
+        "Total dossiers filtrés",
+        len(df),
+        "📁",
+        tooltip="Nombre total de dossiers après application des filtres."
+    )
 
-kpi_card("Dossiers acceptés", int(df["Dossier accepte"].sum()), "✅")
-kpi_card("Dossiers refusés", int(df["Dossier refuse"].sum()), "❌")
-kpi_card("Dossiers en Escrow", int(df["Escrow"].sum()), "💼")
+with col2:
+    kpi_card(
+        "Chiffre d’affaires",
+        int(df["Montant honoraires (US $)"].sum()),
+        "💰",
+        tooltip="Somme des honoraires pour les dossiers filtrés."
+    )
+
+with col3:
+    kpi_card(
+        "Dossiers envoyés",
+        int(df["Dossier envoye"].sum()),
+        "📤",
+        tooltip="Nombre de dossiers qui ont été envoyés à l'immigration."
+    )
+
+with col4:
+    kpi_card(
+        "Dossiers acceptés",
+        int(df["Dossier accepte"].sum()),
+        "✅",
+        tooltip="Nombre de dossiers approuvés."
+    )
+
+with col5:
+    kpi_card(
+        "Dossiers refusés",
+        int(df["Dossier refuse"].sum()),
+        "❌",
+        tooltip="Nombre de dossiers refusés par l'immigration."
+    )
+
+with col6:
+    kpi_card(
+        "Dossiers en Escrow",
+        int(df["Escrow"].sum()),
+        "💼",
+        tooltip="Nombre de dossiers où un montant Escrow est actif."
+    )
+
 
 # ---------------------------------------------------------
 # 📊 GRAPHIQUES PREMIUM
