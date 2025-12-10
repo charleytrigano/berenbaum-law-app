@@ -52,10 +52,10 @@ def monthly_hist(df, date_col="Date", amount_col="Montant honoraires (US $)"):
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df["Mois"] = df[date_col].dt.to_period("M").astype(str)
-    # Normalisation du nom de la colonne "Dossier envoye"
-if "Dossier_envoye" in df.columns:
-    df.rename(columns={"Dossier_envoye": "Dossier envoye"}, inplace=True)
 
+    # Normalisation du nom de la colonne "Dossier envoye"
+    if "Dossier_envoye" in df.columns:
+        df.rename(columns={"Dossier_envoye": "Dossier envoye"}, inplace=True)
 
     grouped = df.groupby("Mois")[amount_col].sum().reset_index()
 
@@ -98,6 +98,9 @@ def multi_year_line(df):
     fig.update_layout(title="Comparaison multi-années")
     return apply_theme(fig)
 
+# ===========================================================
+# 📊 3 — Donut catégories
+# ===========================================================
 def category_donut(df):
     df = df.copy()
     df["Categories"] = df["Categories"].fillna("Non défini")
@@ -121,7 +124,7 @@ def category_donut(df):
         legend_title="Catégories"
     )
 
-    return fig
+    return apply_theme(fig)
 
 # ===========================================================
 # 📊 4 — Heatmap mensuelle (Volume dossiers)
@@ -130,6 +133,7 @@ def heatmap_month(df):
     if df.empty:
         return go.Figure()
 
+    df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Année"] = df["Date"].dt.year
     df["Mois"] = df["Date"].dt.month
