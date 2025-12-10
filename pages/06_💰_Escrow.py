@@ -1,164 +1,83 @@
 import streamlit as st
-from utils.sidebar import render_sidebar
-render_sidebar()
-
 import pandas as pd
-from backend.dropbox_utils import load_database, save_database
-
-
-
-
-st.set_page_config(page_title="Gestion des Escrows", page_icon="💰", layout="wide")
-st.title("💰 Gestion des Escrows")
+from backend.dropbox_utils import load_database
+from utils.sidebar import render_sidebar
 
 # ---------------------------------------------------------
-# 🔹 Chargement base JSON
+# Sidebar (Logo + Navigation)
+# ---------------------------------------------------------
+render_sidebar()
+
+st.set_page_config(page_title="💰 Escrow", page_icon="💰", layout="wide")
+st.title("💰 Escrow – Suivi des fonds placés")
+
+# ---------------------------------------------------------
+# Charger la base de données
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-
 df = pd.DataFrame(clients)
 
+if df.empty:
+    st.warning("Aucun dossier trouvé.")
+    st.stop()
+
+# ---------------------------------------------------------
+# Normalisation colonnes
+# ---------------------------------------------------------
 def normalize_bool(x):
     if isinstance(x, bool):
         return x
-    if str(x).lower() in ["true", "1", "yes", "oui"]:
+    if str(x).lower() in ["1", "true", "yes", "oui"]:
         return True
     return False
 
-for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame", "Dossier_envoye"]:
+for col in ["Escrow", "Acompte 1", "Date Acompte 1"]:
     if col not in df.columns:
-        df[col] = False
-    df[col] = df[col].apply(normalize_bool)
+        df[col] = None
 
-
-# ---------------------------------------------------------
-# 🔍 DEBUG – Affichage brut des colonnes Escrow
-# ---------------------------------------------------------
-with st.expander("🔍 DEBUG — État réel des colonnes Escrow"):
-    st.dataframe(df[[
-        "Dossier N", "Escrow", "Escrow_a_reclamer", "Escrow_reclame", "Dossier_envoye"
-    ]])
-
+df["Escrow"] = df["Escrow"].apply(normalize_bool)
+df["Acompte 1"] = pd.to_numeric(df["Acompte 1"], errors="coerce").fillna(0)
 
 # ---------------------------------------------------------
-# 🟦 1 — ESCROW EN COURS
+# Filtrer : dossiers en Escrow actif
 # ---------------------------------------------------------
-st.markdown("## 🟦 Escrow en cours")
+df_escrow = df[df["Escrow"] == True].copy()
 
-escrow_en_cours = df[df["Escrow"] == True]
-
-if escrow_en_cours.empty:
-    st.info("Aucun dossier en Escrow en cours.")
-else:
-    st.dataframe(escrow_en_cours)
-
+if df_escrow.empty:
+    st.info("Aucun dossier actuellement en Escrow.")
+    st.stop()
 
 # ---------------------------------------------------------
-# 🟧 2 — ESCROW À RÉCLAMER (Dossier envoyé)
+# Calcul du montant placé en Escrow
+# (TOUJOURS = Acompte 1)
 # ---------------------------------------------------------
-st.markdown("## 🟧 Escrow à réclamer (dossier envoyé)")
+df_escrow["Montant Escrow"] = df_escrow["Acompte 1"]
 
-a_reclamer = df[(df["Escrow_a_reclamer"] == True) & (df["Escrow_reclame"] == False)]
-
-if a_reclamer.empty:
-    st.info("Aucun dossier à réclamer.")
-else:
-    st.dataframe(a_reclamer)
-
+# Extraction date si disponible
+df_escrow["Date Escrow"] = df_escrow["Date Acompte 1"].replace("None", "")
 
 # ---------------------------------------------------------
-# 🟩 3 — ESCROW RÉCLAMÉ
+# Affichage tableau
 # ---------------------------------------------------------
-st.markdown("## 🟩 Escrow réclamé")
+st.subheader("📄 Dossiers actuellement en Escrow")
 
-reclames = df[df["Escrow_reclame"] == True]
+df_display = df_escrow[[
+    "Dossier N",
+    "Nom",
+    "Visa",
+    "Montant Escrow",
+    "Date Escrow"
+]]
 
-if reclames.empty:
-    st.info("Aucun dossier marqué comme réclamé.")
-else:
-    st.dataframe(reclames)
-
-
-# ---------------------------------------------------------
-# 🕒 TIMELINE ESCROW
-# ---------------------------------------------------------
-st.markdown("---")
-st.markdown("## 🕒 Historique / Timeline Escrow")
-
-timeline_data = []
-
-for _, row in df.iterrows():
-    etat = "Aucun"
-    color = "gray"
-
-    if row["Escrow"] == True:
-        etat = "En cours"
-        color = "blue"
-    elif row["Escrow_a_reclamer"] == True and row["Escrow_reclame"] == False:
-        etat = "À réclamer"
-        color = "orange"
-    elif row["Escrow_reclame"] == True:
-        etat = "Réclamé"
-        color = "green"
-
-    timeline_data.append({
-        "Dossier N": row["Dossier N"],
-        "Nom": row.get("Nom", ""),
-        "État Escrow": etat,
-        "Couleur": color
-    })
-
-timeline_df = pd.DataFrame(timeline_data)
-
-st.dataframe(timeline_df)
-
+st.dataframe(df_display, use_container_width=True)
 
 # ---------------------------------------------------------
-# 🛠️ ACTIONS SUR UN DOSSIER
+# Total des fonds en Escrow
 # ---------------------------------------------------------
-st.markdown("---")
-st.markdown("## 🛠️ Modifier l'état d'un Escrow")
+total = df_escrow["Montant Escrow"].sum()
 
-selection = st.selectbox(
-    "Choisir un dossier",
-    df["Dossier N"].dropna().astype(int).tolist()
-)
-
-row = df[df["Dossier N"] == selection].iloc[0]
-
-st.write(f"### Dossier **{selection} — {row.get('Nom', '')}**")
-
-etat_actuel = (
-    "En cours" if row["Escrow"] else
-    "À réclamer" if row["Escrow_a_reclamer"] else
-    "Réclamé" if row["Escrow_reclame"] else "Aucun"
-)
-
-st.info(f"**État actuel : {etat_actuel}**")
-
-colA, colB, colC = st.columns(3)
-
-# Passer en Escrow en cours
-if colA.button("🟦 Mettre en Escrow en cours"):
-    df.loc[df["Dossier N"] == selection, ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]] = [True, False, False]
-    st.success("Le dossier est maintenant en Escrow *en cours*.")
-    db["clients"] = df.to_dict(orient="records")
-    save_database(db)
-    st.rerun()
-
-# Marquer comme à réclamer
-if colB.button("🟧 Marquer comme 'À réclamer'"):
-    df.loc[df["Dossier N"] == selection, ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]] = [False, True, False]
-    st.success("Le dossier est maintenant dans *Escrow à réclamer*.")
-    db["clients"] = df.to_dict(orient="records")
-    save_database(db)
-    st.rerun()
-
-# Marquer comme réclamé
-if colC.button("🟩 Marquer comme 'Réclamé'"):
-    df.loc[df["Dossier N"] == selection, ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]] = [False, False, True]
-    st.success("Le dossier est maintenant en *Escrow réclamé*.")
-    db["clients"] = df.to_dict(orient="records")
-    save_database(db)
-    st.rerun()
+st.markdown(f"""
+### 💵 Total en Escrow :  
+# **${total:,.2f}**
+""")
