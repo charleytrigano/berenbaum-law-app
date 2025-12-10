@@ -1,11 +1,12 @@
 import streamlit as st
+from utils.sidebar import render_sidebar
+render_sidebar()
+
 from PIL import Image
 import os
 
 # IMPORTS BACKEND
 from backend.dropbox_utils import load_database, save_database
-from utils.sidebar import render_sidebar
-render_sidebar()
 
 
 
