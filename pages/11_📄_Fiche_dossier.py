@@ -107,6 +107,35 @@ with colF2:
     display_acompte("Acompte 2", ac2, row.get("Date Acompte 2"), row.get("mode de paiement2"))
     display_acompte("Acompte 3", ac3, row.get("Date Acompte 3"), row.get("mode de paiement3"))
     display_acompte("Acompte 4", ac4, row.get("Date Acompte 4"), row.get("mode de paiement4"))
+
+# ---------------------------------------------------------
+# 📝 COMMENTAIRE
+# ---------------------------------------------------------
+
+st.subheader("📝 Commentaire")
+
+# On récupère proprement le commentaire
+commentaire = str(row.get("Commentaire", "") or "").strip()
+
+if commentaire:
+    st.markdown(
+        f"""
+        <div style="
+            background-color:#2b2b2b;
+            padding:15px;
+            border-radius:10px;
+            border:1px solid #444;
+            color:white;
+            font-size:15px;
+        ">
+            {commentaire}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    st.info("Aucun commentaire n’a été enregistré pour ce dossier.")
+
     # -----------------------------
 # 📝 COMMENTAIRE DU DOSSIER
 # -----------------------------
