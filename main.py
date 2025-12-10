@@ -15,13 +15,11 @@ st.set_page_config(
 # 🎨 LOGO DANS LE SIDEBAR
 # ---------------------------------------------------------
 with st.sidebar:
-    st.markdown("### ")
-
     try:
         logo = Image.open("assets/logo.png")
-        st.image(logo, width=140)
+        st.image(logo, width=120)
     except Exception as e:
-        st.error(f"⚠️ Logo non trouvé : {e}")
+        st.write("⚠️ Logo non trouvé :", e)
 
     st.markdown("---")
     st.markdown("### 🧭 Navigation")
