@@ -1,10 +1,11 @@
 import streamlit as st
+from utils.sidebar import render_sidebar
+render_sidebar()
 import pandas as pd
 from backend.dropbox_utils import load_database
 from components.export_pdf import generate_pdf
 
-from utils.sidebar import render_sidebar
-render_sidebar()
+
 
 
 st.set_page_config(page_title="📄 Fiche dossier", page_icon="📄", layout="wide")
