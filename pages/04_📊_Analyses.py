@@ -1,11 +1,12 @@
 import streamlit as st
+from utils.sidebar import render_sidebar
+render_sidebar()
 import pandas as pd
 import plotly.express as px
 from backend.dropbox_utils import load_database
 from utils.visa_filters import clean_visa_df
 
-from utils.sidebar import render_sidebar
-render_sidebar()
+
 
 # ---------------------------------------------------------
 # PAGE CONFIG
