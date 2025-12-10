@@ -136,34 +136,6 @@ if commentaire:
 else:
     st.info("Aucun commentaire n’a été enregistré pour ce dossier.")
 
-    # -----------------------------
-# 📝 COMMENTAIRE DU DOSSIER
-# -----------------------------
-
-st.markdown("## 📝 Commentaire")
-
-commentaire = dossier.get("Commentaire", "").strip()
-
-if commentaire:
-    st.markdown(
-        f"""
-        <div style="
-            background-color:#2b2b2b;
-            padding:15px;
-            border-radius:10px;
-            border:1px solid #444;
-            color:#e6e6e6;
-        ">
-            {commentaire}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.info("Aucun commentaire n’a été enregistré pour ce dossier.")
-
-
-
 
 # ---------------------------------------------------------
 # 🔹 INFORMATIONS GÉNÉRALES
