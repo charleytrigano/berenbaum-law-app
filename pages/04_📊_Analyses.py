@@ -25,23 +25,25 @@ st.title("📊 Analyses statistiques – Tableau de bord avancé")
 db = load_database()
 clients = pd.DataFrame(db.get("clients", []))
 
-# Normalisation colonnes statut
+# 🔧 Harmonisation colonnes
 rename_map = {
     "Dossier_envoye": "Dossier envoye",
     "Dossier Envoye": "Dossier envoye",
     "Dossier envoyé": "Dossier envoye",
 }
+
 clients.rename(columns=rename_map, inplace=True)
 
+# Sécurité : si colonne absente → la créer
 if "Dossier envoye" not in clients.columns:
     clients["Dossier envoye"] = False
 
 if clients.empty:
-    st.error("Aucun dossier trouvé.")
+    st.error("Aucun dossier trouvé dans la base.")
     st.stop()
 
 # ---------------------------------------------------------
-# 🧹 Normalisation dates & colonnes
+# 🧹 DATES & NORMALISATION
 # ---------------------------------------------------------
 clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
 clients["Année"] = clients["Date"].dt.year
@@ -55,9 +57,9 @@ st.subheader("🎛️ Filtres avancés")
 col1, col2, col3, col4 = st.columns(4)
 
 # Catégories
-categories = ["Tous"] + sorted(
-    [c for c in clients["Categories"].dropna().unique() if c != ""]
-)
+categories = ["Tous"] + sorted([
+    c for c in clients["Categories"].dropna().unique() if c != ""
+])
 cat = col1.selectbox("Catégorie", categories)
 
 # Sous-catégories dépendantes
@@ -67,6 +69,7 @@ if cat != "Tous":
     )
 else:
     souscats = ["Tous"] + sorted(clients["Sous-categories"].dropna().unique())
+
 sous = col2.selectbox("Sous-catégorie", souscats)
 
 # Visa dépendant
@@ -76,9 +79,10 @@ if sous != "Tous":
     )
 else:
     visas = ["Tous"] + sorted(clients["Visa"].dropna().unique())
+
 visa = col3.selectbox("Visa", visas)
 
-# Statuts
+# Statut dossier
 statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
 statut = col4.selectbox("Statut du dossier", statuts)
 
@@ -102,7 +106,7 @@ if statut != "Tous":
         "Accepté": "Dossier accepte",
         "Refusé": "Dossier refuse",
         "Annulé": "Dossier Annule",
-        "RFE": "RFE",
+        "RFE": "RFE"
     }
     df = df[df[mapping[statut]] == True]
 
@@ -122,34 +126,24 @@ years = sorted(df["Année"].dropna().unique())
 selected_years = colT2.multiselect(
     "Comparer jusqu’à 5 années",
     years,
-    default=years[-2:] if len(years) >= 2 else years,
+    default=years[-2:] if len(years) >= 2 else years
 )
 
 # ---------------------------------------------------------
-# 🔢 KPI GOLD PREMIUM
+# 🔢 KPI OR PREMIUM
 # ---------------------------------------------------------
 st.subheader("📈 Indicateurs clés")
 
 colK1, colK2, colK3 = st.columns(3)
 colK4, colK5, colK6 = st.columns(3)
 
-with colK1:
-    kpi_card("Total dossiers filtrés", len(df), "📁")
+kpi_card("Total dossiers filtrés", len(df), "📁")
+kpi_card("Chiffre d’affaires (Filtré)", int(df["Montant honoraires (US $)"].sum()), "💰")
+kpi_card("Dossiers envoyés", int(df["Dossier envoye"].sum()), "📤")
 
-with colK2:
-    kpi_card("Chiffre d’affaires (Filtré)", int(df["Montant honoraires (US $)"].sum()), "💰")
-
-with colK3:
-    kpi_card("Dossiers envoyés", int(df["Dossier envoye"].sum()), "📤")
-
-with colK4:
-    kpi_card("Dossiers acceptés", int(df["Dossier accepte"].sum()), "✅")
-
-with colK5:
-    kpi_card("Dossiers refusés", int(df["Dossier refuse"].sum()), "❌")
-
-with colK6:
-    kpi_card("Dossiers en Escrow", int(df["Escrow"].sum()), "💼")
+kpi_card("Dossiers acceptés", int(df["Dossier accepte"].sum()), "✅")
+kpi_card("Dossiers refusés", int(df["Dossier refuse"].sum()), "❌")
+kpi_card("Dossiers en Escrow", int(df["Escrow"].sum()), "💼")
 
 # ---------------------------------------------------------
 # 📊 GRAPHIQUES PREMIUM
@@ -180,23 +174,18 @@ with tab5:
     st.plotly_chart(category_bars(df), use_container_width=True)
 
 # ---------------------------------------------------------
-# 📋 TABLEAU DES DOSSIERS FILTRÉS
+# 📋 TABLEAU FINAL
 # ---------------------------------------------------------
 st.subheader("📋 Détails des dossiers filtrés")
 
-columns_to_show = [
+df_display = df[[
     "Dossier N", "Nom", "Date",
     "Categories", "Sous-categories", "Visa",
     "Montant honoraires (US $)", "Autres frais (US $)",
     "Dossier envoye", "Dossier accepte", "Dossier refuse",
     "Escrow"
-]
-
-df_display = df[columns_to_show]
+]]
 
 st.dataframe(df_display, height=400, use_container_width=True)
 
-# ---------------------------------------------------------
-# FIN
-# ---------------------------------------------------------
 st.markdown("### 🌟 Tableau de bord premium — Berenbaum Law App")
