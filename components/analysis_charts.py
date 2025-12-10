@@ -94,26 +94,30 @@ def multi_year_line(df):
     fig.update_layout(title="Comparaison multi-années")
     return apply_theme(fig)
 
-# ===========================================================
-# 📊 3 — Donut par catégories
-# ===========================================================
 def category_donut(df):
-    if df.empty:
-        return go.Figure()
+    df = df.copy()
+    df["Categories"] = df["Categories"].fillna("Non défini")
 
-    grouped = df.groupby("Categories")["Montant honoraires (US $)"].sum().reset_index()
+    summary = df["Categories"].value_counts().reset_index()
+    summary.columns = ["Categories", "count"]
 
-    fig = px.ppie(
-        grouped,
-        values="Montant honoraires (US $)",
+    if summary.empty:
+        return px.pie(values=[1], names=["Aucune donnée"])
+
+    fig = px.pie(
+        summary,
+        values="count",
         names="Categories",
-        hole=0.55,
-        color_discrete_sequence=PALETTE
+        hole=0.5,
+        color_discrete_sequence=px.colors.sequential.Oranges
     )
 
-    fig.update_traces(textinfo="percent+label", pull=[0.02] * len(grouped))
-    fig.update_layout(title="Répartition par catégories")
-    return apply_theme(fig)
+    fig.update_layout(
+        title="Répartition par catégories",
+        legend_title="Catégories"
+    )
+
+    return fig
 
 # ===========================================================
 # 📊 4 — Heatmap mensuelle (Volume dossiers)
