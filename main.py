@@ -1,25 +1,42 @@
 import streamlit as st
-import os
 from PIL import Image
-from backend.dropbox_utils import load_database, save_database
+import os
 
+# ----------------------------------------------------------
+# CONFIG APP EN PREMIER (sinon le sidebar se réinitialise)
+# ----------------------------------------------------------
+st.set_page_config(
+    page_title="Berenbaum Law App",
+    page_icon="📁",
+    layout="wide"
+)
 
-
-# ---------------------------------------------------------
-# 🖼️ LOGO DANS LE SIDEBAR (chemin ABSOLU — fonctionne toujours)
-# ---------------------------------------------------------
+# ----------------------------------------------------------
+# LOGO EN HAUT DU SIDEBAR
+# ----------------------------------------------------------
 with st.sidebar:
-    try:
-        current_dir = os.path.dirname(__file__)              # dossier courant
-        logo_path = os.path.join(current_dir, "assets", "logo.png")
+    st.markdown("### ")  # petit espace haut
 
-        logo = Image.open(logo_path)
-        st.image(logo, width=140)
+    candidate_paths = [
+        "assets/logo.png",
+        "./assets/logo.png",
+        "/mount/src/berenbaum-law-app/assets/logo.png",
+        "/mount/src/assets/logo.png"
+    ]
 
-    except Exception as e:
-        st.warning(f"⚠️ Logo non trouvé : {e}")
+    loaded = False
+    for p in candidate_paths:
+        if os.path.exists(p):
+            st.image(p, width=140)
+            loaded = True
+            break
 
-    st.markdown("## ")
+    if not loaded:
+        st.error("⚠️ Logo introuvable")
+        st.write("Chemin courant :", os.getcwd())
+
+    st.markdown("---")  # séparation esthétique
+
 
 
 # ---------------------------------------------------------
