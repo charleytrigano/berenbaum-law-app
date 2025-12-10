@@ -1,32 +1,22 @@
 import streamlit as st
 
-# ======================================================
-# 🎨 KPI CARD – VERSION GOLD PREMIUM FIXÉE
-# ======================================================
+# ==========================================================
+# 🎨 KPI CARD – Version premium stable (ne fuite JAMAIS en brut)
+# ==========================================================
 
-def kpi_card(title: str, value, icon: str = "📁"):
-    """Affiche une carte KPI premium avec HTML interprété correctement."""
+def kpi_card(label, value, icon):
 
-    card_html = f"""
+    html = f"""
     <div style="
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-
-        background: rgba(184,134,11,0.12);
-        border: 1px solid rgba(184,134,11,0.35);
-        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 14px 18px;
         border-radius: 12px;
-
-        width: 100%;
-        min-height: 120px;
-
-        text-align: center;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 0 8px rgba(255,255,255,0.05);
+        text-align: left;
+        min-height: 95px;
     ">
-        
-        <div style="font-size: 28px; margin-bottom: 4px;">
+        <div style="font-size: 26px; margin-bottom: 4px;">
             {icon}
         </div>
 
@@ -35,21 +25,20 @@ def kpi_card(title: str, value, icon: str = "📁"):
             font-weight: 500;
             color: #D8B86A;
             margin-bottom: 6px;
-            text-wrap: balance;
+            white-space: nowrap;
         ">
-            {title}
+            {label}
         </div>
 
         <div style="
-            font-size: 26px;
+            font-size: 28px;
             font-weight: 700;
             color: #FFD777;
         ">
             {value:,}
         </div>
-
     </div>
     """
 
-    # KEY FIX QUI EMPÊCHE LE HTML DE S'AFFICHER BRUT
-    st.markdown(card_html, unsafe_allow_html=True)
+    # 👉 Ce mode d'affichage est le SEUL correct :
+    st.markdown(html, unsafe_allow_html=True)
