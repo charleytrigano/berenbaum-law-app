@@ -24,6 +24,19 @@ st.title("📊 Analyses statistiques – Tableau de bord avancé")
 # ---------------------------------------------------------
 db = load_database()
 clients = pd.DataFrame(db.get("clients", []))
+# 🔧 Harmonisation des noms de colonnes
+rename_map = {
+    "Dossier_envoye": "Dossier envoye",
+    "Dossier Envoye": "Dossier envoye",
+    "Dossier envoyé": "Dossier envoye",
+}
+
+clients.rename(columns=rename_map, inplace=True)
+
+# Si la colonne est manquante → la créer par sécurité
+if "Dossier envoye" not in clients.columns:
+    clients["Dossier envoye"] = False
+
 
 if clients.empty:
     st.error("Aucun dossier trouvé dans la base.")
@@ -121,7 +134,8 @@ colK4, colK5, colK6 = st.columns(3)
 
 kpi_card("Total dossiers filtrés", len(df), "📁")
 kpi_card("Chiffre d’affaires (Filtré)", int(df["Montant honoraires (US $)"].sum()), "💰")
-kpi_card("Dossiers envoyés", int(df["Dossier envoye"].sum()), "📤")
+kpi_card("Dossiers envoyés", int(df.get("Dossier envoye", 0).sum()), "📤")
+
 
 kpi_card("Dossiers acceptés", int(df["Dossier accepte"].sum()), "✅")
 kpi_card("Dossiers refusés", int(df["Dossier refuse"].sum()), "❌")
