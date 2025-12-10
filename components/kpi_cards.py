@@ -1,42 +1,47 @@
 import streamlit as st
 
-def kpi_card(title, value, icon):
-
+def kpi_card(title, value, icon, tooltip=""):
     html = f"""
     <div style="
         background: linear-gradient(145deg, #1C1C1C, #0F0F0F);
-        padding: 16px;
-        border-radius: 14px;
+        padding: 14px;
+        border-radius: 12px;
         text-align: center;
         border: 1px solid #3a3a3a;
-        box-shadow: 0 0 12px rgba(255,215,0,0.15);
+        box-shadow: 0 0 8px rgba(255,215,0,0.12);
         width: 100%;
+        min-width: 140px;
         display: flex;
         flex-direction: column;
         align-items: center;
-    ">
-        <div style="font-size: 26px; margin-bottom: 4px;">
+        transition: 0.2s;
+    "
+        title="{tooltip}"
+    >
+
+        <div style="font-size: 22px; margin-bottom: 2px;">
             {icon}
         </div>
 
         <div style="
-            font-size: 15px;
+            font-size: 13px;
             font-weight: 500;
             color: #D8B86A;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
+            white-space: nowrap;
         ">
             {title}
         </div>
 
         <div style="
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 700;
             color: #FFD777;
         ">
             {value}
         </div>
+
     </div>
     """
 
-    # 🔥 Important : forcer l’affichage même en contexte restreint
-    st.components.v1.html(html, height=140)
+    st.components.v1.html(html, height=120)
