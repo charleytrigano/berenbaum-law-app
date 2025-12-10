@@ -3,6 +3,13 @@ import os
 from PIL import Image
 from backend.dropbox_utils import load_database, save_database
 
+import os
+st.write("📁 Fichiers trouvés dans le dossier courant :", os.listdir())
+st.write("📁 Fichiers trouvés dans /mount/src :", os.listdir("/mount/src"))
+st.write("📁 Fichiers trouvés dans /mount/src/berenbaum-law-app/assets :", 
+         os.listdir("/mount/src/berenbaum-law-app/assets"))
+
+
 # ---------------------------------------------------------
 # 🖼️ LOGO DANS LE SIDEBAR (chemin ABSOLU — fonctionne toujours)
 # ---------------------------------------------------------
