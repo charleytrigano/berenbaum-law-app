@@ -115,6 +115,9 @@ mode_paiement = st.selectbox("Mode de paiement", ["", "Chèque", "CB", "Virement
 
 escrow = st.checkbox("Mettre en Escrow")
 
+commentaire = st.text_area("📝 Commentaire", "")
+
+
 # ---------------------------------------------------------
 # ENREGISTREMENT
 # ---------------------------------------------------------
