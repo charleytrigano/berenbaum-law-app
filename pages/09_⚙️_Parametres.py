@@ -34,26 +34,33 @@ if fixed:
 else:
     st.success("✔ Structure JSON valide (aucune réparation structurelle nécessaire).")
 
-# Analyse métier des incohérences
-alerts = analyse_incoherences(db)
 
-
-if alerts:
-    st.error(f"🚨 {len(alerts)} incohérences métier détectées dans les dossiers.")
-    with st.expander("Voir le détail des incohérences détectées"):
-        for msg in alerts:
-            st.markdown(f"- {msg}")
-else:
-    st.info("✅ Aucune incohérence métier détectée sur les dossiers (statuts / escrow / acomptes).")
-
-st.markdown("---")
 
 # =========================================================
 # ONGLET DE NAVIGATION
 # =========================================================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔐 Debug Secrets",
-    "🧪 Diagnostic Dropbox",
+    "🧪 Diagnostic Dropbox",# ---------------------------------------------------------
+# TAB - ANALYSE DES INCOHERENCES JSON
+# ---------------------------------------------------------
+with tab5:
+    st.subheader("🩺 Analyse des incohérences JSON")
+
+    try:
+        db = load_database()          # Charge la base
+        alerts = analyse_incoherences(db)   # <--- IMPORTANT : db en paramètre
+
+        if alerts:
+            st.error("⚠️ Incohérences détectées :")
+            for a in alerts:
+                st.markdown(f"- {a}")
+        else:
+            st.success("✔ Aucune incohérence détectée.")
+
+    except Exception as e:
+        st.error(f"Erreur analyse JSON : {e}")
+
     "🧹 Nettoyage avancé (Deep Clean)",
     "📥 Import Excel → JSON",
     "🔄 Synchronisation Dropbox",
