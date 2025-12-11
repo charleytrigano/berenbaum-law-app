@@ -1,6 +1,15 @@
 import streamlit as st
 import pandas as pd
 
+import json
+import streamlit as st
+
+def debug(msg, obj=None):
+    st.write("DEBUG:", msg)
+    if obj is not None:
+        st.json(obj)
+
+
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
 
