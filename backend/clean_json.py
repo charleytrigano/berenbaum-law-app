@@ -19,10 +19,14 @@ VALID_COLUMNS = {
     "Date Acompte 3": "",
     "Date Acompte 4": "",
     "mode de paiement": "",
+
+    # --- CORRECTION ICI ---
     "Escrow": False,
     "Escrow_a_reclamer": False,
     "Escrow_reclame": False,
-    "Dossier_envoye": False,
+
+    # --- COLONNES DE STATUTS : NOMS CORRIGÉS ---
+    "Dossier envoye": False,      # AVANT : Dossier_envoye  ❌
     "Date envoi": "",
     "Dossier accepte": False,
     "Date acceptation": "",
@@ -50,7 +54,6 @@ def clean_database(db):
         clean = {}
 
         for col, default in VALID_COLUMNS.items():
-
             if col in item:
                 val = item[col]
 
@@ -65,11 +68,11 @@ def clean_database(db):
                     except:
                         val = default
 
-                # date (laisser string)
+                # dates → laisser string ou vide
                 elif isinstance(default, str) and "Date" in col:
                     val = val if val else ""
 
-                # text
+                # texte
                 elif isinstance(default, str):
                     val = val if val else ""
 
