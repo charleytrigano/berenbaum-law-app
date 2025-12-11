@@ -11,10 +11,9 @@ REQUIRED_CLIENT_FIELDS = [
 ]
 
 def analyse_incoherences(db):
-    """Retourne une liste d'incohérences détectées dans la base JSON."""
     alerts = []
-
     clients = db.get("clients", [])
+
     for c in clients:
         dn = c.get("Dossier N")
 
@@ -24,8 +23,10 @@ def analyse_incoherences(db):
                 alerts.append(f"[{dn}] Champ manquant : {field}")
 
         # Dates invalides
-        for date_field in ["Date", "Date envoi", "Date acceptation", 
-                           "Date refus", "Date annulation", "Date reclamation"]:
+        for date_field in [
+            "Date", "Date envoi", "Date acceptation",
+            "Date refus", "Date annulation", "Date reclamation"
+        ]:
             v = c.get(date_field)
             if v not in [None, "", "None"]:
                 try:
@@ -34,11 +35,8 @@ def analyse_incoherences(db):
                     alerts.append(f"[{dn}] Date invalide : {date_field} = {v}")
 
         # Montants incohérents
-        honoraires = c.get("Montant honoraires (US $)", 0)
-        acompte1 = c.get("Acompte 1", 0)
-
         try:
-            if float(acompte1) > float(honoraires):
+            if float(c.get("Acompte 1", 0)) > float(c.get("Montant honoraires (US $)", 0)):
                 alerts.append(f"[{dn}] Acompte 1 supérieur aux honoraires")
         except:
             alerts.append(f"[{dn}] Valeur incohérente dans Acompte 1")
@@ -47,23 +45,26 @@ def analyse_incoherences(db):
 
 
 def validate_and_fix_json():
-    """
-    Corrige automatiquement les champs manquants et renvoie True si des corrections ont été faites.
-    """
     db = load_database()
     clients = db.get("clients", [])
-
     fixed = False
 
     for c in clients:
+
+        # 1️⃣ Ajouter les champs manquants (ne jamais écraser l'existant)
         for field in REQUIRED_CLIENT_FIELDS:
             if field not in c:
-                c[field] = False if "Dossier" in field or "Escrow" in field or field == "RFE" else ""
+                if "Dossier" in field or "Escrow" in field or field == "RFE":
+                    c[field] = False
+                else:
+                    c[field] = ""
                 fixed = True
 
-        # Correction des dates invalides
-        for date_field in ["Date", "Date envoi", "Date acceptation",
-                           "Date refus", "Date annulation", "Date reclamation"]:
+        # 2️⃣ Correction des dates invalides (sans toucher aux dates valides)
+        for date_field in [
+            "Date", "Date envoi", "Date acceptation",
+            "Date refus", "Date annulation", "Date reclamation"
+        ]:
             v = c.get(date_field)
             try:
                 if v not in [None, "", "None"]:
