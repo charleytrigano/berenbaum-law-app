@@ -240,6 +240,14 @@ with tab4:
 # =========================================================
 with tab5:
     st.subheader("🩺 Analyse des incohérences JSON")
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🔐 Debug Secrets",
+    "🧪 Diagnostic Dropbox",
+    "📥 Import Excel → JSON",
+    "🔄 Synchronisation Dropbox",
+    "🩺 Analyse JSON"
+])
+
 
     db = load_database()
     alerts = analyse_incoherences(db)
