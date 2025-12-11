@@ -8,6 +8,10 @@ from backend.dropbox_utils import get_dbx, load_database, save_database
 from backend.migrate_excel_to_json import convert_all_excels_to_json
 from backend.json_validator import validate_and_fix_json, analyse_incoherences
 
+import os
+st.write("CONTENU DU DOSSIER RACINE :", os.listdir("."))
+st.write("CONTENU DU DOSSIER backend :", os.listdir("backend"))
+
 
 # ---------------------------------------------------------
 # CONFIG PAGE
