@@ -3,7 +3,6 @@ import pandas as pd
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
-from utils.status_utils import normalize_bool   # helper booléen
 
 # ---------------------------------------------------------
 # CONFIG & SIDEBAR
@@ -26,8 +25,32 @@ df = pd.DataFrame(clients)
 DOSSIER_COL = "Dossier N"
 
 # ---------------------------------------------------------
-# 🔹 Normalisation des noms de colonnes de statuts
-#    (ON RENOMME ici les anciennes variantes)
+# 🔹 Helpers locaux
+# ---------------------------------------------------------
+def normalize_bool(x):
+    if isinstance(x, bool):
+        return x
+    if str(x).lower() in ["true", "1", "1.0", "yes", "oui"]:
+        return True
+    return False
+
+def to_float(x):
+    try:
+        return float(x)
+    except Exception:
+        return 0.0
+
+def safe_date(v):
+    try:
+        if v in [None, "", "None"]:
+            return None
+        d = pd.to_datetime(v, errors="coerce")
+        return None if pd.isna(d) else d.date()
+    except Exception:
+        return None
+
+# ---------------------------------------------------------
+# 🔹 Harmonisation des noms de colonnes de statuts
 # ---------------------------------------------------------
 rename_map = {
     "Dossier_envoye": "Dossier envoye",
@@ -36,8 +59,8 @@ rename_map = {
 }
 df.rename(columns=rename_map, inplace=True)
 
-# colonnes attendues (créées si absentes)
-expected_cols = [
+# Colonnes de statuts / escrow attendues
+bool_cols = [
     "Dossier envoye",
     "Dossier accepte",
     "Dossier refuse",
@@ -48,7 +71,7 @@ expected_cols = [
     "Escrow_reclame",
 ]
 
-for col in expected_cols:
+for col in bool_cols:
     if col not in df.columns:
         df[col] = False
     df[col] = df[col].apply(normalize_bool)
@@ -61,25 +84,6 @@ liste = sorted(df[DOSSIER_COL].dropna().astype(int).unique())
 
 selected = st.selectbox("Sélectionner un dossier", liste)
 dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
-
-# ---------------------------------------------------------
-# Utils
-# ---------------------------------------------------------
-def to_float(x):
-    try:
-        return float(x)
-    except Exception:
-        return 0.0
-
-def safe_date(v):
-    try:
-        # gère "", "None", None, etc.
-        if v in [None, "", "None"]:
-            return None
-        d = pd.to_datetime(v, errors="coerce")
-        return None if pd.isna(d) else d.date()
-    except Exception:
-        return None
 
 # ---------------------------------------------------------
 # FORMULAIRE — Infos générales
@@ -231,6 +235,10 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         df.loc[idx, "Escrow_reclame"] = False
     else:
         df.loc[idx, "Escrow"] = bool(escrow_flag)
+
+    # DEBUG : afficher la ligne avant sauvegarde
+    st.write("DEBUG — Ligne après mise à jour :")
+    st.json(df.loc[idx].to_dict())
 
     # --- Sauvegarde JSON ---
     db["clients"] = df.to_dict(orient="records")
