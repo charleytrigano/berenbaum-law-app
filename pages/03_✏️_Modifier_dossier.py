@@ -251,7 +251,10 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
 
     # --- Sauvegarde JSON ---
     db["clients"] = df.to_dict(orient="records")
+    debug("DATAFRAME juste avant save_database", df.loc[idx].to_dict())
+
     save_database(db)
+    debug("DATAFRAME juste avant save_database", df.loc[idx].to_dict())
 
     st.success("✔ Dossier mis à jour avec succès.")
     st.rerun()
