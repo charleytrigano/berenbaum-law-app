@@ -2,98 +2,74 @@ import streamlit as st
 import pandas as pd
 import json
 from datetime import datetime
+import os
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import get_dbx, load_database, save_database
 from backend.migrate_excel_to_json import convert_all_excels_to_json
 from backend.json_validator import validate_and_fix_json, analyse_incoherences
 
-import os
-st.write("CONTENU DU DOSSIER RACINE :", os.listdir("."))
-st.write("CONTENU DU DOSSIER backend :", os.listdir("backend"))
-
-
 # ---------------------------------------------------------
-# CONFIG PAGE
+# CONFIGURATION
 # ---------------------------------------------------------
 st.set_page_config(page_title="⚙️ Paramètres", page_icon="⚙️", layout="wide")
 render_sidebar()
 st.title("⚙️ Paramètres & Outils avancés")
 
-# =========================================================
-# 🧹 VALIDATION + ALERTES AUTOMATIQUES
-# =========================================================
+# ---------------------------------------------------------
+# DEBUG VISUEL (facultatif)
+# ---------------------------------------------------------
+st.write("CONTENU DU DOSSIER RACINE :", os.listdir("."))
+st.write("CONTENU DU DOSSIER backend :", os.listdir("backend"))
+
+# ---------------------------------------------------------
+# VALIDATION AUTOMATIQUE DU JSON
+# ---------------------------------------------------------
 st.markdown("### 🧹 Validation & alertes automatiques")
 
 fixed = validate_and_fix_json()
 if fixed:
-    st.warning(
-        "⚠️ La base JSON contenait des incohérences techniques "
-        "(types, dates, champs manquants) et a été automatiquement réparée."
-    )
+    st.warning("⚠️ La base JSON contenait des incohérences techniques et a été réparée automatiquement.")
 else:
-    st.success("✔ Structure JSON valide (aucune réparation structurelle nécessaire).")
+    st.success("✔ Structure JSON valide. Aucune réparation nécessaire.")
 
-
-
-# =========================================================
-# ONGLET DE NAVIGATION
-# =========================================================
+# ---------------------------------------------------------
+# ONGLET PRINCIPAL
+# ---------------------------------------------------------
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔐 Debug Secrets",
-    "🧪 Diagnostic Dropbox",# ---------------------------------------------------------
-# TAB - ANALYSE DES INCOHERENCES JSON
-# ---------------------------------------------------------
-with tab5:
-    st.subheader("🩺 Analyse des incohérences JSON")
-
-    try:
-        db = load_database()          # Charge la base
-        alerts = analyse_incoherences(db)   # <--- IMPORTANT : db en paramètre
-
-        if alerts:
-            st.error("⚠️ Incohérences détectées :")
-            for a in alerts:
-                st.markdown(f"- {a}")
-        else:
-            st.success("✔ Aucune incohérence détectée.")
-
-    except Exception as e:
-        st.error(f"Erreur analyse JSON : {e}")
-
-    "🧹 Nettoyage avancé (Deep Clean)",
-    "📥 Import Excel → JSON",
-    "🔄 Synchronisation Dropbox",
-    "🕓 Historique & Alertes"
+    "🧪 Diagnostic Dropbox",
+    "🧹 Nettoyage avancé",
+    "📥 Import Excel",
+    "🔄 Synchronisation",
+    "🩺 Analyse JSON & Historique"
 ])
 
-# =========================================================
+# ---------------------------------------------------------
 # TAB 1 — DEBUG SECRETS
-# =========================================================
+# ---------------------------------------------------------
 with tab1:
     st.subheader("🔐 Visualisation sécurisée des secrets")
-
     try:
         st.json(st.secrets)
     except Exception as e:
         st.error(f"Impossible de lire st.secrets : {e}")
+    st.info("Les valeurs sensibles sont masquées automatiquement.")
 
-    st.info("⚠️ Les valeurs critiques sont masquées automatiquement pour la sécurité.")
-
-# =========================================================
+# ---------------------------------------------------------
 # TAB 2 — DIAGNOSTIC DROPBOX
-# =========================================================
+# ---------------------------------------------------------
 with tab2:
-    st.subheader("🧪 Diagnostic de connexion Dropbox")
+    st.subheader("🧪 Diagnostic Dropbox")
 
     try:
         dbx = get_dbx()
         st.success("Connexion Dropbox OK ✔")
     except Exception as e:
         dbx = None
-        st.error(f"❌ Erreur connexion Dropbox : {e}")
+        st.error(f"Erreur connexion Dropbox : {e}")
 
-    st.write("### 📄 Fichier JSON configuré")
+    st.write("### 📄 Fichier JSON utilisé")
     st.code(st.secrets["paths"]["DROPBOX_JSON"])
 
     if dbx:
@@ -102,49 +78,42 @@ with tab2:
             content = res.content.decode("utf-8")
             json_content = json.loads(content)
             st.json(json_content)
-            st.success("Lecture JSON Dropbox OK ✔")
 
-            # Export complet du JSON
-            st.markdown("#### 📤 Export complet du JSON")
             st.download_button(
-                label="⬇️ Télécharger database.json complet",
+                label="⬇️ Télécharger database.json",
                 data=json.dumps(json_content, indent=2),
                 file_name="database.json",
                 mime="application/json",
             )
-
         except Exception as e:
-            st.error(f"❌ Erreur lecture JSON : {e}")
+            st.error(f"Erreur lecture JSON : {e}")
 
-# =========================================================
-# TAB 3 — NETTOYAGE AVANCÉ (DEEP CLEAN)
-# =========================================================
+# ---------------------------------------------------------
+# TAB 3 — NETTOYAGE AVANCÉ
+# ---------------------------------------------------------
 with tab3:
-    st.subheader("🧹 Nettoyage avancé de la base de données")
+    st.subheader("🧹 Nettoyage avancé (Deep Clean)")
 
     st.write("""
-    Le **deep clean** exécute les opérations suivantes :
-    - Correction des dates invalides  
-    - Normalisation des booléens  
-    - Correction des montants mal formatés  
-    - Ajout des champs manquants (Commentaire, etc.)  
-    - Suppression des doublons de dossiers  
-    - Harmonisation des statuts  
-    - Reformatage propre du JSON
+    Corrige :
+    - Dates invalides  
+    - Montants incorrects  
+    - Booléens incohérents  
+    - Champs manquants  
+    - Doublons de dossiers  
+    - Structure JSON  
     """)
 
-    if st.button("🧹 Lancer le nettoyage avancé", type="primary"):
+    if st.button("Lancer le nettoyage avancé", type="primary"):
         db = load_database()
 
         def to_bool(v):
             if isinstance(v, bool):
                 return v
-            if str(v).lower() in ["true", "1", "yes", "oui"]:
-                return True
-            return False
+            return str(v).lower() in ["true", "1", "yes", "oui"]
 
         clients = db.get("clients", [])
-        cleaned_clients = []
+        cleaned = []
 
         for row in clients:
             if not isinstance(row, dict):
@@ -153,144 +122,104 @@ with tab3:
             r = row.copy()
 
             # Dates
-            for k in list(r.keys()):
+            for k in r:
                 if "Date" in k:
-                    try:
-                        d = pd.to_datetime(r[k], errors="coerce")
-                        r[k] = None if pd.isna(d) else str(d.date())
-                    except Exception:
-                        r[k] = None
+                    dt = pd.to_datetime(r[k], errors="coerce")
+                    r[k] = None if pd.isna(dt) else str(dt.date())
 
             # Booléens
-            for key in [
-                "Escrow",
-                "Escrow_a_reclamer",
-                "Escrow_reclame",
-                "Dossier envoye",
-                "Dossier accepte",
-                "Dossier refuse",
-                "Dossier Annule",
-                "RFE",
-            ]:
-                r[key] = to_bool(r.get(key, False))
+            for k in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame",
+                      "Dossier envoye", "Dossier accepte", "Dossier refuse",
+                      "Dossier Annule", "RFE"]:
+                r[k] = to_bool(r.get(k, False))
 
             # Montants
-            for key in ["Montant honoraires (US $)", "Autres frais (US $)"]:
+            for k in ["Montant honoraires (US $)", "Autres frais (US $)"]:
                 try:
-                    r[key] = float(r.get(key, 0) or 0)
-                except Exception:
-                    r[key] = 0.0
-
-            for i in range(1, 5):
-                k = f"Acompte {i}"
-                try:
-                    r[k] = float(r.get(k, 0) or 0)
-                except Exception:
+                    r[k] = float(r.get(k, 0))
+                except:
                     r[k] = 0.0
 
+            for i in range(1, 5):
+                try:
+                    r[f"Acompte {i}"] = float(r.get(f"Acompte {i}", 0))
+                except:
+                    r[f"Acompte {i}"] = 0.0
+
             # Champs texte
-            for key in ["Categories", "Sous-categories", "Visa", "Commentaire"]:
-                if key not in r or r[key] is None:
-                    r[key] = ""
+            for k in ["Categories", "Sous-categories", "Visa", "Commentaire"]:
+                r[k] = r.get(k, "") or ""
 
-            cleaned_clients.append(r)
+            cleaned.append(r)
 
-        # Suppression doublons Dossier N
+        # Suppression des doublons
         seen = set()
-        unique_clients = []
-        for r in cleaned_clients:
-            num = r.get("Dossier N")
-            if num in seen:
+        unique = []
+        for r in cleaned:
+            n = r.get("Dossier N")
+            if n in seen:
                 continue
-            seen.add(num)
-            unique_clients.append(r)
+            seen.add(n)
+            unique.append(r)
 
-        db["clients"] = unique_clients
+        db["clients"] = unique
         save_database(db)
-
-        st.success("✔ Nettoyage avancé terminé. Base mise à jour.")
+        st.success("✔ Nettoyage avancé terminé.")
         st.json(db)
 
-# =========================================================
-# TAB 4 — IMPORT EXCEL → JSON
-# =========================================================
+# ---------------------------------------------------------
+# TAB 4 — IMPORT EXCEL
+# ---------------------------------------------------------
 with tab4:
-    st.subheader("📥 Importer les fichiers Excel et recréer le JSON")
+    st.subheader("📥 Import Excel → JSON")
 
-    st.write("""
-    Cet outil lit :  
-    - `Clients.xlsx`  
-    - `Visa.xlsx`  
-    - `Escrow.xlsx`  
-    - `ComptaCli.xlsx`  
-    puis reconstruit entièrement `database.json`.
-    """)
-
-    if st.button("📥 Importer maintenant", type="primary"):
+    if st.button("Importer maintenant", type="primary"):
         try:
             new_db = convert_all_excels_to_json()
             save_database(new_db)
-            st.success("✔ Import Excel terminé — JSON mis à jour.")
+            st.success("Import terminé ✔")
             st.json(new_db)
         except Exception as e:
-            st.error(f"❌ Erreur import : {e}")
+            st.error(f"Erreur import : {e}")
 
-# =========================================================
-# TAB 5 — SYNCHRONISATION
-# =========================================================
+# ---------------------------------------------------------
+# TAB 5 — SYNCHRONISATION DROPBOX
+# ---------------------------------------------------------
 with tab5:
-   
+    st.subheader("🔄 Synchronisation Dropbox")
 
+    if st.button("Synchroniser maintenant", type="primary"):
+        try:
+            db = load_database()
+            save_database(db)
+            st.success("Synchronisation effectuée ✔")
+        except Exception as e:
+            st.error(f"Erreur : {e}")
 
-    db = load_database()
-    alerts = analyse_incoherences(db)
-
-    if alerts:
-        st.error("⚠️ Incohérences détectées dans la base :")
-        for a in alerts:
-            st.markdown(f"- {a}")
-    else:
-        st.success("✔ Aucune incohérence détectée dans la base JSON.")
-         st.subheader("🩺 Analyse des incohérences JSON")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🔐 Debug Secrets",
-    "🧪 Diagnostic Dropbox",
-    "📥 Import Excel → JSON",
-    "🔄 Synchronisation Dropbox",
-    "🩺 Analyse JSON"
-])
-
-
-# =========================================================
-# TAB 6 — HISTORIQUE & ALERTES
-# =========================================================
+# ---------------------------------------------------------
+# TAB 6 — ANALYSE JSON & HISTORIQUE
+# ---------------------------------------------------------
 with tab6:
-    st.subheader("🕓 Historique des modifications")
+    st.subheader("🩺 Analyse JSON")
 
-    db = load_database()
-    history = db.get("history", [])
-
-    if not history:
-        st.info("Aucun historique trouvé pour le moment.")
-    else:
-        dfh = pd.DataFrame(history)
-        st.dataframe(dfh, use_container_width=True)
-
-        if st.button("📤 Exporter l'historique en JSON"):
-            st.download_button(
-                label="Télécharger history.json",
-                data=json.dumps(history, indent=2),
-                file_name="history.json",
-                mime="application/json",
-            )
+    try:
+        db = load_database()
+        alerts = analyse_incoherences(db)
+        if alerts:
+            st.error("Incohérences détectées :")
+            for a in alerts:
+                st.markdown(f"- {a}")
+        else:
+            st.success("Aucune incohérence détectée ✔")
+    except Exception as e:
+        st.error(f"Erreur analyse JSON : {e}")
 
     st.markdown("---")
-    st.subheader("🚨 Rappel des incohérences détectées")
+    st.subheader("🕓 Historique des modifications")
 
-    alerts = analyse_incoherences()
-    if alerts:
-        st.error(f"{len(alerts)} incohérences actuellement détectées :")
-        for msg in alerts:
-            st.markdown(f"- {msg}")
+    history = db.get("history", [])
+    if history:
+        dfh = pd.DataFrame(history)
+        st.dataframe(dfh, use_container_width=True)
     else:
-        st.success("Aucune incohérence métier détectée pour l’instant.")
+        st.info("Aucun historique disponible.")
