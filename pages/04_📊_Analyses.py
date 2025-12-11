@@ -117,13 +117,7 @@ if visa != "Tous":
     df = df[df["Visa"] == visa]
 
 if statut != "Tous":
-    mapping = {
-        "Envoyé": "Dossier envoye",
-        "Accepté": "Dossier accepte",
-        "Refusé": "Dossier refuse",
-        "Annulé": "Dossier Annule",
-        "RFE": "RFE"
-    }
+    
     df = df[df[mapping[statut]] == True]
 
 # ---------------------------------------------------------
