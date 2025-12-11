@@ -231,18 +231,18 @@ with tab4:
 # TAB 5 — SYNCHRONISATION
 # =========================================================
 with tab5:
-    st.subheader("🔄 Forcer la synchronisation Dropbox")
+    st.subheader("🩺 Analyse des incohérences JSON")
 
-    st.write("Recharge la base actuelle et la renvoie dans Dropbox.")
+    db = load_database()
+    alerts = analyse_incoherences(db)
 
-    if st.button("🔄 Synchroniser maintenant", type="primary"):
-        try:
-            db = load_database()
-            save_database(db)
-            st.success("✔ Synchronisation effectuée.")
-            st.json(db)
-        except Exception as e:
-            st.error(f"❌ Erreur synchronisation : {e}")
+    if alerts:
+        st.error("⚠️ Incohérences détectées dans la base :")
+        for a in alerts:
+            st.markdown(f"- {a}")
+    else:
+        st.success("✔ Aucune incohérence détectée dans la base JSON.")
+
 
 # =========================================================
 # TAB 6 — HISTORIQUE & ALERTES
