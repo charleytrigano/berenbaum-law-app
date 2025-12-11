@@ -246,6 +246,28 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     else:
         df.loc[idx, "Escrow"] = bool(escrow_flag)
 
+    # 🔧 Nettoyage automatique des colonnes de statuts (sécurise la base)
+old_statuts = {
+    "Dossier_envoye": "Dossier envoye",
+    "Dossier envoyé": "Dossier envoye",
+
+    "Dossier accepté": "Dossier accepte",
+    "Dossier Accepté": "Dossier accepte",
+
+    "Dossier refusé": "Dossier refuse",
+    "Dossier Refusé": "Dossier refuse",
+
+    "Dossier annulé": "Dossier Annule",
+    "Dossier Annulé": "Dossier Annule",
+}
+
+# Conversion automatique
+for old, new in old_statuts.items():
+    if old in df.columns:
+        df[new] = df[old].apply(lambda x: str(x).lower() in ["true", "1", "yes", "oui"])
+        df.drop(columns=[old], inplace=True)
+
+
     # SAVE
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
