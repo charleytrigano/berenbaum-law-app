@@ -27,6 +27,29 @@ st.title("📊 Analyses statistiques — Dashboard complet & intelligent")
 # ---------------------------------------------------------
 db = load_database()
 clients = pd.DataFrame(db.get("clients", []))
+# ---- Normalisation des colonnes statuts ----
+normalize_cols = {
+    "Dossier accepté": "Dossier accepte",
+    "Dossier Accepté": "Dossier accepte",
+    "Dossier accepte": "Dossier accepte",  # OK
+
+    "Dossier refusé": "Dossier refuse",
+    "Dossier Refusé": "Dossier refuse",
+    "Dossier refuse": "Dossier refuse",  # OK
+
+    "Dossier annulé": "Dossier Annule",
+    "Dossier Annulé": "Dossier Annule",
+    "Dossier annule": "Dossier Annule",  # OK
+}
+
+clients.rename(columns=normalize_cols, inplace=True)
+
+# -- Sécurisation : si la colonne n'existe pas → la créer
+for col in ["Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"]:
+    if col not in clients.columns:
+        clients[col] = False
+    clients[col] = clients[col].apply(lambda x: True if str(x).lower() in ["true","1","yes","oui"] else False)
+
 
 # Harmoniser les noms de colonnes
 rename_map = {
