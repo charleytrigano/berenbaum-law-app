@@ -35,7 +35,8 @@ else:
     st.success("✔ Structure JSON valide (aucune réparation structurelle nécessaire).")
 
 # Analyse métier des incohérences
-alerts = analyse_incoherences()
+alerts = analyse_incoherences(db)
+
 
 if alerts:
     st.error(f"🚨 {len(alerts)} incohérences métier détectées dans les dossiers.")
