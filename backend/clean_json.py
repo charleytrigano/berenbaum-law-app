@@ -1,6 +1,6 @@
 import pandas as pd
 
-# Colonnes standardisées (aucune colonne statut avec underscore)
+# Colonnes standardisées (VERSION FINALE)
 VALID_COLUMNS = {
     "Dossier N": None,
     "Nom": "",
@@ -22,6 +22,7 @@ VALID_COLUMNS = {
     "Escrow": False,
     "Escrow_a_reclamer": False,
     "Escrow_reclame": False,
+    # ⚠️ IMPORTANT : nom canonique AVEC ESPACE
     "Dossier envoye": False,
     "Date envoi": "",
     "Dossier accepte": False,
@@ -32,41 +33,11 @@ VALID_COLUMNS = {
     "Date annulation": "",
     "RFE": False,
     "Date reclamation": "",
-}
-
-# Aliases détectés et fusionnés automatiquement
-STATUS_ALIASES = {
-    "Dossier envoye": [
-        "Dossier_envoye",
-        "Dossier envoyé",
-        "Dossier Envoye",
-        "Dossier envoyee",
-        "Dossier Envoyé"
-    ],
-    "Dossier accepte": [
-        "Dossier_accepte",
-        "Dossier accepté",
-        "Dossier Accepte",
-        "Dossier Accepté"
-    ],
-    "Dossier refuse": [
-        "Dossier_refuse",
-        "Dossier refusé",
-        "Dossier Refuse",
-        "Dossier Refusé"
-    ],
-    "Dossier Annule": [
-        "Dossier_annule",
-        "Dossier annulé",
-        "Dossier Annulé",
-        "Dossier Annule"
-    ],
-    "RFE": ["RFE"],
+    "Commentaire": "",
 }
 
 
 def normalize_bool(v):
-    """Convertit n'importe quelle valeur en bool."""
     if isinstance(v, bool):
         return v
     if v is None:
@@ -75,60 +46,61 @@ def normalize_bool(v):
 
 
 def clean_database(db):
-    """Nettoyage complet et harmonisation du JSON."""
     cleaned_clients = []
 
     for item in db.get("clients", []):
+        # --------------------------------------------------
+        # 1) Migration des anciens noms de colonnes (aliases)
+        # --------------------------------------------------
+        # Ancienne colonne avec underscore -> on la mappe vers la nouvelle
+        if "Dossier_envoye" in item and "Dossier envoye" not in item:
+            item["Dossier envoye"] = item["Dossier_envoye"]
+
+        # On peut en ajouter d'autres si jamais tu avais des variations :
+        # ex : "Dossier envoyé", "Dossier Envoye", etc.
+        if "Dossier envoyé" in item and "Dossier envoye" not in item:
+            item["Dossier envoye"] = item["Dossier envoyé"]
+
         clean = {}
 
-        # ------------------------------------------------------
-        # 1) Fusion et normalisation de TOUS les statuts
-        # ------------------------------------------------------
-        for canonical, aliases in STATUS_ALIASES.items():
-            val = item.get(canonical, False)
-
-            for alias in aliases:
-                if alias in item:
-                    val = val or normalize_bool(item[alias])
-
-            clean[canonical] = normalize_bool(val)
-
-        # ------------------------------------------------------
-        # 2) Normalisation des autres colonnes standard
-        # ------------------------------------------------------
+        # --------------------------------------------------
+        # 2) Normalisation stricte des colonnes connues
+        # --------------------------------------------------
         for col, default in VALID_COLUMNS.items():
-            if col in clean:
-                # colonne déjà traitée (statuts)
-                continue
+            if col in item:
+                val = item[col]
 
-            val = item.get(col, default)
+                # bool
+                if isinstance(default, bool):
+                    val = normalize_bool(val)
 
-            # BOOL
-            if isinstance(default, bool):
-                val = normalize_bool(val)
+                # float
+                elif isinstance(default, float):
+                    try:
+                        val = float(val)
+                    except Exception:
+                        val = default
 
-            # FLOAT
-            elif isinstance(default, float):
-                try:
-                    val = float(val)
-                except:
-                    val = default
+                # dates (laisser chaîne ou vide)
+                elif isinstance(default, str) and "Date" in col:
+                    val = val if val else ""
 
-            # DATES
-            elif isinstance(default, str) and "Date" in col:
-                val = val if val else ""
+                # texte
+                elif isinstance(default, str):
+                    val = val if val else ""
 
-            # TEXTE
-            elif isinstance(default, str):
-                val = val if val else ""
+                clean[col] = val
+            else:
+                clean[col] = default
 
-            clean[col] = val
+        # --------------------------------------------------
+        # 3) On ignore les anciennes colonnes parasites
+        #    comme "Dossier_envoye", etc. (elles ne sont
+        #    plus recréées).
+        # --------------------------------------------------
 
         cleaned_clients.append(clean)
 
-    # ------------------------------------------------------
-    # FIN – Reconstruction DB normalisée
-    # ------------------------------------------------------
     return {
         "clients": cleaned_clients,
         "visa": db.get("visa", []),
