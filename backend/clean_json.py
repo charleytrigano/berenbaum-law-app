@@ -1,6 +1,6 @@
 import pandas as pd
 
-# Colonnes standardisées avec les statuts inclus
+# Colonnes standardisées (on utilise la version CANONIQUE : "Dossier envoye")
 VALID_COLUMNS = {
     "Dossier N": None,
     "Nom": "",
@@ -19,15 +19,15 @@ VALID_COLUMNS = {
     "Date Acompte 3": "",
     "Date Acompte 4": "",
     "mode de paiement": "",
-    
-    # --- STATUTS (LE GRAND MANQUANT !) ---
-    "Dossier envoye": False,
+
+    # --- STATUTS (version canonique) ---
+    "Dossier envoye": False,      # <- IMPORTANT : espace, pas underscore
     "Dossier accepte": False,
     "Dossier refuse": False,
     "Dossier Annule": False,
     "RFE": False,
 
-    # --- DATES STATUTS ---
+    # --- DATES LIÉES AUX STATUTS ---
     "Date envoi": "",
     "Date acceptation": "",
     "Date refus": "",
@@ -40,21 +40,36 @@ VALID_COLUMNS = {
     "Escrow_reclame": False,
 }
 
+
 def normalize_bool(v):
     if isinstance(v, bool):
         return v
+    if v is None:
+        return False
     if str(v).strip().lower() in ["1", "true", "yes", "oui"]:
         return True
     return False
 
+
 def clean_database(db):
     cleaned_clients = []
 
-    for item in db.get("clients", []):
+    for original in db.get("clients", []):
+        # On travaille sur une copie pour pouvoir migrer les vieux champs
+        item = dict(original)
+
+        # ---------- MIGRATION ANCIENS NOMS -> NOUVEAUX ----------
+        # Si "Dossier_envoye" existe et "Dossier envoye" n'existe pas encore,
+        # on copie la valeur vers le champ canonique.
+        if "Dossier_envoye" in item and "Dossier envoye" not in item:
+            item["Dossier envoye"] = item["Dossier_envoye"]
+
+        # (On pourrait ajouter ici d'autres migrations si nécessaire)
+
+        # ---------- NORMALISATION SELON VALID_COLUMNS ----------
         clean = {}
 
         for col, default in VALID_COLUMNS.items():
-
             if col in item:
                 val = item[col]
 
@@ -66,21 +81,20 @@ def clean_database(db):
                 elif isinstance(default, float):
                     try:
                         val = float(val)
-                    except:
+                    except Exception:
                         val = default
 
-                # date (string)
+                # dates (on reste en string propre)
                 elif isinstance(default, str) and "Date" in col:
                     val = val if val else ""
 
-                # generic string
+                # texte générique
                 elif isinstance(default, str):
                     val = val if val else ""
 
                 clean[col] = val
-
             else:
-                # Colonne manquante → ajout avec valeur par défaut
+                # colonne manquante → valeur par défaut
                 clean[col] = default
 
         cleaned_clients.append(clean)
@@ -89,5 +103,5 @@ def clean_database(db):
         "clients": cleaned_clients,
         "visa": db.get("visa", []),
         "escrow": db.get("escrow", []),
-        "compta": db.get("compta", [])
+        "compta": db.get("compta", []),
     }
