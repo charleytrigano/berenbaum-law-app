@@ -31,6 +31,12 @@ st.write("Bienvenue dans l'application professionnelle de gestion des dossiers."
 # Charger la base depuis Dropbox
 try:
     db = load_database()
+    from backend.json_validator import validate_and_fix_json
+
+fixed = validate_and_fix_json()
+if fixed:
+    st.warning("⚠️ La base de données contenait des incohérences et a été automatiquement réparée.")
+
     st.success("Base de données chargée depuis Dropbox ✔")
 except Exception as e:
     st.error(f"Erreur lors du chargement Dropbox : {e}")
