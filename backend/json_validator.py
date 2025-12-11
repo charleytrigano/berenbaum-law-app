@@ -2,89 +2,78 @@ import json
 import pandas as pd
 from backend.dropbox_utils import load_database, save_database
 
+REQUIRED_CLIENT_FIELDS = [
+    "Dossier N", "Nom", "Date", "Categories", "Sous-categories", "Visa",
+    "Montant honoraires (US $)", "Autres frais (US $)",
+    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4",
+    "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule",
+    "RFE", "Escrow", "Escrow_a_reclamer", "Escrow_reclame"
+]
+
+def analyse_incoherences(db):
+    """Retourne une liste d'incohérences détectées dans la base JSON."""
+    alerts = []
+
+    clients = db.get("clients", [])
+    for c in clients:
+        dn = c.get("Dossier N")
+
+        # Champs manquants
+        for field in REQUIRED_CLIENT_FIELDS:
+            if field not in c:
+                alerts.append(f"[{dn}] Champ manquant : {field}")
+
+        # Dates invalides
+        for date_field in ["Date", "Date envoi", "Date acceptation", 
+                           "Date refus", "Date annulation", "Date reclamation"]:
+            v = c.get(date_field)
+            if v not in [None, "", "None"]:
+                try:
+                    pd.to_datetime(v, errors="raise")
+                except:
+                    alerts.append(f"[{dn}] Date invalide : {date_field} = {v}")
+
+        # Montants incohérents
+        honoraires = c.get("Montant honoraires (US $)", 0)
+        acompte1 = c.get("Acompte 1", 0)
+
+        try:
+            if float(acompte1) > float(honoraires):
+                alerts.append(f"[{dn}] Acompte 1 supérieur aux honoraires")
+        except:
+            alerts.append(f"[{dn}] Valeur incohérente dans Acompte 1")
+
+    return alerts
+
 
 def validate_and_fix_json():
     """
-    Vérification et réparation automatique du JSON.
+    Corrige automatiquement les champs manquants et renvoie True si des corrections ont été faites.
     """
-    try:
-        db = load_database()
-    except Exception:
-        return False
-
-    if not isinstance(db, dict):
-        return False
+    db = load_database()
+    clients = db.get("clients", [])
 
     fixed = False
 
-    # Structure obligatoire
-    for key in ["clients", "visa", "escrow", "compta"]:
-        if key not in db or not isinstance(db[key], list):
-            db[key] = []
-            fixed = True
+    for c in clients:
+        for field in REQUIRED_CLIENT_FIELDS:
+            if field not in c:
+                c[field] = False if "Dossier" in field or "Escrow" in field or field == "RFE" else ""
+                fixed = True
 
-    cleaned_clients = []
-
-    for c in db["clients"]:
-        if not isinstance(c, dict):
-            fixed = True
-            continue
-
-        row = c.copy()
-
-        # Normalisation booléens
-        bool_fields = [
-            "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
-            "Dossier envoye", "Dossier accepte", "Dossier refuse",
-            "Dossier Annule", "RFE"
-        ]
-        for b in bool_fields:
-            if b in row:
-                row[b] = True if str(row[b]).lower() in ["true", "1", "yes", "oui"] else False
-
-        # Dates → format ISO
-        for k in list(row.keys()):
-            if "Date" in k:
-                d = pd.to_datetime(row[k], errors="coerce")
-                row[k] = None if pd.isna(d) else str(d.date())
-
-        cleaned_clients.append(row)
-
-    db["clients"] = cleaned_clients
+        # Correction des dates invalides
+        for date_field in ["Date", "Date envoi", "Date acceptation",
+                           "Date refus", "Date annulation", "Date reclamation"]:
+            v = c.get(date_field)
+            try:
+                if v not in [None, "", "None"]:
+                    pd.to_datetime(v, errors="raise")
+            except:
+                c[date_field] = None
+                fixed = True
 
     if fixed:
+        db["clients"] = clients
         save_database(db)
 
     return fixed
-
-
-def analyse_incoherences():
-    """
-    Renvoie une liste d'avertissements métier.
-    """
-    try:
-        db = load_database()
-        clients = db.get("clients", [])
-    except Exception:
-        return []
-
-    alerts = []
-
-    for row in clients:
-        if not isinstance(row, dict):
-            continue
-
-        num = row.get("Dossier N", "?")
-        prefix = f"Dossier {num} : "
-
-        # Cas métier cohérents
-        if row.get("Dossier accepte") and not row.get("Dossier envoye"):
-            alerts.append(prefix + "Accepté mais non envoyé.")
-
-        if row.get("Escrow_reclame") and not row.get("Escrow_a_reclamer"):
-            alerts.append(prefix + "Escrow réclamé alors qu'il n'était pas à réclamer.")
-
-        if row.get("Escrow") and row.get("Dossier envoye"):
-            alerts.append(prefix + "Dossier envoyé mais encore en Escrow.")
-
-    return alerts
