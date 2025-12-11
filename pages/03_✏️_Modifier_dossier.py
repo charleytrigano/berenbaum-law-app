@@ -3,7 +3,7 @@ import pandas as pd
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
-from utils.status_utils import normalize_bool   # <-- SEULE IMPORTATION OK
+from utils.status_utils import normalize_bool   # helper booléen
 
 # ---------------------------------------------------------
 # CONFIG & SIDEBAR
@@ -26,9 +26,17 @@ df = pd.DataFrame(clients)
 DOSSIER_COL = "Dossier N"
 
 # ---------------------------------------------------------
-# 🔹 Normalisation des colonnes de statuts
-# (on ne fusionne plus rien, on garantit juste leur présence)
+# 🔹 Normalisation des noms de colonnes de statuts
+#    (ON RENOMME ici les anciennes variantes)
 # ---------------------------------------------------------
+rename_map = {
+    "Dossier_envoye": "Dossier envoye",
+    "Dossier envoyé": "Dossier envoye",
+    "Dossier Envoye": "Dossier envoye",
+}
+df.rename(columns=rename_map, inplace=True)
+
+# colonnes attendues (créées si absentes)
 expected_cols = [
     "Dossier envoye",
     "Dossier accepte",
@@ -65,6 +73,9 @@ def to_float(x):
 
 def safe_date(v):
     try:
+        # gère "", "None", None, etc.
+        if v in [None, "", "None"]:
+            return None
         d = pd.to_datetime(v, errors="coerce")
         return None if pd.isna(d) else d.date()
     except Exception:
@@ -85,8 +96,14 @@ sous_categories = col4.text_input("Sous-catégories", dossier.get("Sous-categori
 visa = col5.text_input("Visa", dossier.get("Visa", ""))
 
 col6, col7, col8 = st.columns(3)
-honoraires = col6.number_input("Montant honoraires (US $)", value=to_float(dossier.get("Montant honoraires (US $)", 0)))
-frais = col7.number_input("Autres frais (US $)", value=to_float(dossier.get("Autres frais (US $)", 0)))
+honoraires = col6.number_input(
+    "Montant honoraires (US $)",
+    value=to_float(dossier.get("Montant honoraires (US $)", 0)),
+)
+frais = col7.number_input(
+    "Autres frais (US $)",
+    value=to_float(dossier.get("Autres frais (US $)", 0)),
+)
 col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
 
 commentaire = st.text_area("📝 Commentaire", dossier.get("Commentaire", ""))
@@ -105,22 +122,36 @@ date_inputs = {}
 for i in range(1, 5):
     st.markdown(f"### Acompte {i}")
     colA, colM, colD = st.columns(3)
-    ac_inputs[i] = colA.number_input(f"Montant Acompte {i}", value=to_float(dossier.get(f"Acompte {i}", 0)))
-    mode_inputs[i] = colM.selectbox(
-        f"Mode Acompte {i}", 
-        options=modes,
-        index=modes.index(dossier.get(f"Mode Acompte {i}", "")) if dossier.get(f"Mode Acompte {i}", "") in modes else 0,
+
+    ac_inputs[i] = colA.number_input(
+        f"Montant Acompte {i}",
+        value=to_float(dossier.get(f"Acompte {i}", 0)),
     )
+
+    mode_inputs[i] = colM.selectbox(
+        f"Mode Acompte {i}",
+        options=modes,
+        index=(
+            modes.index(dossier.get(f"Mode Acompte {i}", ""))
+            if dossier.get(f"Mode Acompte {i}", "") in modes
+            else 0
+        ),
+    )
+
     date_inputs[i] = colD.date_input(
         f"Date Paiement {i}",
-        value=safe_date(dossier.get(f"Date Paiement {i}"))
+        value=safe_date(dossier.get(f"Date Paiement {i}")),
     )
 
 # ---------------------------------------------------------
 # 💰 Escrow
 # ---------------------------------------------------------
 st.subheader("💰 Escrow")
-escrow_flag = st.checkbox("Escrow actif ?", value=normalize_bool(dossier.get("Escrow", False)))
+
+escrow_flag = st.checkbox(
+    "Escrow actif ?",
+    value=normalize_bool(dossier.get("Escrow", False)),
+)
 
 # ---------------------------------------------------------
 # 📦 Statuts
@@ -129,11 +160,26 @@ st.subheader("📦 Statuts du dossier")
 
 colS1, colS2, colS3, colS4, colS5 = st.columns(5)
 
-envoye = colS1.checkbox("Dossier envoyé", normalize_bool(dossier.get("Dossier envoye")))
-accepte = colS2.checkbox("Dossier accepté", normalize_bool(dossier.get("Dossier accepte")))
-refuse = colS3.checkbox("Dossier refusé", normalize_bool(dossier.get("Dossier refuse")))
-annule = colS4.checkbox("Dossier annulé", normalize_bool(dossier.get("Dossier Annule")))
-rfe = colS5.checkbox("RFE", normalize_bool(dossier.get("RFE")))
+envoye = colS1.checkbox(
+    "Dossier envoyé",
+    normalize_bool(dossier.get("Dossier envoye", False)),
+)
+accepte = colS2.checkbox(
+    "Dossier accepté",
+    normalize_bool(dossier.get("Dossier accepte", False)),
+)
+refuse = colS3.checkbox(
+    "Dossier refusé",
+    normalize_bool(dossier.get("Dossier refuse", False)),
+)
+annule = colS4.checkbox(
+    "Dossier annulé",
+    normalize_bool(dossier.get("Dossier Annule", False)),
+)
+rfe = colS5.checkbox(
+    "RFE",
+    normalize_bool(dossier.get("RFE", False)),
+)
 
 colT1, colT2, colT3, colT4, colT5 = st.columns(5)
 date_envoye = colT1.date_input("Date envoi", safe_date(dossier.get("Date envoi")))
@@ -148,7 +194,7 @@ date_rfe = colT5.date_input("Date RFE", safe_date(dossier.get("Date reclamation"
 if st.button("💾 Enregistrer les modifications", type="primary"):
     idx = df[df[DOSSIER_COL] == selected].index[0]
 
-    # Infos générales
+    # --- Infos générales ---
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = date_dossier
     df.loc[idx, "Categories"] = categories
@@ -158,27 +204,27 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Autres frais (US $)"] = frais
     df.loc[idx, "Commentaire"] = commentaire
 
-    # Acomptes
+    # --- Acomptes ---
     for i in range(1, 5):
         df.loc[idx, f"Acompte {i}"] = ac_inputs[i]
         df.loc[idx, f"Mode Acompte {i}"] = mode_inputs[i]
         df.loc[idx, f"Date Paiement {i}"] = date_inputs[i]
 
-    # ➤ STATUTS — PATCH **GARANTI FONCTIONNEL**
+    # --- Statuts (écriture directe) ---
     df.loc[idx, "Dossier envoye"] = bool(envoye)
     df.loc[idx, "Dossier accepte"] = bool(accepte)
     df.loc[idx, "Dossier refuse"] = bool(refuse)
     df.loc[idx, "Dossier Annule"] = bool(annule)
     df.loc[idx, "RFE"] = bool(rfe)
 
-    # Dates
+    # --- Dates de statuts ---
     df.loc[idx, "Date envoi"] = date_envoye
     df.loc[idx, "Date acceptation"] = date_accepte
     df.loc[idx, "Date refus"] = date_refuse
     df.loc[idx, "Date annulation"] = date_annule
     df.loc[idx, "Date reclamation"] = date_rfe
 
-    # ➤ ESCROW LOGIQUE
+    # --- Escrow logique ---
     if envoye:
         df.loc[idx, "Escrow"] = False
         df.loc[idx, "Escrow_a_reclamer"] = True
@@ -186,7 +232,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     else:
         df.loc[idx, "Escrow"] = bool(escrow_flag)
 
-    # Sauvegarde
+    # --- Sauvegarde JSON ---
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
