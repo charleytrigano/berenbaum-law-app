@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
 
-from utils.pdf_export import export_escrow_pdf
-import utils
-st.success("utils est bien un package ✔")
 
 from backend.dropbox_utils import load_database
 from components.kpi_cards import kpi_card
