@@ -10,6 +10,13 @@ if "parent_dossier" in st.session_state:
     new_id = prochain_sous_dossier(parent_id)
     del st.session_state["parent_dossier"]
 
+if "parent_dossier" in st.session_state:
+    mode = "Sous-dossier"
+    parent_id = st.session_state["parent_dossier"]
+    new_id = prochain_sous_dossier(parent_id)
+    del st.session_state["parent_dossier"]
+
+
 
 # ---------------------------------------------------------
 # CONFIG
