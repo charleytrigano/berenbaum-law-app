@@ -1,327 +1,332 @@
+import io
+import hashlib
+from datetime import datetime
+
 import streamlit as st
 import pandas as pd
-import io
-from datetime import date
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
 
 
-# =========================================================
-# CONFIG + SIDEBAR
-# =========================================================
+# ---------------------------------------------------------
+# CONFIG & SIDEBAR
+# ---------------------------------------------------------
 st.set_page_config(page_title="💰 Escrow", page_icon="💰", layout="wide")
 render_sidebar()
-st.title("💰 Gestion des Escrows")
+st.title("💰 Escrow — Suivi & Transitions")
 
 
-# =========================================================
+# ---------------------------------------------------------
 # HELPERS
-# =========================================================
-REQUIRED_COLS = [
-    "Dossier N", "Nom", "Date",
-    "Acompte 1",
-    "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
-    "Date envoi", "Date reclamation",
-]
-
-def normalize_bool(v) -> bool:
-    if isinstance(v, bool):
-        return v
-    if v is None:
+# ---------------------------------------------------------
+def normalize_bool(x) -> bool:
+    if isinstance(x, bool):
+        return x
+    if x is None:
         return False
-    s = str(v).strip().lower()
+    s = str(x).strip().lower()
     return s in ["true", "1", "1.0", "yes", "oui", "y", "vrai"]
 
-def to_float(v) -> float:
+
+def to_float(x) -> float:
     try:
-        if v in ["None", None, ""]:
+        if x is None or x == "":
             return 0.0
-        return float(v)
+        return float(x)
     except Exception:
         return 0.0
 
-def to_date_str(v) -> str:
-    """Retourne une date ISO 'YYYY-MM-DD' ou ''."""
-    if v in [None, "", "None"]:
-        return ""
-    try:
-        d = pd.to_datetime(v, errors="coerce")
-        if pd.isna(d):
-            return ""
-        return d.date().isoformat()
-    except Exception:
-        return ""
 
-def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
+def ensure_cols(df: pd.DataFrame, cols_defaults: dict) -> pd.DataFrame:
     df = df.copy()
-    for c in REQUIRED_COLS:
-        if c not in df.columns:
-            # defaults
-            if c in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
-                df[c] = False
-            elif c == "Acompte 1":
-                df[c] = 0.0
-            else:
-                df[c] = ""
-    # types
-    df["Escrow"] = df["Escrow"].apply(normalize_bool)
-    df["Escrow_a_reclamer"] = df["Escrow_a_reclamer"].apply(normalize_bool)
-    df["Escrow_reclame"] = df["Escrow_reclame"].apply(normalize_bool)
-
-    df["Acompte 1"] = df["Acompte 1"].apply(to_float)
-
-    # normaliser dossier N
-    df["Dossier N"] = pd.to_numeric(df["Dossier N"], errors="coerce").astype("Int64")
-
-    # dates en string ISO pour éviter Timestamp dans JSON
-    df["Date"] = df["Date"].apply(to_date_str)
-    df["Date envoi"] = df["Date envoi"].apply(to_date_str)
-    df["Date reclamation"] = df["Date reclamation"].apply(to_date_str)
-
+    for col, default in cols_defaults.items():
+        if col not in df.columns:
+            df[col] = default
     return df
 
-def escrow_amount(row) -> float:
-    # Règle confirmée : le montant escrow = Acompte 1 uniquement
-    return float(row.get("Acompte 1", 0) or 0)
 
-def compute_age_days(row) -> int:
+def set_escrow_state(df: pd.DataFrame, idx, state: str) -> pd.DataFrame:
     """
-    Ancienneté (jours) pour 'Escrow à réclamer' :
-    - on prend Date envoi si dispo, sinon Date du dossier.
-    """
-    base = row.get("Date envoi", "") or row.get("Date", "")
-    if not base:
-        return 0
-    try:
-        d = pd.to_datetime(base, errors="coerce")
-        if pd.isna(d):
-            return 0
-        return int((pd.Timestamp.today().date() - d.date()).days)
-    except Exception:
-        return 0
-
-def set_state_exclusive(df: pd.DataFrame, idx, state: str) -> pd.DataFrame:
-    """
-    state in {"actif","a_reclamer","reclame"}
-    Machine d'état exclusive.
+    state ∈ {"actif", "a_reclamer", "reclame"}
+    Règle: un dossier ne peut être que dans UN seul état à la fois.
     """
     df = df.copy()
+
+    # reset
+    df.loc[idx, "Escrow"] = False
+    df.loc[idx, "Escrow_a_reclamer"] = False
+    df.loc[idx, "Escrow_reclame"] = False
 
     if state == "actif":
         df.loc[idx, "Escrow"] = True
-        df.loc[idx, "Escrow_a_reclamer"] = False
-        df.loc[idx, "Escrow_reclame"] = False
-
     elif state == "a_reclamer":
-        df.loc[idx, "Escrow"] = False
         df.loc[idx, "Escrow_a_reclamer"] = True
-        df.loc[idx, "Escrow_reclame"] = False
-
     elif state == "reclame":
-        df.loc[idx, "Escrow"] = False
-        df.loc[idx, "Escrow_a_reclamer"] = False
         df.loc[idx, "Escrow_reclame"] = True
-        df.loc[idx, "Date reclamation"] = date.today().isoformat()
 
     return df
 
-def export_csv_bytes(df_export: pd.DataFrame) -> bytes:
-    buff = io.StringIO()
-    df_export.to_csv(buff, index=False)
-    return buff.getvalue().encode("utf-8")
+
+def escrow_pdf_bytes(state_label: str, df_state: pd.DataFrame, total_amount: float) -> bytes:
+    """
+    Génère un PDF "certifié" (timestamp + empreinte SHA256 du contenu exporté).
+    Utilise reportlab (installé).
+    """
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+    # Empreinte de certification: dossier+nom+montant
+    payload = "|".join(
+        [
+            f"{int(x) if pd.notna(x) else ''}::{str(n)}::{float(a):.2f}"
+            for x, n, a in zip(
+                df_state.get("Dossier N", []),
+                df_state.get("Nom", []),
+                df_state.get("Acompte 1", []),
+            )
+        ]
+    ).encode("utf-8")
+
+    sha = hashlib.sha256(payload).hexdigest()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, rightMargin=24, leftMargin=24, topMargin=24, bottomMargin=24)
+    styles = getSampleStyleSheet()
+
+    story = []
+    story.append(Paragraph("Berenbaum Law App — Export Escrow", styles["Title"]))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(f"<b>État :</b> {state_label}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Date génération :</b> {now}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Nombre de dossiers :</b> {len(df_state)}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Total (Acompte 1) :</b> ${total_amount:,.2f}", styles["Normal"]))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(f"<b>Empreinte SHA256 (certification) :</b><br/>{sha}", styles["Normal"]))
+    story.append(Spacer(1, 14))
+
+    table_cols = ["Dossier N", "Nom", "Date", "Categories", "Sous-categories", "Visa", "Acompte 1"]
+    table_cols = [c for c in table_cols if c in df_state.columns]
+
+    # Data table
+    data = [table_cols]
+    for _, r in df_state.iterrows():
+        row = []
+        for c in table_cols:
+            v = r.get(c, "")
+            if c == "Acompte 1":
+                row.append(f"${to_float(v):,.2f}")
+            else:
+                row.append("" if pd.isna(v) else str(v))
+        data.append(row)
+
+    tbl = Table(data, repeatRows=1)
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")),
+                ("FONTSIZE", (0, 1), (-1, -1), 9),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F6F6F6")]),
+            ]
+        )
+    )
+    story.append(tbl)
+
+    doc.build(story)
+    return buf.getvalue()
 
 
-# =========================================================
+# ---------------------------------------------------------
 # LOAD DB
-# =========================================================
+# ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
 df = pd.DataFrame(clients)
 
 if df.empty:
-    st.info("Aucun dossier en base.")
+    st.info("Aucun dossier trouvé.")
     st.stop()
 
-df = ensure_columns(df)
+df = ensure_cols(
+    df,
+    {
+        "Dossier N": None,
+        "Nom": "",
+        "Date": "",
+        "Categories": "",
+        "Sous-categories": "",
+        "Visa": "",
+        "Acompte 1": 0.0,
+        "Escrow": False,
+        "Escrow_a_reclamer": False,
+        "Escrow_reclame": False,
+    },
+)
 
-# Alerte automatique si escrow à réclamer
-count_reclamer = int(df["Escrow_a_reclamer"].sum())
-if count_reclamer > 0:
-    st.warning(f"⚠️ {count_reclamer} dossier(s) en Escrow à réclamer.")
+# Normalisations
+df["Dossier N"] = pd.to_numeric(df["Dossier N"], errors="coerce").astype("Int64")
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date.astype(str).replace("NaT", "")
+df["Acompte 1"] = df["Acompte 1"].apply(to_float)
+for b in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
+    df[b] = df[b].apply(normalize_bool)
 
+# ---------------------------------------------------------
+# KPI (strictement alignés)
+# ---------------------------------------------------------
+total_actif = float(df.loc[df["Escrow"] == True, "Acompte 1"].sum())
+total_areclamer = float(df.loc[df["Escrow_a_reclamer"] == True, "Acompte 1"].sum())
+total_reclame = float(df.loc[df["Escrow_reclame"] == True, "Acompte 1"].sum())
 
-# =========================================================
-# KPI GLOBAL
-# =========================================================
-total_actif = df.loc[df["Escrow"], "Acompte 1"].sum()
-total_a_reclamer = df.loc[df["Escrow_a_reclamer"], "Acompte 1"].sum()
-total_reclame = df.loc[df["Escrow_reclame"], "Acompte 1"].sum()
+k1, k2, k3 = st.columns(3)
+k1.metric("💼 Montant Escrow actif (Acompte 1)", f"${total_actif:,.2f}")
+k2.metric("📤 Montant Escrow à réclamer (Acompte 1)", f"${total_areclamer:,.2f}")
+k3.metric("✅ Montant Escrow réclamé (Acompte 1)", f"${total_reclame:,.2f}")
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Escrow actif", f"{int(df['Escrow'].sum())}")
-k2.metric("Escrow à réclamer", f"{int(df['Escrow_a_reclamer'].sum())}")
-k3.metric("Escrow réclamé", f"{int(df['Escrow_reclame'].sum())}")
-k4.metric("Montant total Escrow (Acompte 1)", f"${total_actif + total_a_reclamer + total_reclame:,.2f}")
+st.caption("Chaque dossier appartient à un seul état Escrow. Les montants Escrow = Acompte 1 uniquement.")
 
-
-# =========================================================
+# ---------------------------------------------------------
 # TABS
-# =========================================================
-tab_actif, tab_reclamer, tab_reclame = st.tabs([
-    "💼 Escrow actif",
-    "📤 Escrow à réclamer",
-    "✅ Escrow réclamé",
-])
+# ---------------------------------------------------------
+tab_actif, tab_areclamer, tab_reclame = st.tabs(["💼 Escrow actif", "📤 Escrow à réclamer", "✅ Escrow réclamé"])
 
-# =========================================================
-# TAB 1 — ACTIF
-# =========================================================
+DISPLAY_COLS = [
+    "Dossier N",
+    "Nom",
+    "Date",
+    "Categories",
+    "Sous-categories",
+    "Visa",
+    "Acompte 1",
+]
+
+
+def render_table_and_actions(state_key: str, state_label: str, df_state: pd.DataFrame):
+    # Totaux EXACTS sous l’onglet
+    total_state = float(df_state["Acompte 1"].sum()) if not df_state.empty else 0.0
+    st.caption(f"Total {state_label} (Acompte 1) : ${total_state:,.2f}")
+
+    # Export PDF certifié
+    colA, colB = st.columns([1, 1])
+    with colA:
+        pdf = escrow_pdf_bytes(state_label, df_state, total_state)
+        filename = f"escrow_{state_key}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        st.download_button(
+            "📄 Exporter PDF (certifié)",
+            data=pdf,
+            file_name=filename,
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    with colB:
+        csv = df_state[DISPLAY_COLS].to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Exporter CSV",
+            data=csv,
+            file_name=f"escrow_{state_key}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    st.markdown("---")
+
+    if df_state.empty:
+        st.info("Aucun dossier dans cet état.")
+        return
+
+    # Tableau
+    st.dataframe(df_state[DISPLAY_COLS], use_container_width=True, height=420)
+
+    st.markdown("---")
+    st.subheader("🔁 Actions")
+
+    # Sélection dossier
+    nums = sorted(df_state["Dossier N"].dropna().astype(int).unique())
+    selected_num = st.selectbox(
+        "Choisir un dossier",
+        nums,
+        key=f"sel_{state_key}",
+    )
+
+    if selected_num is None:
+        return
+
+    idx = df[df["Dossier N"] == selected_num].index[0]
+    dossier = df.loc[idx].to_dict()
+    st.write(f"**Dossier {selected_num} — {dossier.get('Nom','')}**")
+    st.write(f"Montant (Acompte 1) : **${to_float(dossier.get('Acompte 1')):,.2f}**")
+
+    # Boutons de transition (exclusifs)
+    if state_key == "actif":
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("📤 Passer en 'Escrow à réclamer'", type="primary", key=f"to_arecl_{selected_num}"):
+                df2 = set_escrow_state(df, idx, "a_reclamer")
+                db["clients"] = df2.to_dict(orient="records")
+                save_database(db)
+                st.success("Dossier déplacé vers Escrow à réclamer.")
+                st.rerun()
+        with c2:
+            if st.button("✅ Passer en 'Escrow réclamé'", key=f"to_reclame_{selected_num}"):
+                df2 = set_escrow_state(df, idx, "reclame")
+                db["clients"] = df2.to_dict(orient="records")
+                save_database(db)
+                st.success("Dossier déplacé vers Escrow réclamé.")
+                st.rerun()
+
+    elif state_key == "a_reclamer":
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✅ Marquer comme réclamé", type="primary", key=f"mark_reclame_{selected_num}"):
+                # doit DISPARAÎTRE de "à réclamer" et aller dans "réclamé"
+                df2 = set_escrow_state(df, idx, "reclame")
+                db["clients"] = df2.to_dict(orient="records")
+                save_database(db)
+                st.success("Dossier marqué comme réclamé (déplacé).")
+                st.rerun()
+        with c2:
+            if st.button("↩️ Revenir à 'Escrow actif'", key=f"back_actif_{selected_num}"):
+                df2 = set_escrow_state(df, idx, "actif")
+                db["clients"] = df2.to_dict(orient="records")
+                save_database(db)
+                st.success("Dossier revenu en Escrow actif.")
+                st.rerun()
+
+    elif state_key == "reclame":
+        if st.button("↩️ Revenir à 'Escrow à réclamer'", key=f"back_arecl_{selected_num}"):
+            df2 = set_escrow_state(df, idx, "a_reclamer")
+            db["clients"] = df2.to_dict(orient="records")
+            save_database(db)
+            st.success("Dossier revenu en Escrow à réclamer.")
+            st.rerun()
+
+
+# ---------------------------------------------------------
+# FILTERED DATAFRAMES
+# ---------------------------------------------------------
+df_actif = df[df["Escrow"] == True].copy()
+df_areclamer = df[df["Escrow_a_reclamer"] == True].copy()
+df_reclame = df[df["Escrow_reclame"] == True].copy()
+
+# Safety: colonnes d’affichage
+for dfx in [df_actif, df_areclamer, df_reclame]:
+    for c in DISPLAY_COLS:
+        if c not in dfx.columns:
+            dfx[c] = ""
+
+
 with tab_actif:
-    st.subheader("💼 Dossiers en Escrow actif")
-    df_actif = df[df["Escrow"] == True].copy()
-    df_actif["Montant Escrow (Acompte 1)"] = df_actif.apply(escrow_amount, axis=1)
+    render_table_and_actions("actif", "Escrow actif", df_actif)
 
-    total = float(df_actif["Montant Escrow (Acompte 1)"].sum()) if not df_actif.empty else 0.0
-    st.caption(f"Total Escrow actif (Acompte 1) : **${total:,.2f}**")
+with tab_areclamer:
+    render_table_and_actions("a_reclamer", "Escrow à réclamer", df_areclamer)
 
-    if df_actif.empty:
-        st.info("Aucun dossier en Escrow actif.")
-    else:
-        for idx, row in df_actif.sort_values("Dossier N").iterrows():
-            dnum = int(row["Dossier N"]) if pd.notna(row["Dossier N"]) else "?"
-            montant = float(row["Montant Escrow (Acompte 1)"] or 0)
-
-            with st.container(border=True):
-                c1, c2, c3, c4 = st.columns([2, 4, 2, 2])
-                c1.markdown(f"**Dossier**: {dnum}")
-                c2.markdown(f"**Nom**: {row.get('Nom','')}")
-                c3.markdown(f"**Acompte 1**: ${montant:,.2f}")
-                c4.markdown(f"**Date**: {row.get('Date','')}")
-
-                b1, b2 = st.columns([1, 5])
-                if b1.button("📤 Passer à réclamer", key=f"to_reclamer_actif_{dnum}"):
-                    df2 = set_state_exclusive(df, idx, "a_reclamer")
-                    db["clients"] = df2.to_dict(orient="records")
-                    save_database(db)
-                    st.success("✔ Déplacé vers Escrow à réclamer.")
-                    st.rerun()
-
-        # Export CSV
-        export_cols = ["Dossier N", "Nom", "Date", "Acompte 1", "Montant Escrow (Acompte 1)"]
-        csv_bytes = export_csv_bytes(df_actif[export_cols])
-        st.download_button(
-            "⬇️ Export CSV (Escrow actif)",
-            data=csv_bytes,
-            file_name="escrow_actif.csv",
-            mime="text/csv",
-            key="csv_actif",
-        )
-
-
-# =========================================================
-# TAB 2 — A RÉCLAMER
-# =========================================================
-with tab_reclamer:
-    st.subheader("📤 Dossiers en Escrow à réclamer")
-    df_reclamer = df[df["Escrow_a_reclamer"] == True].copy()
-    df_reclamer["Montant Escrow (Acompte 1)"] = df_reclamer.apply(escrow_amount, axis=1)
-    df_reclamer["Ancienneté (jours)"] = df_reclamer.apply(compute_age_days, axis=1)
-
-    total = float(df_reclamer["Montant Escrow (Acompte 1)"].sum()) if not df_reclamer.empty else 0.0
-    st.caption(f"Total Escrow à réclamer (Acompte 1) : **${total:,.2f}**")
-
-    if not df_reclamer.empty:
-        max_age = int(df_reclamer["Ancienneté (jours)"].max())
-        st.info(f"Ancienneté max des escrows non réclamés : **{max_age} jours**")
-
-    if df_reclamer.empty:
-        st.info("Aucun dossier en Escrow à réclamer.")
-    else:
-        df_reclamer = df_reclamer.sort_values(["Ancienneté (jours)", "Dossier N"], ascending=[False, True])
-
-        for idx, row in df_reclamer.iterrows():
-            dnum = int(row["Dossier N"]) if pd.notna(row["Dossier N"]) else "?"
-            montant = float(row["Montant Escrow (Acompte 1)"] or 0)
-            age = int(row["Ancienneté (jours)"] or 0)
-
-            with st.container(border=True):
-                c1, c2, c3, c4, c5 = st.columns([2, 4, 2, 2, 2])
-                c1.markdown(f"**Dossier**: {dnum}")
-                c2.markdown(f"**Nom**: {row.get('Nom','')}")
-                c3.markdown(f"**Acompte 1**: ${montant:,.2f}")
-                c4.markdown(f"**Ancienneté**: {age} j")
-                c5.markdown(f"**Date envoi**: {row.get('Date envoi','') or '—'}")
-
-                b1, b2, b3 = st.columns([1.4, 1.4, 5])
-                if b1.button("✅ Marquer réclamé", key=f"mark_reclame_{dnum}"):
-                    df2 = set_state_exclusive(df, idx, "reclame")
-                    db["clients"] = df2.to_dict(orient="records")
-                    save_database(db)
-                    st.success("✔ Marqué comme réclamé (déplacé vers Escrow réclamé).")
-                    st.rerun()
-
-                if b2.button("↩️ Revenir actif", key=f"back_actif_{dnum}"):
-                    df2 = set_state_exclusive(df, idx, "actif")
-                    db["clients"] = df2.to_dict(orient="records")
-                    save_database(db)
-                    st.success("✔ Repassé en Escrow actif.")
-                    st.rerun()
-
-        # Export CSV
-        export_cols = ["Dossier N", "Nom", "Date", "Date envoi", "Acompte 1", "Montant Escrow (Acompte 1)", "Ancienneté (jours)"]
-        csv_bytes = export_csv_bytes(df_reclamer[export_cols])
-        st.download_button(
-            "⬇️ Export CSV (Escrow à réclamer)",
-            data=csv_bytes,
-            file_name="escrow_a_reclamer.csv",
-            mime="text/csv",
-            key="csv_reclamer",
-        )
-
-
-# =========================================================
-# TAB 3 — RÉCLAMÉ
-# =========================================================
 with tab_reclame:
-    st.subheader("✅ Dossiers en Escrow réclamé")
-    df_reclame = df[df["Escrow_reclame"] == True].copy()
-    df_reclame["Montant Escrow (Acompte 1)"] = df_reclame.apply(escrow_amount, axis=1)
-
-    total = float(df_reclame["Montant Escrow (Acompte 1)"].sum()) if not df_reclame.empty else 0.0
-    st.caption(f"Total Escrow réclamé (Acompte 1) : **${total:,.2f}**")
-
-    if df_reclame.empty:
-        st.info("Aucun dossier en Escrow réclamé.")
-    else:
-        df_reclame = df_reclame.sort_values(["Date reclamation", "Dossier N"], ascending=[False, True])
-
-        for idx, row in df_reclame.iterrows():
-            dnum = int(row["Dossier N"]) if pd.notna(row["Dossier N"]) else "?"
-            montant = float(row["Montant Escrow (Acompte 1)"] or 0)
-
-            with st.container(border=True):
-                c1, c2, c3, c4 = st.columns([2, 4, 2, 2])
-                c1.markdown(f"**Dossier**: {dnum}")
-                c2.markdown(f"**Nom**: {row.get('Nom','')}")
-                c3.markdown(f"**Acompte 1**: ${montant:,.2f}")
-                c4.markdown(f"**Date réclamation**: {row.get('Date reclamation','') or '—'}")
-
-                b1, b2 = st.columns([1.4, 5])
-                if b1.button("↩️ Revenir à réclamer", key=f"back_reclamer_{dnum}"):
-                    df2 = set_state_exclusive(df, idx, "a_reclamer")
-                    db["clients"] = df2.to_dict(orient="records")
-                    save_database(db)
-                    st.success("✔ Repassé en Escrow à réclamer.")
-                    st.rerun()
-
-        # Export CSV
-        export_cols = ["Dossier N", "Nom", "Date", "Date reclamation", "Acompte 1", "Montant Escrow (Acompte 1)"]
-        csv_bytes = export_csv_bytes(df_reclame[export_cols])
-        st.download_button(
-            "⬇️ Export CSV (Escrow réclamé)",
-            data=csv_bytes,
-            file_name="escrow_reclame.csv",
-            mime="text/csv",
-            key="csv_reclame",
-        )
+    render_table_and_actions("reclame", "Escrow réclamé", df_reclame)
