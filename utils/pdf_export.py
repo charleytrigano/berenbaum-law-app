@@ -29,21 +29,21 @@ def export_escrow_pdf(df, filename):
     y -= 15
     c.line(40, y, 500, y)
 
-    total = 0
-
+    total = 0.0
     c.setFont("Helvetica", 10)
+
     for _, row in df.iterrows():
         if y < 60:
             c.showPage()
             y = height - 40
             c.setFont("Helvetica", 10)
 
-        montant = float(row.get("Montant Escrow", 0))
+        montant = float(row.get("Montant Escrow", 0) or 0)
         total += montant
 
         y -= 18
         c.drawString(40, y, str(row.get("Dossier N", "")))
-        c.drawString(140, y, row.get("Nom", ""))
+        c.drawString(140, y, str(row.get("Nom", "")))
         c.drawRightString(500, y, f"${montant:,.2f}")
 
     y -= 25
