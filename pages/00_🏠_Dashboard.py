@@ -4,21 +4,16 @@ import pandas as pd
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
 
-# =========================================================
-# CONFIG PAGE
-# =========================================================
-st.set_page_config(
-    page_title="🏠 Dashboard – Berenbaum Law App",
-    page_icon="🏠",
-    layout="wide"
-)
-
+# ---------------------------------------------------------
+# CONFIG & SIDEBAR
+# ---------------------------------------------------------
+st.set_page_config(page_title="🏠 Dashboard", page_icon="🏠", layout="wide")
 render_sidebar()
-st.title("🏠 Tableau de bord – Berenbaum Law App")
+st.title("🏠 Dashboard — Berenbaum Law App")
 
-# =========================================================
+# ---------------------------------------------------------
 # LOAD DATABASE
-# =========================================================
+# ---------------------------------------------------------
 db = load_database()
 clients = pd.DataFrame(db.get("clients", []))
 
@@ -26,30 +21,14 @@ if clients.empty:
     st.warning("Aucun dossier trouvé.")
     st.stop()
 
-# =========================================================
-# NORMALISATION DOSSIER N (support 12937 / 12937-1 / 12937-2)
-# =========================================================
+# ---------------------------------------------------------
+# NORMALISATION
+# ---------------------------------------------------------
 clients["Dossier N"] = clients["Dossier N"].astype(str)
-clients["Dossier Parent"] = clients["Dossier N"].str.split("-").str[0]
 
-# =========================================================
-# NORMALISATION NUMÉRIQUE
-# =========================================================
-num_cols = [
-    "Montant honoraires (US $)",
-    "Autres frais (US $)",
-    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"
-]
+clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
 
-for col in num_cols:
-    if col not in clients.columns:
-        clients[col] = 0.0
-    clients[col] = pd.to_numeric(clients[col], errors="coerce").fillna(0.0)
-
-# =========================================================
-# NORMALISATION STATUTS
-# =========================================================
-bool_cols = [
+for col in [
     "Dossier envoye",
     "Dossier accepte",
     "Dossier refuse",
@@ -58,126 +37,140 @@ bool_cols = [
     "Escrow",
     "Escrow_a_reclamer",
     "Escrow_reclame",
-]
-
-for col in bool_cols:
+]:
     if col not in clients.columns:
         clients[col] = False
     clients[col] = clients[col].astype(bool)
 
-# =========================================================
-# FILTRES
-# =========================================================
-st.subheader("🎛️ Filtres")
-
-colF1, colF2, colF3, colF4 = st.columns(4)
-
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
-
-annees = sorted(clients["Date"].dropna().dt.year.unique().tolist())
-annee = colF1.selectbox("Année", ["Toutes"] + annees)
-
-categories = ["Toutes"] + sorted(clients["Categories"].dropna().unique().tolist())
-categorie = colF2.selectbox("Catégorie", categories)
-
-if categorie != "Toutes":
-    souscats = ["Toutes"] + sorted(
-        clients[clients["Categories"] == categorie]["Sous-categories"]
-        .dropna().unique().tolist()
-    )
-else:
-    souscats = ["Toutes"] + sorted(
-        clients["Sous-categories"].dropna().unique().tolist()
-    )
-
-souscat = colF3.selectbox("Sous-catégorie", souscats)
-
-visas = ["Tous"] + sorted(clients["Visa"].dropna().unique().tolist())
-visa = colF4.selectbox("Visa", visas)
-
-# =========================================================
-# APPLICATION DES FILTRES
-# =========================================================
-df = clients.copy()
-
-if annee != "Toutes":
-    df = df[df["Date"].dt.year == annee]
-
-if categorie != "Toutes":
-    df = df[df["Categories"] == categorie]
-
-if souscat != "Toutes":
-    df = df[df["Sous-categories"] == souscat]
-
-if visa != "Tous":
-    df = df[df["Visa"] == visa]
-
-# =========================================================
-# KPI FINANCIERS CERTIFIÉS
-# =========================================================
-st.subheader("📊 Indicateurs clés")
-
-total_dossiers = len(df)
-
-total_honoraires = df["Montant honoraires (US $)"].sum()
-total_frais = df["Autres frais (US $)"].sum()
-total_facture = total_honoraires + total_frais
-
-total_encaisse = (
-    df["Acompte 1"] +
-    df["Acompte 2"] +
-    df["Acompte 3"] +
-    df["Acompte 4"]
-).sum()
-
-solde_du = total_facture - total_encaisse
-
-colK1, colK2, colK3, colK4, colK5, colK6 = st.columns(6)
-
-colK1.metric("📁 Dossiers", total_dossiers)
-colK2.metric("💼 Honoraires", f"${total_honoraires:,.0f}")
-colK3.metric("💸 Autres frais", f"${total_frais:,.0f}")
-colK4.metric("📄 Total facturé", f"${total_facture:,.0f}")
-colK5.metric("💰 Encaissé", f"${total_encaisse:,.0f}")
-colK6.metric("⚠️ Solde dû", f"${solde_du:,.0f}")
-
-# =========================================================
-# TABLEAU DES DOSSIERS
-# =========================================================
-st.subheader("📋 Liste des dossiers")
-
-cols_display = [
-    "Dossier N",
-    "Nom",
-    "Date",
-    "Categories",
-    "Sous-categories",
-    "Visa",
+for col in [
     "Montant honoraires (US $)",
     "Autres frais (US $)",
     "Acompte 1",
     "Acompte 2",
     "Acompte 3",
     "Acompte 4",
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
+]:
+    if col not in clients.columns:
+        clients[col] = 0.0
+    clients[col] = pd.to_numeric(clients[col], errors="coerce").fillna(0.0)
+
+clients["Total facturé"] = (
+    clients["Montant honoraires (US $)"] + clients["Autres frais (US $)"]
+)
+clients["Total encaissé"] = (
+    clients["Acompte 1"]
+    + clients["Acompte 2"]
+    + clients["Acompte 3"]
+    + clients["Acompte 4"]
+)
+clients["Solde dû"] = clients["Total facturé"] - clients["Total encaissé"]
+
+# ---------------------------------------------------------
+# FILTRES
+# ---------------------------------------------------------
+st.subheader("🎛️ Filtres")
+
+c1, c2, c3, c4 = st.columns(4)
+
+categories = ["Tous"] + sorted(clients["Categories"].dropna().unique())
+cat = c1.selectbox("Catégorie", categories)
+
+if cat != "Tous":
+    df = clients[clients["Categories"] == cat]
+else:
+    df = clients.copy()
+
+souscats = ["Tous"] + sorted(df["Sous-categories"].dropna().unique())
+sous = c2.selectbox("Sous-catégorie", souscats)
+
+if sous != "Tous":
+    df = df[df["Sous-categories"] == sous]
+
+visas = ["Tous"] + sorted(df["Visa"].dropna().unique())
+visa = c3.selectbox("Visa", visas)
+
+if visa != "Tous":
+    df = df[df["Visa"] == visa]
+
+statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
+statut = c4.selectbox("Statut", statuts)
+
+if statut != "Tous":
+    mapping = {
+        "Envoyé": "Dossier envoye",
+        "Accepté": "Dossier accepte",
+        "Refusé": "Dossier refuse",
+        "Annulé": "Dossier Annule",
+        "RFE": "RFE",
+    }
+    df = df[df[mapping[statut]] == True]
+
+# ---------------------------------------------------------
+# KPI FINANCIERS
+# ---------------------------------------------------------
+st.subheader("📊 Indicateurs clés")
+
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+
+k1.metric("📁 Dossiers", len(df))
+k2.metric("💰 Honoraires", f"${df['Montant honoraires (US $)'].sum():,.2f}")
+k3.metric("➕ Autres frais", f"${df['Autres frais (US $)'].sum():,.2f}")
+k4.metric("🧾 Total facturé", f"${df['Total facturé'].sum():,.2f}")
+k5.metric("💵 Total encaissé", f"${df['Total encaissé'].sum():,.2f}")
+k6.metric("⚠️ Solde dû", f"${df['Solde dû'].sum():,.2f}")
+
+# ---------------------------------------------------------
+# KPI ESCROW (LOGIQUE CERTIFIÉE)
+# ---------------------------------------------------------
+st.subheader("💰 Escrow — Vue globale")
+
+escrow_actif = df[
+    (df["Escrow"] == True)
+    & (df["Escrow_a_reclamer"] == False)
+    & (df["Escrow_reclame"] == False)
+]
+
+escrow_a_reclamer = df[df["Escrow_a_reclamer"] == True]
+escrow_reclame = df[df["Escrow_reclame"] == True]
+
+e1, e2, e3 = st.columns(3)
+
+e1.metric(
+    "🟡 Escrow actif",
+    f"${escrow_actif['Acompte 1'].sum():,.2f}",
+    help="Acompte 1 uniquement",
+)
+e2.metric(
+    "🟠 Escrow à réclamer",
+    f"${escrow_a_reclamer['Acompte 1'].sum():,.2f}",
+)
+e3.metric(
+    "🟢 Escrow réclamé",
+    f"${escrow_reclame['Acompte 1'].sum():,.2f}",
+)
+
+# ---------------------------------------------------------
+# TABLEAU FINAL
+# ---------------------------------------------------------
+st.subheader("📋 Dossiers")
+
+cols = [
+    "Dossier N",
+    "Nom",
+    "Date",
+    "Categories",
+    "Sous-categories",
+    "Visa",
+    "Total facturé",
+    "Total encaissé",
+    "Solde dû",
     "Escrow",
     "Escrow_a_reclamer",
     "Escrow_reclame",
 ]
 
-cols_display = [c for c in cols_display if c in df.columns]
-
-df_sorted = df.sort_values(
-    by=["Dossier Parent", "Dossier N"],
-    key=lambda s: s.astype(str)
-)
-
 st.dataframe(
-    df_sorted[cols_display],
+    df[cols].sort_values("Dossier N"),
     use_container_width=True,
-    height=520
+    height=500,
 )
-
