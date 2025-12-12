@@ -48,6 +48,23 @@ def normalize_bool(v):
         return False
     if str(v).strip().lower() in ["1", "true", "yes", "oui"]:
         return True
+
+    # -------------------------------------------------
+# 🔒 GARANTIE EXCLUSIVITÉ ESCROW (CRITIQUE)
+# -------------------------------------------------
+for c in cleaned_clients:
+    if c.get("Escrow_reclame"):
+        c["Escrow"] = False
+        c["Escrow_a_reclamer"] = False
+
+    elif c.get("Escrow_a_reclamer"):
+        c["Escrow"] = False
+        c["Escrow_reclame"] = False
+
+    elif c.get("Escrow"):
+        c["Escrow_a_reclamer"] = False
+        c["Escrow_reclame"] = False
+
     return False
 
 
