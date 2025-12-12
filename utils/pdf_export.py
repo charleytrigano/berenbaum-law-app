@@ -1,33 +1,43 @@
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from datetime import datetime
+import pandas as pd
 
 
-def export_escrow_pdf(df, filename):
+def export_escrow_pdf(df: pd.DataFrame, filename: str):
     """
-    Génère un PDF simple et fiable des escrows fournis.
-    df doit contenir : Dossier N, Nom, Montant Escrow
+    Génère un PDF fiable des escrows.
+    Colonnes requises :
+    - Dossier N
+    - Nom
+    - Montant Escrow
     """
 
     c = canvas.Canvas(filename, pagesize=A4)
     width, height = A4
 
     y = height - 40
+
+    # En-tête
     c.setFont("Helvetica-Bold", 14)
     c.drawString(40, y, "Berenbaum Law — Escrow Report")
 
-    y -= 25
+    y -= 22
     c.setFont("Helvetica", 10)
-    c.drawString(40, y, f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    c.drawString(
+        40,
+        y,
+        f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    )
 
+    # Tableau
     y -= 30
     c.setFont("Helvetica-Bold", 10)
     c.drawString(40, y, "Dossier")
     c.drawString(140, y, "Client")
-    c.drawRightString(500, y, "Montant (USD)")
-
-    y -= 15
-    c.line(40, y, 500, y)
+    c.drawRightString(520, y, "Montant (USD)")
+    y -= 5
+    c.line(40, y, 520, y)
 
     total = 0.0
     c.setFont("Helvetica", 10)
@@ -44,10 +54,11 @@ def export_escrow_pdf(df, filename):
         y -= 18
         c.drawString(40, y, str(row.get("Dossier N", "")))
         c.drawString(140, y, str(row.get("Nom", "")))
-        c.drawRightString(500, y, f"${montant:,.2f}")
+        c.drawRightString(520, y, f"${montant:,.2f}")
 
+    # Total
     y -= 25
     c.setFont("Helvetica-Bold", 11)
-    c.drawRightString(500, y, f"TOTAL ESCROW : ${total:,.2f}")
+    c.drawRightString(520, y, f"TOTAL ESCROW : ${total:,.2f}")
 
     c.save()
