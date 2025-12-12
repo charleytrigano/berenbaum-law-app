@@ -170,8 +170,14 @@ cols_display = [
 
 cols_display = [c for c in cols_display if c in df.columns]
 
+df_sorted = df.sort_values(
+    by=["Dossier Parent", "Dossier N"],
+    key=lambda s: s.astype(str)
+)
+
 st.dataframe(
-    df[cols_display].sort_values("Dossier Parent"),
+    df_sorted[cols_display],
     use_container_width=True,
     height=520
 )
+
