@@ -370,3 +370,39 @@ display_cols = [
 ]
 display_cols = [c for c in display_cols if c in df.columns]
 st.dataframe(df[display_cols], width="stretch", height=380)
+
+from utils.pdf_export import export_dossier_pdf
+from utils.dossier_numbering import split_dossier_id
+import tempfile
+import os
+
+st.markdown("## 📄 Export PDF certifié")
+
+clients_df = clients.copy()
+clients_df["Dossier N"] = clients_df["Dossier N"].astype(str)
+
+parents = sorted(
+    {d.split("-")[0] for d in clients_df["Dossier N"]},
+    key=int
+)
+
+parent_choice = st.selectbox("Choisir un dossier parent", parents)
+
+if st.button("📄 Générer PDF"):
+    related = clients_df[
+        clients_df["Dossier N"].str.startswith(parent_choice)
+    ].to_dict(orient="records")
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    export_dossier_pdf(parent_choice, related, tmp.name)
+
+    with open(tmp.name, "rb") as f:
+        st.download_button(
+            label="⬇️ Télécharger le PDF",
+            data=f,
+            file_name=f"Dossier_{parent_choice}.pdf",
+            mime="application/pdf",
+        )
+
+    os.unlink(tmp.name)
+
