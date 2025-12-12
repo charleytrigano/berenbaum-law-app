@@ -4,6 +4,13 @@ import pandas as pd
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
 
+if "parent_dossier" in st.session_state:
+    mode = "Sous-dossier"
+    parent_id = st.session_state["parent_dossier"]
+    new_id = prochain_sous_dossier(parent_id)
+    del st.session_state["parent_dossier"]
+
+
 # ---------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------
