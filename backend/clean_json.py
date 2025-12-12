@@ -1,6 +1,7 @@
 import pandas as pd
+from datetime import datetime, date
 
-# Colonnes standardisées (on utilise la version CANONIQUE : "Dossier envoye")
+# Colonnes standardisées
 VALID_COLUMNS = {
     "Dossier N": None,
     "Nom": "",
@@ -19,25 +20,19 @@ VALID_COLUMNS = {
     "Date Acompte 3": "",
     "Date Acompte 4": "",
     "mode de paiement": "",
-
-    # --- STATUTS (version canonique) ---
-    "Dossier envoye": False,      # <- IMPORTANT : espace, pas underscore
-    "Dossier accepte": False,
-    "Dossier refuse": False,
-    "Dossier Annule": False,
-    "RFE": False,
-
-    # --- DATES LIÉES AUX STATUTS ---
-    "Date envoi": "",
-    "Date acceptation": "",
-    "Date refus": "",
-    "Date annulation": "",
-    "Date reclamation": "",
-
-    # --- ESCROW ---
     "Escrow": False,
     "Escrow_a_reclamer": False,
     "Escrow_reclame": False,
+    "Dossier envoye": False,
+    "Date envoi": "",
+    "Dossier accepte": False,
+    "Date acceptation": "",
+    "Dossier refuse": False,
+    "Date refus": "",
+    "Dossier Annule": False,
+    "Date annulation": "",
+    "RFE": False,
+    "Date reclamation": "",
 }
 
 
@@ -46,87 +41,50 @@ def normalize_bool(v):
         return v
     if v is None:
         return False
-    if str(v).strip().lower() in ["1", "true", "yes", "oui"]:
-        return True
+    return str(v).strip().lower() in ["1", "true", "yes", "oui"]
 
-    # -------------------------------------------------
-# 🔒 GARANTIE EXCLUSIVITÉ ESCROW (CRITIQUE)
-# -------------------------------------------------
-for c in cleaned_clients:
-    if c.get("Escrow_reclame"):
-        c["Escrow"] = False
-        c["Escrow_a_reclamer"] = False
 
-    elif c.get("Escrow_a_reclamer"):
-        c["Escrow"] = False
-        c["Escrow_reclame"] = False
-
-    elif c.get("Escrow"):
-        c["Escrow_a_reclamer"] = False
-        c["Escrow_reclame"] = False
-
-    return False
+def serialize_value(val):
+    """
+    🔒 FONCTION CRITIQUE
+    Convertit toute valeur non sérialisable JSON
+    """
+    if isinstance(val, pd.Timestamp):
+        return val.date().isoformat()
+    if isinstance(val, (datetime, date)):
+        return val.isoformat()
+    if pd.isna(val):
+        return ""
+    return val
 
 
 def clean_database(db):
     cleaned_clients = []
 
-    for original in db.get("clients", []):
-        # On travaille sur une copie pour pouvoir migrer les vieux champs
-        item = dict(original)
-
-        # ---------- MIGRATION ANCIENS NOMS -> NOUVEAUX ----------
-        # Si "Dossier_envoye" existe et "Dossier envoye" n'existe pas encore,
-        # on copie la valeur vers le champ canonique.
-        if "Dossier_envoye" in item and "Dossier envoye" not in item:
-            item["Dossier envoye"] = item["Dossier_envoye"]
-
-        # (On pourrait ajouter ici d'autres migrations si nécessaire)
-
-        # ---------- NORMALISATION SELON VALID_COLUMNS ----------
+    for item in db.get("clients", []):
         clean = {}
 
         for col, default in VALID_COLUMNS.items():
             if col in item:
                 val = item[col]
-
-                # bool
-                if isinstance(default, bool):
-                    val = normalize_bool(val)
-
-                # float
-                elif isinstance(default, float):
-                    try:
-                        val = float(val)
-                    except Exception:
-                        val = default
-                        # date → STRING ISO (JSON SAFE)
-                elif isinstance(val, pd.Timestamp):
-                        val = val.date().isoformat()
-
-                elif isinstance(default, str) and "Date" in col:
-                    try:
-                        if val in [None, "", "None"]:
-                            val = ""
-                        else:
-                            val = pd.to_datetime(val, errors="coerce")
-                            val = "" if pd.isna(val) else val.date().isoformat()
-                        except Exception:
-                        val = ""
-
-
-            
-
-   
-
-                # texte générique
-                elif isinstance(default, str):
-                    val = val if val else ""
-
-                clean[col] = val
             else:
-                # colonne manquante → valeur par défaut
-                clean[col] = default
+                val = default
+
+            # Booléens
+            if isinstance(default, bool):
+                val = normalize_bool(val)
+
+            # Floats
+            elif isinstance(default, float):
+                try:
+                    val = float(val)
+                except Exception:
+                    val = default
+
+            # Dates / Timestamp / NaT
+            val = serialize_value(val)
+
+            clean[col] = val
 
         cleaned_clients.append(clean)
 
@@ -135,4 +93,5 @@ def clean_database(db):
         "visa": db.get("visa", []),
         "escrow": db.get("escrow", []),
         "compta": db.get("compta", []),
+        "history": db.get("history", []),
     }
