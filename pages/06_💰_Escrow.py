@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
 
-import utils
-import utils.pdf_export
-st.success("utils.pdf_export import OK")
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
