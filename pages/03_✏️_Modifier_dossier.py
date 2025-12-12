@@ -3,16 +3,17 @@ import pandas as pd
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
+from utils.status_utils import normalize_bool
 
 # ---------------------------------------------------------
-# CONFIG & SIDEBAR
+# CONFIG
 # ---------------------------------------------------------
-st.set_page_config(page_title="Modifier un dossier", page_icon="✏️", layout="wide")
+st.set_page_config(page_title="✏️ Modifier un dossier", page_icon="✏️", layout="wide")
 render_sidebar()
 st.title("✏️ Modifier un dossier")
 
 # ---------------------------------------------------------
-# 🔹 Chargement base
+# LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
@@ -22,224 +23,171 @@ if not clients:
     st.stop()
 
 df = pd.DataFrame(clients)
-DOSSIER_COL = "Dossier N"
+
+# Toujours travailler en STRING pour Dossier N (xxxx, xxxx-1)
+df["Dossier N"] = df["Dossier N"].astype(str)
 
 # ---------------------------------------------------------
-# 🔹 Fonctions utilitaires
+# SELECT DOSSIER
 # ---------------------------------------------------------
-def to_float(x):
-    try:
-        return float(x)
-    except Exception:
-        return 0.0
+selected = st.selectbox(
+    "Sélectionner un dossier",
+    sorted(df["Dossier N"].unique())
+)
 
+row = df[df["Dossier N"] == selected].iloc[0].copy()
+idx = df[df["Dossier N"] == selected].index[0]
 
+# ---------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------
 def safe_date(v):
     try:
         d = pd.to_datetime(v, errors="coerce")
         return None if pd.isna(d) else d.date()
-    except Exception:
+    except:
         return None
 
-
-def norm_bool(v):
-    if isinstance(v, bool):
-        return v
-    if v is None:
-        return False
-    s = str(v).strip().lower()
-    return s in ["true", "1", "yes", "oui", "y"]
-
-
-# S’assurer que les colonnes booléennes existent
-BOOL_COLS = [
-    "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
-    "Dossier_envoye",         # forme avec underscore (celle du JSON actuel)
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "RFE",
-]
-for col in BOOL_COLS:
-    if col not in df.columns:
-        df[col] = False
-    df[col] = df[col].apply(norm_bool)
+def safe_float(v):
+    try:
+        return float(v)
+    except:
+        return 0.0
 
 # ---------------------------------------------------------
-# 🔹 Sélection dossier
+# INFORMATIONS GÉNÉRALES
 # ---------------------------------------------------------
-df[DOSSIER_COL] = pd.to_numeric(df[DOSSIER_COL], errors="coerce")
-liste = sorted(df[DOSSIER_COL].dropna().astype(int).unique())
+st.subheader(f"📄 Dossier {selected}")
 
-selected = st.selectbox("Sélectionner un dossier", liste)
-dossier = df[df[DOSSIER_COL] == selected].iloc[0].copy()
+c1, c2, c3 = st.columns(3)
+nom = c1.text_input("Nom", row.get("Nom", ""))
+date_dossier = c2.date_input("Date", safe_date(row.get("Date")))
+visa = c3.text_input("Visa", row.get("Visa", ""))
+
+c4, c5 = st.columns(2)
+categorie = c4.text_input("Catégorie", row.get("Categories", ""))
+sous_cat = c5.text_input("Sous-catégorie", row.get("Sous-categories", ""))
 
 # ---------------------------------------------------------
-# FORMULAIRE — Infos générales
+# FACTURATION
 # ---------------------------------------------------------
-st.subheader(f"Dossier n° {selected}")
+st.subheader("💰 Facturation")
 
-col1, col2, col3 = st.columns(3)
-nom = col1.text_input("Nom", dossier.get("Nom", ""))
-date_dossier = col2.date_input("Date", safe_date(dossier.get("Date")))
-categories = col3.text_input("Catégories", dossier.get("Categories", ""))
-
-col4, col5 = st.columns(2)
-sous_categories = col4.text_input("Sous-catégories", dossier.get("Sous-categories", ""))
-visa = col5.text_input("Visa", dossier.get("Visa", ""))
-
-col6, col7, col8 = st.columns(3)
-honoraires = col6.number_input(
+f1, f2, f3 = st.columns(3)
+hon = f1.number_input(
     "Montant honoraires (US $)",
-    value=to_float(dossier.get("Montant honoraires (US $)", 0)),
+    value=safe_float(row.get("Montant honoraires (US $)", 0))
 )
-frais = col7.number_input(
+frais = f2.number_input(
     "Autres frais (US $)",
-    value=to_float(dossier.get("Autres frais (US $)", 0)),
+    value=safe_float(row.get("Autres frais (US $)", 0))
 )
-col8.number_input("Total facturé", value=honoraires + frais, disabled=True)
-
-commentaire = st.text_area("📝 Commentaire", dossier.get("Commentaire", ""))
+f3.number_input("Total facturé", hon + frais, disabled=True)
 
 # ---------------------------------------------------------
-# 🏦 Acomptes + Modes + Dates
+# ACOMPTES COMPLETS (montant + date + mode)
 # ---------------------------------------------------------
-st.subheader("🏦 Acomptes et modes de règlement")
+st.subheader("🏦 Paiements")
 
 modes = ["", "Chèque", "CB", "Virement", "Venmo"]
-
-ac_inputs = {}
-mode_inputs = {}
-date_inputs = {}
+total_encaisse = 0.0
 
 for i in range(1, 5):
     st.markdown(f"### Acompte {i}")
+    a1, a2, a3 = st.columns(3)
 
-    colA, colM, colD = st.columns(3)
-
-    ac_inputs[i] = colA.number_input(
+    montant = a1.number_input(
         f"Montant Acompte {i}",
-        value=to_float(dossier.get(f"Acompte {i}", 0)),
+        value=safe_float(row.get(f"Acompte {i}", 0)),
+        key=f"a{i}"
     )
 
-    mode_inputs[i] = colM.selectbox(
+    date_paiement = a2.date_input(
+        f"Date Acompte {i}",
+        value=safe_date(row.get(f"Date Acompte {i}")),
+        key=f"d{i}"
+    )
+
+    mode = a3.selectbox(
         f"Mode Acompte {i}",
-        options=modes,
-        index=(
-            modes.index(dossier.get(f"Mode Acompte {i}", ""))
-            if dossier.get(f"Mode Acompte {i}", "") in modes
-            else 0
-        ),
+        modes,
+        index=modes.index(row.get(f"Mode Acompte {i}", ""))
+        if row.get(f"Mode Acompte {i}", "") in modes else 0,
+        key=f"m{i}"
     )
 
-    # Dans ton JSON actuel les champs sont "Date Acompte X"
-    date_inputs[i] = colD.date_input(
-        f"Date Paiement {i}",
-        value=safe_date(dossier.get(f"Date Acompte {i}")),
-    )
+    df.loc[idx, f"Acompte {i}"] = montant
+    df.loc[idx, f"Date Acompte {i}"] = str(date_paiement) if date_paiement else ""
+    df.loc[idx, f"Mode Acompte {i}"] = mode
+
+    total_encaisse += montant
+
+solde = (hon + frais) - total_encaisse
+st.info(f"💵 Total encaissé : ${total_encaisse:,.2f} — Solde dû : ${solde:,.2f}")
 
 # ---------------------------------------------------------
-# 💰 Escrow
+# ESCROW
 # ---------------------------------------------------------
-st.subheader("💰 Escrow")
+st.subheader("💼 Escrow")
 
-escrow_flag = st.checkbox(
-    "Escrow actif ?",
-    value=norm_bool(dossier.get("Escrow", False)),
+escrow_actif = st.checkbox(
+    "Escrow actif",
+    value=normalize_bool(row.get("Escrow", False))
 )
 
+escrow_reclamer = st.checkbox(
+    "Escrow à réclamer",
+    value=normalize_bool(row.get("Escrow_a_reclamer", False))
+)
+
+escrow_reclame = st.checkbox(
+    "Escrow réclamé",
+    value=normalize_bool(row.get("Escrow_reclame", False))
+)
+
+st.caption("ℹ️ Le montant en escrow correspond uniquement à **Acompte 1**")
+
 # ---------------------------------------------------------
-# 📦 Statuts
+# STATUTS
 # ---------------------------------------------------------
 st.subheader("📦 Statuts du dossier")
 
-colS1, colS2, colS3, colS4, colS5 = st.columns(5)
+s1, s2, s3, s4, s5 = st.columns(5)
 
-envoye = colS1.checkbox(
-    "Dossier envoyé",
-    norm_bool(dossier.get("Dossier_envoye", False)),
-)
-accepte = colS2.checkbox(
-    "Dossier accepté",
-    norm_bool(dossier.get("Dossier accepte", False)),
-)
-refuse = colS3.checkbox(
-    "Dossier refusé",
-    norm_bool(dossier.get("Dossier refuse", False)),
-)
-annule = colS4.checkbox(
-    "Dossier annulé",
-    norm_bool(dossier.get("Dossier Annule", False)),
-)
-rfe = colS5.checkbox(
-    "RFE",
-    norm_bool(dossier.get("RFE", False)),
-)
-
-colT1, colT2, colT3, colT4, colT5 = st.columns(5)
-date_envoye = colT1.date_input("Date envoi", safe_date(dossier.get("Date envoi")))
-date_accepte = colT2.date_input(
-    "Date acceptation", safe_date(dossier.get("Date acceptation"))
-)
-date_refuse = colT3.date_input("Date refus", safe_date(dossier.get("Date refus")))
-date_annule = colT4.date_input(
-    "Date annulation", safe_date(dossier.get("Date annulation"))
-)
-date_rfe = colT5.date_input(
-    "Date RFE", safe_date(dossier.get("Date reclamation"))
-)
+envoye = s1.checkbox("Envoyé", normalize_bool(row.get("Dossier envoye", False)))
+accepte = s2.checkbox("Accepté", normalize_bool(row.get("Dossier accepte", False)))
+refuse = s3.checkbox("Refusé", normalize_bool(row.get("Dossier refuse", False)))
+annule = s4.checkbox("Annulé", normalize_bool(row.get("Dossier Annule", False)))
+rfe = s5.checkbox("RFE", normalize_bool(row.get("RFE", False)))
 
 # ---------------------------------------------------------
-# 🔥 SAUVEGARDE DES MODIFICATIONS
+# SAVE
 # ---------------------------------------------------------
-if st.button("💾 Enregistrer les modifications", type="primary"):
-    idx = df[df[DOSSIER_COL] == selected].index[0]
+if st.button("💾 Enregistrer", type="primary"):
 
-    # --- Infos générales ---
     df.loc[idx, "Nom"] = nom
-    df.loc[idx, "Date"] = date_dossier.isoformat() if date_dossier else ""
-    df.loc[idx, "Categories"] = categories
-    df.loc[idx, "Sous-categories"] = sous_categories
+    df.loc[idx, "Date"] = str(date_dossier)
     df.loc[idx, "Visa"] = visa
+    df.loc[idx, "Categories"] = categorie
+    df.loc[idx, "Sous-categories"] = sous_cat
 
-    df.loc[idx, "Montant honoraires (US $)"] = float(honoraires)
-    df.loc[idx, "Autres frais (US $)"] = float(frais)
-    df.loc[idx, "Commentaire"] = commentaire
+    df.loc[idx, "Montant honoraires (US $)"] = hon
+    df.loc[idx, "Autres frais (US $)"] = frais
 
-    # --- Acomptes ---
-    for i in range(1, 5):
-        df.loc[idx, f"Acompte {i}"] = float(ac_inputs[i])
-        df.loc[idx, f"Mode Acompte {i}"] = mode_inputs[i]
-        d = date_inputs[i]
-        df.loc[idx, f"Date Acompte {i}"] = d.isoformat() if d else ""
+    # Statuts
+    df.loc[idx, "Dossier envoye"] = envoye
+    df.loc[idx, "Dossier accepte"] = accepte
+    df.loc[idx, "Dossier refuse"] = refuse
+    df.loc[idx, "Dossier Annule"] = annule
+    df.loc[idx, "RFE"] = rfe
 
-    # --- Statuts : on écrit DIRECTEMENT dans les champs du JSON ---
-    df.loc[idx, "Dossier_envoye"] = bool(envoye)   # forme actuelle du JSON
-    df.loc[idx, "Dossier accepte"] = bool(accepte)
-    df.loc[idx, "Dossier refuse"] = bool(refuse)
-    df.loc[idx, "Dossier Annule"] = bool(annule)
-    df.loc[idx, "RFE"] = bool(rfe)
+    # Escrow — logique propre
+    df.loc[idx, "Escrow"] = escrow_actif
+    df.loc[idx, "Escrow_a_reclamer"] = escrow_reclamer and not escrow_reclame
+    df.loc[idx, "Escrow_reclame"] = escrow_reclame
 
-    df.loc[idx, "Date envoi"] = date_envoye.isoformat() if date_envoye else ""
-    df.loc[idx, "Date acceptation"] = date_accepte.isoformat() if date_accepte else ""
-    df.loc[idx, "Date refus"] = date_refuse.isoformat() if date_refuse else ""
-    df.loc[idx, "Date annulation"] = date_annule.isoformat() if date_annule else ""
-    df.loc[idx, "Date reclamation"] = date_rfe.isoformat() if date_rfe else ""
-
-    # --- Escrow logique ---
-    if envoye:
-        # dès que dossier envoyé → Escrow à réclamer
-        df.loc[idx, "Escrow"] = False
-        df.loc[idx, "Escrow_a_reclamer"] = True
-        df.loc[idx, "Escrow_reclame"] = False
-    else:
-        df.loc[idx, "Escrow"] = bool(escrow_flag)
-
-    # --- Sauvegarde JSON ---
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
-    st.success("✔ Dossier mis à jour avec succès.")
+    st.success("✔ Dossier mis à jour avec succès")
     st.rerun()
