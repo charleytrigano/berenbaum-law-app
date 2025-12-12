@@ -10,6 +10,11 @@ from components.export_pdf import generate_pdf
 
 st.set_page_config(page_title="📄 Fiche dossier", page_icon="📄", layout="wide")
 
+if st.button("➕ Créer un sous-dossier"):
+    st.session_state["parent_dossier"] = str(row["Dossier N"])
+    st.switch_page("pages/02_➕_Nouveau_dossier.py")
+
+
 # ---------------------------------------------------------
 # 🔹 Charger base
 # ---------------------------------------------------------
