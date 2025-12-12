@@ -100,10 +100,24 @@ def clean_database(db):
                         val = float(val)
                     except Exception:
                         val = default
+                        # date → STRING ISO (JSON SAFE)
+                elif isinstance(val, pd.Timestamp):
+                        val = val.date().isoformat()
 
-                # dates (on reste en string propre)
                 elif isinstance(default, str) and "Date" in col:
-                    val = val if val else ""
+                    try:
+                        if val in [None, "", "None"]:
+                            val = ""
+                        else:
+                            val = pd.to_datetime(val, errors="coerce")
+                            val = "" if pd.isna(val) else val.date().isoformat()
+                        except Exception:
+                        val = ""
+
+
+            
+
+   
 
                 # texte générique
                 elif isinstance(default, str):
