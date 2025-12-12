@@ -2,39 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from utils.sidebar import render_sidebar
-from backend.dropbox_utils import load_databasedef kpi_small(title, value):
-    st.markdown(
-        f"""
-        <div style="
-            background:#111;
-            border:1px solid #333;
-            border-radius:10px;
-            padding:10px 12px;
-            text-align:center;
-        ">
-            <div style="
-                font-size:13px;
-                color:#D8B86A;
-                margin-bottom:4px;
-                font-weight:500;
-            ">
-                {title}
-            </div>
-            <div style="
-                font-size:20px;
-                font-weight:700;
-                color:#FFD777;
-                line-height:1.2;
-            ">
-                {value}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-
+from backend.dropbox_utils import load_database
 
 # ---------------------------------------------------------
 # CONFIG & SIDEBAR
