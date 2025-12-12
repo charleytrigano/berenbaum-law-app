@@ -1,223 +1,93 @@
 import streamlit as st
-from utils.sidebar import render_sidebar
-render_sidebar()
 import pandas as pd
+
+from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
-from components.export_pdf import generate_pdf
-
-
-
-
-st.set_page_config(page_title="📄 Fiche dossier", page_icon="📄", layout="wide")
-
-if st.button("➕ Créer un sous-dossier"):
-    st.session_state["parent_dossier"] = str(row["Dossier N"])
-    st.switch_page("pages/02_➕_Nouveau_dossier.py")
-
+from utils.consolidation_utils import (
+    get_family,
+    compute_consolidated_metrics
+)
 
 # ---------------------------------------------------------
-# 🔹 Charger base
+# CONFIG
+# ---------------------------------------------------------
+st.set_page_config(page_title="📄 Fiche dossier", page_icon="📄", layout="wide")
+render_sidebar()
+st.title("📄 Fiche dossier")
+
+# ---------------------------------------------------------
+# LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-df = pd.DataFrame(clients)
 
-if df.empty:
-    st.error("Aucun dossier trouvé.")
+if not clients:
+    st.warning("Aucun dossier trouvé.")
     st.stop()
 
-# ---------------------------------------------------------
-# 🔹 Normalisation Dossier N
-# ---------------------------------------------------------
-df["Dossier N"] = pd.to_numeric(df["Dossier N"], errors="coerce").astype("Int64")
-nums = sorted(df["Dossier N"].dropna().astype(int).unique())
+df = pd.DataFrame(clients)
+df["Dossier N"] = df["Dossier N"].astype(str)
 
 # ---------------------------------------------------------
-# 🔹 Sélection dossier
+# SELECTION DOSSIER
 # ---------------------------------------------------------
-st.header("📄 Fiche dossier")
-selected = st.selectbox("Sélectionner un dossier :", nums)
+dossier_ids = sorted(df["Dossier N"].unique())
+selected_id = st.selectbox("Sélectionner un dossier", dossier_ids)
 
-row = df[df["Dossier N"] == selected].iloc[0]
-
-# ---------------------------------------------------------
-# UTILS
-# ---------------------------------------------------------
-def money(x):
-    try:
-        return f"${float(x):,.2f}"
-    except:
-        return "$0.00"
-
-def normalize_date(x):
-    return "" if x in ["None", None, "", "nan"] else str(x)
+dossier = df[df["Dossier N"] == selected_id].iloc[0]
 
 # ---------------------------------------------------------
-# 🔹 TITRE
+# INFOS DOSSIER
 # ---------------------------------------------------------
-st.markdown(f"""
-# 🧾 Dossier {row['Dossier N']}
-### 👤 {row['Nom']}
-""")
+st.subheader("📌 Informations principales")
 
-# ---------------------------------------------------------
-# 🔹 FACTURATION + REGLEMENTS (sur 2 colonnes)
-# ---------------------------------------------------------
-st.subheader("💰 Facturation & Paiements")
+c1, c2, c3 = st.columns(3)
+c1.write(f"**Dossier N** : {dossier['Dossier N']}")
+c2.write(f"**Nom** : {dossier['Nom']}")
+c3.write(f"**Date** : {dossier['Date']}")
 
-# Montants
-hon = float(row.get("Montant honoraires (US $)", 0))
-frais = float(row.get("Autres frais (US $)", 0))
-total = hon + frais
-
-# Acomptes
-ac1 = float(row.get("Acompte 1", 0))
-ac2 = float(row.get("Acompte 2", 0))
-ac3 = float(row.get("Acompte 3", 0))
-ac4 = float(row.get("Acompte 4", 0))
-
-total_paid = ac1 + ac2 + ac3 + ac4
-solde = total - total_paid
-
-# Badge paiement
-if solde <= 0:
-    badge_pay = "🟢 **Payé**"
-elif total_paid == 0:
-    badge_pay = "🔴 **Impayé**"
-else:
-    badge_pay = "🟡 **Partiellement payé**"
-
-colF1, colF2 = st.columns(2)
-
-with colF1:
-    st.markdown("### 💵 Facturation")
-    st.write(f"**Honoraires :** {money(hon)}")
-    st.write(f"**Autres frais :** {money(frais)}")
-    st.write(f"**Total :** {money(total)}")
-    st.write(f"### 💳 Paiements : {badge_pay}")
-    st.write(f"**Total payé :** {money(total_paid)}")
-    st.write(f"**Solde restant :** {money(solde)}")
-
-with colF2:
-    st.markdown("### 🏦 Acomptes & Modes de règlement")
-
-    def display_acompte(label, val, date, mode):
-        st.markdown(f"""
-        **{label} :** {money(val)}  
-        📅 *{normalize_date(date)}*  
-        💳 *{mode if mode else "—"}*
-        """)
-
-    display_acompte("Acompte 1", ac1, row.get("Date Acompte 1"), row.get("mode de paiement"))
-    display_acompte("Acompte 2", ac2, row.get("Date Acompte 2"), row.get("mode de paiement2"))
-    display_acompte("Acompte 3", ac3, row.get("Date Acompte 3"), row.get("mode de paiement3"))
-    display_acompte("Acompte 4", ac4, row.get("Date Acompte 4"), row.get("mode de paiement4"))
+c4, c5, c6 = st.columns(3)
+c4.write(f"**Catégorie** : {dossier['Categories']}")
+c5.write(f"**Sous-catégorie** : {dossier['Sous-categories']}")
+c6.write(f"**Visa** : {dossier['Visa']}")
 
 # ---------------------------------------------------------
-# 📝 COMMENTAIRE
-# ---------------------------------------------------------
-
-st.subheader("📝 Commentaire")
-
-# On récupère proprement le commentaire
-commentaire = str(row.get("Commentaire", "") or "").strip()
-
-if commentaire:
-    st.markdown(
-        f"""
-        <div style="
-            background-color:#2b2b2b;
-            padding:15px;
-            border-radius:10px;
-            border:1px solid #444;
-            color:white;
-            font-size:15px;
-        ">
-            {commentaire}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.info("Aucun commentaire n’a été enregistré pour ce dossier.")
-
-
-# ---------------------------------------------------------
-# 🔹 INFORMATIONS GÉNÉRALES
+# CONSOLIDATION PARENT / ENFANTS
 # ---------------------------------------------------------
 st.markdown("---")
-st.subheader("📚 Informations générales")
+st.subheader("💼 Vue financière consolidée")
 
-st.write(f"**Catégorie :** {row.get('Categories', '')}")
-st.write(f"**Sous-catégorie :** {row.get('Sous-categories', '')}")
-st.write(f"**Visa :** {row.get('Visa', '')}")
-st.write(f"**Date de création :** {normalize_date(row.get('Date'))}")
+family_df = get_family(df, dossier["Dossier N"])
+metrics = compute_consolidated_metrics(family_df)
 
-# ---------------------------------------------------------
-# 🔹 STATUTS & ESCROW
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📦 Statuts du dossier")
+k1, k2, k3 = st.columns(3)
+k1.metric("Total facturé", f"${metrics['total_facture']:,.2f}")
+k2.metric("Total encaissé", f"${metrics['total_encaisse']:,.2f}")
+k3.metric("Solde global dû", f"${metrics['solde_du']:,.2f}")
 
-colS1, colS2, colS3 = st.columns(3)
-
-with colS1:
-    st.write("**Envoyé :**", "✅" if row.get("Dossier envoye") else "❌")
-    st.write("**Accepté :**", "✅" if row.get("Dossier accepte") else "❌")
-
-with colS2:
-    st.write("**Refusé :**", "❌" if not row.get("Dossier refuse") else "⛔")
-    st.write("**RFE :**", "⚠️" if row.get("RFE") else "❌")
-
-with colS3:
-    st.write("**Escrow en cours :**", "💰" if row.get("Escrow") else "—")
-    st.write("**Escrow à réclamer :**", "📬" if row.get("Escrow_a_reclamer") else "—")
-    st.write("**Escrow réclamé :**", "✔️" if row.get("Escrow_reclame") else "—")
+k4, k5, k6 = st.columns(3)
+k4.metric("Escrow total", f"${metrics['escrow_total']:,.2f}")
+k5.metric("Escrow à réclamer", f"${metrics['escrow_a_reclamer']:,.2f}")
+k6.metric("Escrow réclamé", f"${metrics['escrow_reclame']:,.2f}")
 
 # ---------------------------------------------------------
-# 🔹 TIMELINE
+# DETAILS PAR DOSSIER
 # ---------------------------------------------------------
-st.markdown("---")
-st.subheader("🕓 Timeline du dossier")
+st.markdown("### 📋 Détails par dossier (parent + sous-dossiers)")
 
-timeline_html = "<div style='line-height:1.8;'>"
-
-if row.get("Date"):
-    timeline_html += f"<div>📄 <b>Dossier créé :</b> {row['Date']}</div>"
-
-if row.get("Escrow"):
-    timeline_html += "<div>💰 <b>Escrow ouvert</b></div>"
-
-if row.get("Dossier envoye"):
-    timeline_html += f"<div>📤 <b>Dossier envoyé :</b> {row.get('Date envoi','')}</div>"
-
-timeline_html += "</div>"
-
-st.markdown(timeline_html, unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# 🔹 ACTIONS
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("⚙️ Actions")
-
-colA1, colA2, colA3 = st.columns(3)
-
-with colA1:
-    if st.button("✏️ Modifier ce dossier", key="btn_edit"):
-        st.switch_page("pages/03_✏️_Modifier_dossier.py")
-
-with colA2:
-    if st.button("📄 Export PDF", key="btn_pdf"):
-        fname = generate_pdf(row)
-        with open(fname, "rb") as f:
-            st.download_button(
-                label="⬇ Télécharger le PDF",
-                data=f,
-                file_name=f"Dossier_{row['Dossier N']}.pdf",
-                mime="application/pdf",
-                key="btn_pdf_dl"
-            )
-
-with colA3:
-    st.button("🗑️ Supprimer", key="btn_delete")
+st.dataframe(
+    family_df[
+        [
+            "Dossier N",
+            "Montant honoraires (US $)",
+            "Acompte 1",
+            "Acompte 2",
+            "Acompte 3",
+            "Acompte 4",
+            "Escrow",
+            "Escrow_a_reclamer",
+            "Escrow_reclame",
+        ]
+    ],
+    use_container_width=True,
+)
