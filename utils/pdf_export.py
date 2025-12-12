@@ -1,83 +1,53 @@
-# utils/pdf_export.py
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-)
-from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.units import cm
-from utils.timeline_builder import build_timeline
-import os
+from reportlab.pdfgen import canvas
+from datetime import datetime
 
 
-def export_dossier_pdf(dossier: dict, output_path: str):
-    styles = getSampleStyleSheet()
-    story = []
+def export_escrow_pdf(df, filename):
+    """
+    Génère un PDF simple et fiable des escrows fournis.
+    df doit contenir : Dossier N, Nom, Montant Escrow
+    """
 
-    # Logo
-    logo_path = "assets/logo.png"
-    if os.path.exists(logo_path):
-        story.append(Image(logo_path, width=4*cm, height=4*cm))
+    c = canvas.Canvas(filename, pagesize=A4)
+    width, height = A4
 
-    story.append(Spacer(1, 12))
+    y = height - 40
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(40, y, "Berenbaum Law — Escrow Report")
 
-    # Titre
-    story.append(Paragraph(
-        f"<b>Dossier {dossier.get('Dossier N')}</b> — {dossier.get('Nom')}",
-        styles["Title"]
-    ))
+    y -= 25
+    c.setFont("Helvetica", 10)
+    c.drawString(40, y, f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
-    story.append(Spacer(1, 12))
+    y -= 30
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(40, y, "Dossier")
+    c.drawString(140, y, "Client")
+    c.drawRightString(500, y, "Montant (USD)")
 
-    # Infos générales
-    info = [
-        ["Catégorie", dossier.get("Categories", "")],
-        ["Sous-catégorie", dossier.get("Sous-categories", "")],
-        ["Visa", dossier.get("Visa", "")],
-        ["Date création", dossier.get("Date", "")],
-    ]
+    y -= 15
+    c.line(40, y, 500, y)
 
-    table = Table(info, colWidths=[6*cm, 10*cm])
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-        ("BACKGROUND", (0,0), (0,-1), colors.whitesmoke),
-    ]))
-    story.append(table)
-    story.append(Spacer(1, 16))
+    total = 0
 
-    # Finances
-    total_facture = float(dossier.get("Montant honoraires (US $)", 0)) + float(dossier.get("Autres frais (US $)", 0))
-    total_encaisse = sum(float(dossier.get(f"Acompte {i}", 0) or 0) for i in range(1, 5))
-    solde = total_facture - total_encaisse
+    c.setFont("Helvetica", 10)
+    for _, row in df.iterrows():
+        if y < 60:
+            c.showPage()
+            y = height - 40
+            c.setFont("Helvetica", 10)
 
-    finance = [
-        ["Montant honoraires", f"${dossier.get('Montant honoraires (US $)', 0):,.2f}"],
-        ["Autres frais", f"${dossier.get('Autres frais (US $)', 0):,.2f}"],
-        ["Total facturé", f"${total_facture:,.2f}"],
-        ["Total encaissé", f"${total_encaisse:,.2f}"],
-        ["Solde dû", f"${solde:,.2f}"],
-    ]
+        montant = float(row.get("Montant Escrow", 0))
+        total += montant
 
-    table = Table(finance, colWidths=[6*cm, 10*cm])
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-        ("BACKGROUND", (0,0), (0,-1), colors.lightgrey),
-    ]))
-    story.append(table)
-    story.append(Spacer(1, 16))
+        y -= 18
+        c.drawString(40, y, str(row.get("Dossier N", "")))
+        c.drawString(140, y, row.get("Nom", ""))
+        c.drawRightString(500, y, f"${montant:,.2f}")
 
-    # Timeline
-    story.append(Paragraph("<b>Timeline du dossier</b>", styles["Heading2"]))
-    story.append(Spacer(1, 8))
+    y -= 25
+    c.setFont("Helvetica-Bold", 11)
+    c.drawRightString(500, y, f"TOTAL ESCROW : ${total:,.2f}")
 
-    timeline = build_timeline(dossier)
-
-    for ev in timeline:
-        line = f"{ev['date'].date()} — {ev['label']}"
-        if ev.get("amount"):
-            line += f" — ${ev['amount']:,.2f}"
-        story.append(Paragraph(line, styles["Normal"]))
-
-    # PDF
-    doc = SimpleDocTemplate(output_path, pagesize=A4)
-    doc.build(story)
+    c.save()
