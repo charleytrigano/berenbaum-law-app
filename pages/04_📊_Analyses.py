@@ -1,194 +1,104 @@
 import streamlit as st
 import pandas as pd
 
-
-from backend.dropbox_utils import load_database
-from components.kpi_cards import kpi_card
-from components.analysis_charts import (
-    monthly_hist, multi_year_line, category_donut,
-    heatmap_month, category_bars
-)
 from utils.sidebar import render_sidebar
+from backend.dropbox_utils import load_database
+from utils.dossier_hierarchy import add_hierarchy_columns
+from components.analysis_charts import (
+    monthly_hist,
+    multi_year_line,
+    category_donut,
+    heatmap_month,
+    category_bars,
+)
 
 # ---------------------------------------------------------
-# 🎨 SIDEBAR PREMIUM (Logo + Navigation)
-# ---------------------------------------------------------
-render_sidebar()
-
-# ---------------------------------------------------------
-# ⚙️ CONFIG
+# CONFIG
 # ---------------------------------------------------------
 st.set_page_config(page_title="📊 Analyses", page_icon="📊", layout="wide")
-st.title("📊 Analyses statistiques – Tableau de bord avancé")
+render_sidebar()
+st.title("📊 Analyses statistiques")
 
 # ---------------------------------------------------------
-# 📥 CHARGEMENT BASE
+# LOAD
 # ---------------------------------------------------------
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+df = pd.DataFrame(db.get("clients", []))
 
-if clients.empty:
-    st.error("Aucun dossier trouvé.")
+if df.empty:
     st.stop()
 
-# ---------------------------------------------------------
-# 🧹 NORMALISATION DES COLONNES
-# ---------------------------------------------------------
-rename_statuts = {
-    "Dossier accepté": "Dossier accepte",
-    "Dossier Accepté": "Dossier accepte",
-    "Dossier refuse": "Dossier refuse",
-    "Dossier refusé": "Dossier refuse",
-    "Dossier Refusé": "Dossier refuse",
-    "Dossier annulé": "Dossier Annule",
-    "Dossier Annulé": "Dossier Annule"
-}
-
-clients.rename(columns=rename_statuts, inplace=True)
-
-# Colonnes à sécuriser
-statut_cols = ["Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"]
-
-for col in statut_cols:
-    if col not in clients.columns:
-        clients[col] = False
-    clients[col] = clients[col].apply(lambda x: str(x).lower() in ["true", "1", "yes", "oui"])
-
-# Dates
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
-clients["Année"] = clients["Date"].dt.year
-clients["Mois"] = clients["Date"].dt.to_period("M").astype(str)
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+df["Année"] = df["Date"].dt.year
+df["Mois"] = df["Date"].dt.to_period("M").astype(str)
+df = add_hierarchy_columns(df)
 
 # ---------------------------------------------------------
-# 🎛️ FILTRES AVANCÉS
+# FILTRES
 # ---------------------------------------------------------
-st.subheader("🎛️ Filtres avancés")
+st.subheader("🎛️ Filtres")
 
-col1, col2, col3, col4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-# Catégories
-categories = ["Tous"] + sorted([c for c in clients["Categories"].dropna().unique() if c != ""])
-cat = col1.selectbox("Catégorie", categories)
+annees = sorted(df["Année"].dropna().unique())
+annee = c1.multiselect("Année", annees, default=annees)
 
-# Sous-catégories dépendantes
-if cat != "Tous":
-    souscats = ["Tous"] + sorted(clients[clients["Categories"] == cat]["Sous-categories"].dropna().unique())
-else:
-    souscats = ["Tous"] + sorted(clients["Sous-categories"].dropna().unique())
-
-sous = col2.selectbox("Sous-catégorie", souscats)
-
-# Visa dépendant
-if sous != "Tous":
-    visas = ["Tous"] + sorted(clients[clients["Sous-categories"] == sous]["Visa"].dropna().unique())
-else:
-    visas = ["Tous"] + sorted(clients["Visa"].dropna().unique())
-
-visa = col3.selectbox("Visa", visas)
-
-# Statut
-statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
-statut = col4.selectbox("Statut du dossier", statuts)
-
-# ---------------------------------------------------------
-# 🔍 APPLICATION DES FILTRES
-# ---------------------------------------------------------
-df = clients.copy()
+cats = ["Tous"] + sorted(df["Categories"].dropna().unique())
+cat = c2.selectbox("Catégorie", cats)
 
 if cat != "Tous":
     df = df[df["Categories"] == cat]
 
+souscats = ["Tous"] + sorted(df["Sous-categories"].dropna().unique())
+sous = c3.selectbox("Sous-catégorie", souscats)
+
 if sous != "Tous":
     df = df[df["Sous-categories"] == sous]
+
+visas = ["Tous"] + sorted(df["Visa"].dropna().unique())
+visa = c4.selectbox("Visa", visas)
 
 if visa != "Tous":
     df = df[df["Visa"] == visa]
 
-# Filtre statut
-mapping = {
-    "Envoyé": "Dossier envoye",
-    "Accepté": "Dossier accepte",
-    "Refusé": "Dossier refuse",
-    "Annulé": "Dossier Annule",
-    "RFE": "RFE"
-}
-
-if statut != "Tous":
-    df = df[df[mapping[statut]] == True]
+df = df[df["Année"].isin(annee)]
 
 # ---------------------------------------------------------
-# 📆 COMPARAISONS TEMPORELLES
+# KPI
 # ---------------------------------------------------------
-st.subheader("📆 Comparaisons temporelles")
+st.subheader("📈 KPI filtrés")
 
-colT1, colT2 = st.columns(2)
+k1, k2, k3, k4 = st.columns(4)
 
-periode_type = colT1.selectbox(
-    "Type de période",
-    ["Mois", "Trimestre", "Semestre", "Année"]
-)
-
-years = sorted(df["Année"].dropna().unique())
-selected_years = colT2.multiselect(
-    "Comparer jusqu’à 5 années",
-    years,
-    default=years[-2:] if len(years) >= 2 else years
-)
-
-# Filtrage temporel final
-df_grouped = df[df["Année"].isin(selected_years)]
+with k1:
+    kpi_card("Dossiers", len(df), "📁")
+with k2:
+    kpi_card("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}", "💼")
+with k3:
+    kpi_card("Encaissé", f"${df[['Acompte 1','Acompte 2','Acompte 3','Acompte 4']].sum().sum():,.0f}", "🏦")
+with k4:
+    kpi_card("Escrow", f"${df[df['Escrow']==True]['Acompte 1'].sum():,.0f}", "🔒")
 
 # ---------------------------------------------------------
-# 📈 KPI
+# GRAPHIQUES
 # ---------------------------------------------------------
-st.subheader("📈 Indicateurs clés")
+st.subheader("📊 Graphiques")
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-
-with c1: kpi_card("Total dossiers filtrés", len(df_grouped), "📁")
-with c2: kpi_card("Chiffre d’affaires", int(df_grouped["Montant honoraires (US $)"].sum()), "💰")
-with c3: kpi_card("Dossiers envoyés", int(df_grouped["Dossier envoye"].sum()), "📤")
-with c4: kpi_card("Acceptés", int(df_grouped["Dossier accepte"].sum()), "✅")
-with c5: kpi_card("Refusés", int(df_grouped["Dossier refuse"].sum()), "❌")
-with c6: kpi_card("Escrow", int(df_grouped["Escrow"].sum()), "💼")
-
-# ---------------------------------------------------------
-# 📊 GRAPHES
-# ---------------------------------------------------------
-st.subheader("📊 Graphiques interactifs")
-
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📅 Histogramme mensuel",
-    "📈 Courbes multi-années",
-    "🎯 Répartition catégories",
-    "🔥 Heatmap activité",
-    "📊 Revenus par catégories"
+t1, t2, t3, t4, t5 = st.tabs([
+    "📅 Mensuel",
+    "📈 Multi-années",
+    "🎯 Catégories",
+    "🔥 Heatmap",
+    "📊 Revenus",
 ])
 
-with tab1:
-    st.plotly_chart(monthly_hist(df_grouped), use_container_width=True)
-
-with tab2:
-    st.plotly_chart(multi_year_line(df_grouped), use_container_width=True)
-
-with tab3:
-    st.plotly_chart(category_donut(df_grouped), use_container_width=True)
-
-with tab4:
-    st.plotly_chart(heatmap_month(df_grouped), use_container_width=True)
-
-with tab5:
-    st.plotly_chart(category_bars(df_grouped), use_container_width=True)
-
-# ---------------------------------------------------------
-# 📋 TABLEAU FINAL
-# ---------------------------------------------------------
-st.subheader("📋 Dossiers filtrés")
-
-show_cols = [
-    "Dossier N", "Nom", "Date", "Categories", "Sous-categories",
-    "Visa", "Montant honoraires (US $)", "Dossier envoye",
-    "Dossier accepte", "Dossier refuse", "Escrow"
-]
-
-st.dataframe(df_grouped[show_cols], height=400, use_container_width=True)
+with t1:
+    st.plotly_chart(monthly_hist(df), use_container_width=True)
+with t2:
+    st.plotly_chart(multi_year_line(df), use_container_width=True)
+with t3:
+    st.plotly_chart(category_donut(df), use_container_width=True)
+with t4:
+    st.plotly_chart(heatmap_month(df), use_container_width=True)
+with t5:
+    st.plotly_chart(category_bars(df), use_container_width=True)
