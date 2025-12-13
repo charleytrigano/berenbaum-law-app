@@ -23,34 +23,6 @@ if clients.empty:
     st.stop()
 
 # ---------------------------------------------------------
-# 🔧 HELPERS DOSSIER N (parent / sous-dossier)
-# ---------------------------------------------------------
-def split_dossier_n(val):
-    """
-    12937     -> parent=12937, index=0
-    12937-1   -> parent=12937, index=1
-    """
-    if pd.isna(val):
-        return (0, 0)
-
-    s = str(val)
-    if "-" in s:
-        p, i = s.split("-", 1)
-        try:
-            return int(p), int(i)
-        except:
-            return 0, 0
-    else:
-        try:
-            return int(s), 0
-        except:
-            return 0, 0
-
-
-clients["Dossier Parent"] = clients["Dossier N"].apply(lambda x: split_dossier_n(x)[0])
-clients["Dossier Index"] = clients["Dossier N"].apply(lambda x: split_dossier_n(x)[1])
-
-# ---------------------------------------------------------
 # NORMALISATION NUMÉRIQUE
 # ---------------------------------------------------------
 for col in [
@@ -93,10 +65,9 @@ cat = f1.selectbox(
     ["Toutes"] + sorted(clients["Categories"].dropna().unique().tolist()),
 )
 
+df = clients.copy()
 if cat != "Toutes":
-    df = clients[clients["Categories"] == cat]
-else:
-    df = clients.copy()
+    df = df[df["Categories"] == cat]
 
 sous = f2.selectbox(
     "Sous-catégorie",
@@ -127,7 +98,9 @@ if statut != "Tous":
         "Annulé": "Dossier Annule",
         "RFE": "RFE",
     }
-    df = df[df[mapping[statut]] == True]
+    col_statut = mapping.get(statut)
+    if col_statut in df.columns:
+        df = df[df[col_statut] == True]
 
 # ---------------------------------------------------------
 # KPI — UNE SEULE LIGNE (TAILLE RÉDUITE)
@@ -136,47 +109,35 @@ st.subheader("📈 Indicateurs clés")
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
-kpi_card(
-    "Nombre de dossiers",
-    len(df),
-    "📁",
-    help_text="Dossiers principaux + sous-dossiers",
-)
+kpi_card("Nombre de dossiers", len(df), "📁")
+kpi_card("Honoraires", f"${df['Montant honoraires (US $)'].sum():,.0f}", "💰")
+kpi_card("Autres frais", f"${df['Autres frais (US $)'].sum():,.0f}", "➕")
+kpi_card("Total facturé", f"${df['Total facturé'].sum():,.0f}", "🧾")
+kpi_card("Total encaissé", f"${df['Total encaissé'].sum():,.0f}", "🏦")
+kpi_card("Solde dû", f"${df['Solde dû'].sum():,.0f}", "⚠️")
 
-kpi_card(
-    "Honoraires",
-    f"${df['Montant honoraires (US $)'].sum():,.0f}",
-    "💰",
-    help_text="Total des honoraires",
-)
+# ---------------------------------------------------------
+# 🔧 TRI ROBUSTE DOSSIER / SOUS-DOSSIER
+# ---------------------------------------------------------
+def split_dossier_n(val):
+    if pd.isna(val):
+        return (0, 0)
+    s = str(val)
+    if "-" in s:
+        p, i = s.split("-", 1)
+        try:
+            return int(p), int(i)
+        except:
+            return 0, 0
+    else:
+        try:
+            return int(s), 0
+        except:
+            return 0, 0
 
-kpi_card(
-    "Autres frais",
-    f"${df['Autres frais (US $)'].sum():,.0f}",
-    "➕",
-    help_text="Frais annexes",
-)
-
-kpi_card(
-    "Total facturé",
-    f"${df['Total facturé'].sum():,.0f}",
-    "🧾",
-    help_text="Honoraires + frais",
-)
-
-kpi_card(
-    "Total encaissé",
-    f"${df['Total encaissé'].sum():,.0f}",
-    "🏦",
-    help_text="Somme des acomptes",
-)
-
-kpi_card(
-    "Solde dû",
-    f"${df['Solde dû'].sum():,.0f}",
-    "⚠️",
-    help_text="Montant restant à encaisser",
-)
+df = df.copy()
+df["__parent"] = df["Dossier N"].apply(lambda x: split_dossier_n(x)[0])
+df["__index"] = df["Dossier N"].apply(lambda x: split_dossier_n(x)[1])
 
 # ---------------------------------------------------------
 # TABLEAU DOSSIERS
@@ -198,7 +159,8 @@ cols_display = [
 ]
 
 st.dataframe(
-    df[cols_display]
-    .sort_values(["Dossier Parent", "Dossier Index"]),
+    df[cols_display + ["__parent", "__index"]]
+    .sort_values(["__parent", "__index"])
+    .drop(columns=["__parent", "__index"]),
     use_container_width=True,
 )
