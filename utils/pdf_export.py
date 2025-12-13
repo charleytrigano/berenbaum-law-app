@@ -1,118 +1,65 @@
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from reportlab.lib.units import cm
 from datetime import datetime
 
-
-# =========================================================
-# 📄 EXPORT ESCROW PDF
-# =========================================================
-def export_escrow_pdf(df, filename):
-    """
-    Génère un PDF des escrows.
-    df doit contenir : Dossier N, Nom, Montant Escrow
-    """
-    c = canvas.Canvas(filename, pagesize=A4)
+def export_dossier_pdf(df, dossier_parent: int, file_path: str):
+    c = canvas.Canvas(file_path, pagesize=A4)
     width, height = A4
 
-    y = height - 40
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(40, y, "Berenbaum Law — Escrow Report")
+    y = height - 2 * cm
 
-    y -= 20
-    c.setFont("Helvetica", 9)
-    c.drawString(40, y, f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-    y -= 30
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(40, y, "Dossier")
-    c.drawString(120, y, "Client")
-    c.drawRightString(520, y, "Montant (USD)")
-
-    y -= 10
-    c.line(40, y, 520, y)
-
-    total = 0
-    c.setFont("Helvetica", 10)
-
-    for _, row in df.iterrows():
-        if y < 60:
-            c.showPage()
-            y = height - 40
-            c.setFont("Helvetica", 10)
-
-        montant = float(row.get("Montant Escrow", 0))
-        total += montant
-
-        y -= 18
-        c.drawString(40, y, str(row.get("Dossier N", "")))
-        c.drawString(120, y, row.get("Nom", ""))
-        c.drawRightString(520, y, f"${montant:,.2f}")
-
-    y -= 25
-    c.setFont("Helvetica-Bold", 11)
-    c.drawRightString(520, y, f"TOTAL ESCROW : ${total:,.2f}")
-
-    c.save()
-
-
-# =========================================================
-# 📄 EXPORT FICHE DOSSIER PDF
-# =========================================================
-def export_dossier_pdf(dossier: dict, filename: str):
-    """
-    Génère un PDF individuel pour un dossier client.
-    """
-    c = canvas.Canvas(filename, pagesize=A4)
-    width, height = A4
-
-    y = height - 40
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(40, y, "Berenbaum Law — Fiche Dossier")
-
-    y -= 25
-    c.setFont("Helvetica", 9)
-    c.drawString(40, y, f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-    y -= 30
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, y, f"Dossier N° {dossier.get('Dossier N', '')}")
-
-    y -= 20
-    c.setFont("Helvetica", 11)
-
-    def line(label, value):
+    def draw(text, bold=False):
         nonlocal y
-        y -= 18
-        c.drawString(40, y, f"{label} :")
-        c.drawString(180, y, str(value))
+        if bold:
+            c.setFont("Helvetica-Bold", 11)
+        else:
+            c.setFont("Helvetica", 10)
+        c.drawString(2 * cm, y, text)
+        y -= 0.6 * cm
 
-    line("Nom", dossier.get("Nom", ""))
-    line("Date", dossier.get("Date", ""))
-    line("Catégorie", dossier.get("Categories", ""))
-    line("Sous-catégorie", dossier.get("Sous-categories", ""))
-    line("Visa", dossier.get("Visa", ""))
+    # -------------------------------------------------
+    draw("BERENBAUM LAW", bold=True)
+    draw(f"Dossier {dossier_parent}")
+    draw(f"Export généré le {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    y -= cm
 
-    y -= 15
-    c.line(40, y, 520, y)
+    subset = df[df["Dossier Parent"] == dossier_parent]
 
-    line("Honoraires", f"${dossier.get('Montant honoraires (US $)', 0):,.2f}")
-    line("Autres frais", f"${dossier.get('Autres frais (US $)', 0):,.2f}")
+    for _, r in subset.iterrows():
+        draw(f"Dossier : {r['Dossier N']}", bold=True)
+        draw(f"Client : {r.get('Nom', '')}")
+        draw(f"Visa : {r.get('Visa', '')}")
+        draw(f"Honoraires : ${r.get('Montant honoraires (US $)', 0):,.2f}")
+        draw(f"Acomptes : ${sum([
+            r.get('Acompte 1',0),
+            r.get('Acompte 2',0),
+            r.get('Acompte 3',0),
+            r.get('Acompte 4',0)
+        ]):,.2f}")
+        draw(f"Escrow : {'Oui' if r.get('Escrow') else 'Non'}")
+        y -= 0.4 * cm
 
-    total = (
-        float(dossier.get("Montant honoraires (US $)", 0))
-        + float(dossier.get("Autres frais (US $)", 0))
+        if y < 3 * cm:
+            c.showPage()
+            y = height - 2 * cm
+
+    # -------------------------------------------------
+    y -= cm
+    draw("TOTAUX CONSOLIDÉS", bold=True)
+
+    total_h = subset["Montant honoraires (US $)"].sum()
+    total_f = subset["Autres frais (US $)"].sum()
+    total_enc = (
+        subset["Acompte 1"].sum() +
+        subset["Acompte 2"].sum() +
+        subset["Acompte 3"].sum() +
+        subset["Acompte 4"].sum()
     )
-    line("Total facturé", f"${total:,.2f}")
 
-    y -= 20
-    c.line(40, y, 520, y)
-
-    line("Acompte 1", dossier.get("Acompte 1", 0))
-    line("Acompte 2", dossier.get("Acompte 2", 0))
-    line("Acompte 3", dossier.get("Acompte 3", 0))
-    line("Acompte 4", dossier.get("Acompte 4", 0))
-
-    y -= 20
-    line("Commentaire", dossier.get("Commentaire", ""))
+    draw(f"Total honoraires : ${total_h:,.2f}")
+    draw(f"Total frais : ${total_f:,.2f}")
+    draw(f"Total encaissé : ${total_enc:,.2f}")
+    draw(f"Solde dû : ${(total_h + total_f - total_enc):,.2f}")
 
     c.save()
