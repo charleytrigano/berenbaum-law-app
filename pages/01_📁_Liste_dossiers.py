@@ -1,125 +1,66 @@
 import streamlit as st
 import pandas as pd
-from backend.dropbox_utils import load_database
+
 from utils.sidebar import render_sidebar
+from backend.dropbox_utils import load_database
+from utils.dossier_hierarchy import add_hierarchy_columns
 
 # ---------------------------------------------------------
-# Sidebar avec logo
-# ---------------------------------------------------------
-render_sidebar()
-
-# ---------------------------------------------------------
-# Page config
+# CONFIG
 # ---------------------------------------------------------
 st.set_page_config(page_title="📁 Liste des dossiers", page_icon="📁", layout="wide")
-st.title("📁 Liste des dossiers")
+render_sidebar()
+st.title("📁 Liste complète des dossiers")
 
 # ---------------------------------------------------------
-# Charger DB
+# LOAD
 # ---------------------------------------------------------
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+df = pd.DataFrame(db.get("clients", []))
 
-if clients.empty:
-    st.warning("Aucun dossier trouvé.")
+if df.empty:
     st.stop()
 
-# ---------------------------------------------------------
-# Normalisation colonnes
-# ---------------------------------------------------------
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
-clients["Année"] = clients["Date"].dt.year
-
-# Mapping des colonnes
-rename_map = {
-    "Dossier_envoye": "Dossier envoye",
-    "Dossier envoyé": "Dossier envoye"
-}
-clients.rename(columns=rename_map, inplace=True)
-
-# Si colonne manquante → créer
-for col in ["Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"]:
-    if col not in clients.columns:
-        clients[col] = False
+df["Dossier N"] = df["Dossier N"].astype(str)
+df = add_hierarchy_columns(df)
 
 # ---------------------------------------------------------
-# 🎛️ FILTRES AVANCÉS (haut de page)
+# FILTRES SIDEBAR
 # ---------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
-col1, col2, col3, col4, col5 = st.columns(5)
+c1, c2, c3, c4 = st.columns(4)
 
-# 1️⃣ Année
-annees = ["Toutes"] + sorted(clients["Année"].dropna().unique().tolist())
-annee = col1.selectbox("Année", annees)
+annees = sorted(pd.to_datetime(df["Date"], errors="coerce").dt.year.dropna().unique())
+annee = c1.multiselect("Année", annees, default=annees)
 
-# 2️⃣ Catégorie
-categories = ["Toutes"] + sorted([c for c in clients["Categories"].dropna().unique() if c != ""])
-cat = col2.selectbox("Catégorie", categories)
+cat = c2.selectbox("Catégorie", ["Tous"] + sorted(df["Categories"].dropna().unique()))
+sous = c3.selectbox("Sous-catégorie", ["Tous"] + sorted(df["Sous-categories"].dropna().unique()))
+visa = c4.selectbox("Visa", ["Tous"] + sorted(df["Visa"].dropna().unique()))
 
-# 3️⃣ Sous-catégorie dépendante
-if cat != "Toutes":
-    souscats = ["Toutes"] + sorted(clients[clients["Categories"] == cat]["Sous-categories"].dropna().unique())
-else:
-    souscats = ["Toutes"] + sorted(clients["Sous-categories"].dropna().unique())
-
-sous = col3.selectbox("Sous-catégorie", souscats)
-
-# 4️⃣ Visa dépendant
-if sous != "Toutes":
-    visas = ["Toutes"] + sorted(clients[clients["Sous-categories"] == sous]["Visa"].dropna().unique())
-else:
-    visas = ["Toutes"] + sorted(clients["Visa"].dropna().unique())
-
-visa = col4.selectbox("Visa", visas)
-
-# 5️⃣ Statut
-statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
-statut = col5.selectbox("Statut", statuts)
-
-# ---------------------------------------------------------
-# 🔍 APPLICATION DES FILTRES
-# ---------------------------------------------------------
-df = clients.copy()
-
-# Année
-if annee != "Toutes":
-    df = df[df["Année"] == annee]
-
-# Catégorie
-if cat != "Toutes":
+if annee:
+    df = df[pd.to_datetime(df["Date"], errors="coerce").dt.year.isin(annee)]
+if cat != "Tous":
     df = df[df["Categories"] == cat]
-
-# Sous-catégorie
-if sous != "Toutes":
+if sous != "Tous":
     df = df[df["Sous-categories"] == sous]
-
-# Visa
-if visa != "Toutes":
+if visa != "Tous":
     df = df[df["Visa"] == visa]
 
-# Statut
-if statut != "Tous":
-    statut_map = {
-        "Envoyé": "Dossier envoye",
-        "Accepté": "Dossier accepte",
-        "Refusé": "Dossier refuse",
-        "Annulé": "Dossier Annule",
-        "RFE": "RFE"
-    }
-    df = df[df[statut_map[statut]] == True]
-
 # ---------------------------------------------------------
-# Résultat
+# TABLEAU
 # ---------------------------------------------------------
-st.markdown(f"### 📄 {len(df)} dossier(s) trouvé(s)")
+st.subheader("📋 Dossiers")
 
-df_display = df[[
-    "Dossier N", "Nom", "Date",
-    "Categories", "Sous-categories", "Visa",
+cols = [
+    "Dossier N", "Nom", "Categories", "Sous-categories", "Visa",
     "Montant honoraires (US $)", "Autres frais (US $)",
-    "Dossier envoye", "Dossier accepte", "Dossier refuse",
-    "Escrow"
-]]
+    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4",
+    "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
+]
 
-st.dataframe(df_display, use_container_width=True, height=600)
+st.dataframe(
+    df.sort_values(["Dossier Parent", "Dossier Index"])[cols],
+    use_container_width=True,
+    height=600
+)
