@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
-from utils.status_utils import normalize_bool
+from utils.tarif_utils import get_tarif_for_visa
+from utils.status_utils import normalize_status_columns, update_status_row, normalize_bool
 
 # ---------------------------------------------------------
 # CONFIG
@@ -13,10 +15,11 @@ render_sidebar()
 st.title("✏️ Modifier un dossier")
 
 # ---------------------------------------------------------
-# LOAD DATABASE
+# CHARGEMENT BASE
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
+tarifs = db.get("tarifs", [])
 
 if not clients:
     st.error("Aucun dossier trouvé.")
@@ -24,23 +27,21 @@ if not clients:
 
 df = pd.DataFrame(clients)
 
-# Toujours travailler en STRING pour Dossier N (xxxx, xxxx-1)
-df["Dossier N"] = df["Dossier N"].astype(str)
+# Normalisation statuts
+df = normalize_status_columns(df)
+
+DOSSIER_COL = "Dossier N"
+df[DOSSIER_COL] = df[DOSSIER_COL].astype(str)
 
 # ---------------------------------------------------------
-# SELECT DOSSIER
+# SÉLECTION DOSSIER
 # ---------------------------------------------------------
-selected = st.selectbox(
-    "Sélectionner un dossier",
-    sorted(df["Dossier N"].unique())
-)
+liste = sorted(df[DOSSIER_COL].unique())
+selected = st.selectbox("Sélectionner un dossier", liste)
 
-row = df[df["Dossier N"] == selected].iloc[0].copy()
-idx = df[df["Dossier N"] == selected].index[0]
+row = df[df[DOSSIER_COL] == selected].iloc[0]
+idx = row.name
 
-# ---------------------------------------------------------
-# HELPERS
-# ---------------------------------------------------------
 def safe_date(v):
     try:
         d = pd.to_datetime(v, errors="coerce")
@@ -48,7 +49,7 @@ def safe_date(v):
     except:
         return None
 
-def safe_float(v):
+def to_float(v):
     try:
         return float(v)
     except:
@@ -61,69 +62,68 @@ st.subheader(f"📄 Dossier {selected}")
 
 c1, c2, c3 = st.columns(3)
 nom = c1.text_input("Nom", row.get("Nom", ""))
-date_dossier = c2.date_input("Date", safe_date(row.get("Date")))
+date_dossier = c2.date_input("Date du dossier", safe_date(row.get("Date")))
 visa = c3.text_input("Visa", row.get("Visa", ""))
 
 c4, c5 = st.columns(2)
 categorie = c4.text_input("Catégorie", row.get("Categories", ""))
-sous_cat = c5.text_input("Sous-catégorie", row.get("Sous-categories", ""))
+sous_categorie = c5.text_input("Sous-catégorie", row.get("Sous-categories", ""))
+
+commentaire = st.text_area("📝 Commentaire", row.get("Commentaire", ""))
 
 # ---------------------------------------------------------
-# FACTURATION
+# TARIF VISA
 # ---------------------------------------------------------
+tarif_auto = get_tarif_for_visa(
+    visa,
+    date_dossier,
+    tarifs
+)
+
 st.subheader("💰 Facturation")
 
 f1, f2, f3 = st.columns(3)
-hon = f1.number_input(
-    "Montant honoraires (US $)",
-    value=safe_float(row.get("Montant honoraires (US $)", 0))
+
+tarif_applique = f1.number_input(
+    "Tarif Visa appliqué",
+    value=to_float(row.get("Tarif visa applique", tarif_auto)),
+    step=50.0
 )
-frais = f2.number_input(
-    "Autres frais (US $)",
-    value=safe_float(row.get("Autres frais (US $)", 0))
+
+tarif_modifie = f2.checkbox(
+    "Tarif modifié manuellement",
+    value=row.get("Tarif modifie manuellement", False)
 )
-f3.number_input("Total facturé", hon + frais, disabled=True)
+
+autres_frais = f3.number_input(
+    "Autres frais",
+    value=to_float(row.get("Autres frais (US $)", 0)),
+    step=10.0
+)
+
+total_facture = tarif_applique + autres_frais
+st.info(f"💵 Total facturé : **${total_facture:,.2f}**")
 
 # ---------------------------------------------------------
-# ACOMPTES COMPLETS (montant + date + mode)
+# ACOMPTES
 # ---------------------------------------------------------
 st.subheader("🏦 Paiements")
 
-modes = ["", "Chèque", "CB", "Virement", "Venmo"]
-total_encaisse = 0.0
+ac_cols = st.columns(4)
+acomptes = {}
 
 for i in range(1, 5):
-    st.markdown(f"### Acompte {i}")
-    a1, a2, a3 = st.columns(3)
-
-    montant = a1.number_input(
-        f"Montant Acompte {i}",
-        value=safe_float(row.get(f"Acompte {i}", 0)),
-        key=f"a{i}"
+    acomptes[i] = ac_cols[i-1].number_input(
+        f"Acompte {i}",
+        value=to_float(row.get(f"Acompte {i}", 0)),
+        step=50.0
     )
 
-    date_paiement = a2.date_input(
-        f"Date Acompte {i}",
-        value=safe_date(row.get(f"Date Acompte {i}")),
-        key=f"d{i}"
-    )
+total_encaisse = sum(acomptes.values())
+solde = total_facture - total_encaisse
 
-    mode = a3.selectbox(
-        f"Mode Acompte {i}",
-        modes,
-        index=modes.index(row.get(f"Mode Acompte {i}", ""))
-        if row.get(f"Mode Acompte {i}", "") in modes else 0,
-        key=f"m{i}"
-    )
-
-    df.loc[idx, f"Acompte {i}"] = montant
-    df.loc[idx, f"Date Acompte {i}"] = str(date_paiement) if date_paiement else ""
-    df.loc[idx, f"Mode Acompte {i}"] = mode
-
-    total_encaisse += montant
-
-solde = (hon + frais) - total_encaisse
-st.info(f"💵 Total encaissé : ${total_encaisse:,.2f} — Solde dû : ${solde:,.2f}")
+st.success(f"💰 Total encaissé : ${total_encaisse:,.2f}")
+st.warning(f"📉 Solde dû : ${solde:,.2f}")
 
 # ---------------------------------------------------------
 # ESCROW
@@ -135,18 +135,6 @@ escrow_actif = st.checkbox(
     value=normalize_bool(row.get("Escrow", False))
 )
 
-escrow_reclamer = st.checkbox(
-    "Escrow à réclamer",
-    value=normalize_bool(row.get("Escrow_a_reclamer", False))
-)
-
-escrow_reclame = st.checkbox(
-    "Escrow réclamé",
-    value=normalize_bool(row.get("Escrow_reclame", False))
-)
-
-st.caption("ℹ️ Le montant en escrow correspond uniquement à **Acompte 1**")
-
 # ---------------------------------------------------------
 # STATUTS
 # ---------------------------------------------------------
@@ -154,38 +142,55 @@ st.subheader("📦 Statuts du dossier")
 
 s1, s2, s3, s4, s5 = st.columns(5)
 
-envoye = s1.checkbox("Envoyé", normalize_bool(row.get("Dossier envoye", False)))
-accepte = s2.checkbox("Accepté", normalize_bool(row.get("Dossier accepte", False)))
-refuse = s3.checkbox("Refusé", normalize_bool(row.get("Dossier refuse", False)))
-annule = s4.checkbox("Annulé", normalize_bool(row.get("Dossier Annule", False)))
-rfe = s5.checkbox("RFE", normalize_bool(row.get("RFE", False)))
+envoye = s1.checkbox("Dossier envoyé", normalize_bool(row.get("Dossier envoye")))
+accepte = s2.checkbox("Dossier accepté", normalize_bool(row.get("Dossier accepte")))
+refuse = s3.checkbox("Dossier refusé", normalize_bool(row.get("Dossier refuse")))
+annule = s4.checkbox("Dossier annulé", normalize_bool(row.get("Dossier Annule")))
+rfe = s5.checkbox("RFE", normalize_bool(row.get("RFE")))
 
 # ---------------------------------------------------------
-# SAVE
+# SAUVEGARDE
 # ---------------------------------------------------------
-if st.button("💾 Enregistrer", type="primary"):
+if st.button("💾 Enregistrer les modifications", type="primary"):
 
+    # Infos générales
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = str(date_dossier)
     df.loc[idx, "Visa"] = visa
     df.loc[idx, "Categories"] = categorie
-    df.loc[idx, "Sous-categories"] = sous_cat
+    df.loc[idx, "Sous-categories"] = sous_categorie
+    df.loc[idx, "Commentaire"] = commentaire
 
-    df.loc[idx, "Montant honoraires (US $)"] = hon
-    df.loc[idx, "Autres frais (US $)"] = frais
+    # Facturation
+    df.loc[idx, "Tarif visa applique"] = tarif_applique
+    df.loc[idx, "Tarif modifie manuellement"] = bool(tarif_modifie)
+    df.loc[idx, "Montant honoraires (US $)"] = tarif_applique
+    df.loc[idx, "Autres frais (US $)"] = autres_frais
 
-    # Statuts
-    df.loc[idx, "Dossier envoye"] = envoye
-    df.loc[idx, "Dossier accepte"] = accepte
-    df.loc[idx, "Dossier refuse"] = refuse
-    df.loc[idx, "Dossier Annule"] = annule
-    df.loc[idx, "RFE"] = rfe
+    # Acomptes
+    for i in range(1, 5):
+        df.loc[idx, f"Acompte {i}"] = acomptes[i]
 
-    # Escrow — logique propre
-    df.loc[idx, "Escrow"] = escrow_actif
-    df.loc[idx, "Escrow_a_reclamer"] = escrow_reclamer and not escrow_reclame
-    df.loc[idx, "Escrow_reclame"] = escrow_reclame
+    # Statuts (centralisé)
+    df = update_status_row(
+        df,
+        idx,
+        envoye=envoye,
+        accepte=accepte,
+        refuse=refuse,
+        annule=annule,
+        rfe=rfe,
+    )
 
+    # Escrow (règle claire)
+    if escrow_actif:
+        df.loc[idx, "Escrow"] = True
+        df.loc[idx, "Escrow_a_reclamer"] = False
+        df.loc[idx, "Escrow_reclame"] = False
+    else:
+        df.loc[idx, "Escrow"] = False
+
+    # Sauvegarde
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
