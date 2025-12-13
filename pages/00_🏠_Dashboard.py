@@ -10,10 +10,10 @@ from components.kpi_cards import kpi_card
 # ---------------------------------------------------------
 st.set_page_config(page_title="🏠 Dashboard", page_icon="🏠", layout="wide")
 render_sidebar()
-st.title("🏠 Dashboard – Berenbaum Law App")
+st.title("🏠 Tableau de bord – Berenbaum Law App")
 
 # ---------------------------------------------------------
-# LOAD DATA
+# LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
 clients = pd.DataFrame(db.get("clients", []))
@@ -23,7 +23,35 @@ if clients.empty:
     st.stop()
 
 # ---------------------------------------------------------
-# NORMALISATION
+# 🔧 HELPERS DOSSIER N (parent / sous-dossier)
+# ---------------------------------------------------------
+def split_dossier_n(val):
+    """
+    12937     -> parent=12937, index=0
+    12937-1   -> parent=12937, index=1
+    """
+    if pd.isna(val):
+        return (0, 0)
+
+    s = str(val)
+    if "-" in s:
+        p, i = s.split("-", 1)
+        try:
+            return int(p), int(i)
+        except:
+            return 0, 0
+    else:
+        try:
+            return int(s), 0
+        except:
+            return 0, 0
+
+
+clients["Dossier Parent"] = clients["Dossier N"].apply(lambda x: split_dossier_n(x)[0])
+clients["Dossier Index"] = clients["Dossier N"].apply(lambda x: split_dossier_n(x)[1])
+
+# ---------------------------------------------------------
+# NORMALISATION NUMÉRIQUE
 # ---------------------------------------------------------
 for col in [
     "Montant honoraires (US $)",
@@ -33,8 +61,13 @@ for col in [
     "Acompte 3",
     "Acompte 4",
 ]:
-    clients[col] = pd.to_numeric(clients.get(col, 0), errors="coerce").fillna(0)
+    if col not in clients.columns:
+        clients[col] = 0
+    clients[col] = pd.to_numeric(clients[col], errors="coerce").fillna(0)
 
+# ---------------------------------------------------------
+# CALCULS FINANCIERS
+# ---------------------------------------------------------
 clients["Total facturé"] = (
     clients["Montant honoraires (US $)"] + clients["Autres frais (US $)"]
 )
@@ -48,86 +81,106 @@ clients["Total encaissé"] = (
 
 clients["Solde dû"] = clients["Total facturé"] - clients["Total encaissé"]
 
-# Booléens
-for col in [
-    "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "RFE",
-]:
-    clients[col] = clients.get(col, False).astype(bool)
+# ---------------------------------------------------------
+# FILTRES
+# ---------------------------------------------------------
+st.subheader("🎛️ Filtres")
+
+f1, f2, f3, f4 = st.columns(4)
+
+cat = f1.selectbox(
+    "Catégorie",
+    ["Toutes"] + sorted(clients["Categories"].dropna().unique().tolist()),
+)
+
+if cat != "Toutes":
+    df = clients[clients["Categories"] == cat]
+else:
+    df = clients.copy()
+
+sous = f2.selectbox(
+    "Sous-catégorie",
+    ["Toutes"] + sorted(df["Sous-categories"].dropna().unique().tolist()),
+)
+
+if sous != "Toutes":
+    df = df[df["Sous-categories"] == sous]
+
+visa = f3.selectbox(
+    "Visa",
+    ["Tous"] + sorted(df["Visa"].dropna().unique().tolist()),
+)
+
+if visa != "Tous":
+    df = df[df["Visa"] == visa]
+
+statut = f4.selectbox(
+    "Statut",
+    ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"],
+)
+
+if statut != "Tous":
+    mapping = {
+        "Envoyé": "Dossier envoye",
+        "Accepté": "Dossier accepte",
+        "Refusé": "Dossier refuse",
+        "Annulé": "Dossier Annule",
+        "RFE": "RFE",
+    }
+    df = df[df[mapping[statut]] == True]
 
 # ---------------------------------------------------------
-# KPI — UNE SEULE LIGNE
+# KPI — UNE SEULE LIGNE (TAILLE RÉDUITE)
 # ---------------------------------------------------------
-st.subheader("📊 Indicateurs clés")
+st.subheader("📈 Indicateurs clés")
 
-k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 
-with k1:
-    kpi_card(
-        "Nombre de dossiers",
-        len(clients),
-        "📁",
-        help_text="Nombre total de dossiers (principaux + sous-dossiers)"
-    )
+kpi_card(
+    "Nombre de dossiers",
+    len(df),
+    "📁",
+    help_text="Dossiers principaux + sous-dossiers",
+)
 
-with k2:
-    kpi_card(
-        "Honoraires",
-        f"${clients['Montant honoraires (US $)'].sum():,.0f}",
-        "💼",
-        help_text="Somme totale des honoraires facturés"
-    )
+kpi_card(
+    "Honoraires",
+    f"${df['Montant honoraires (US $)'].sum():,.0f}",
+    "💰",
+    help_text="Total des honoraires",
+)
 
-with k3:
-    kpi_card(
-        "Autres frais",
-        f"${clients['Autres frais (US $)'].sum():,.0f}",
-        "🧾",
-        help_text="Frais annexes facturés"
-    )
+kpi_card(
+    "Autres frais",
+    f"${df['Autres frais (US $)'].sum():,.0f}",
+    "➕",
+    help_text="Frais annexes",
+)
 
-with k4:
-    kpi_card(
-        "Total facturé",
-        f"${clients['Total facturé'].sum():,.0f}",
-        "💰",
-        help_text="Honoraires + autres frais"
-    )
+kpi_card(
+    "Total facturé",
+    f"${df['Total facturé'].sum():,.0f}",
+    "🧾",
+    help_text="Honoraires + frais",
+)
 
-with k5:
-    kpi_card(
-        "Total encaissé",
-        f"${clients['Total encaissé'].sum():,.0f}",
-        "🏦",
-        help_text="Somme des acomptes encaissés"
-    )
+kpi_card(
+    "Total encaissé",
+    f"${df['Total encaissé'].sum():,.0f}",
+    "🏦",
+    help_text="Somme des acomptes",
+)
 
-with k6:
-    kpi_card(
-        "Solde dû",
-        f"${clients['Solde dû'].sum():,.0f}",
-        "⚠️",
-        help_text="Montant restant à encaisser"
-    )
-
-with k7:
-    kpi_card(
-        "Escrow",
-        f"${clients.loc[clients['Escrow'], 'Acompte 1'].sum():,.0f}",
-        "🔒",
-        help_text="Montant total actuellement en escrow (Acompte 1 uniquement)"
-    )
+kpi_card(
+    "Solde dû",
+    f"${df['Solde dû'].sum():,.0f}",
+    "⚠️",
+    help_text="Montant restant à encaisser",
+)
 
 # ---------------------------------------------------------
 # TABLEAU DOSSIERS
 # ---------------------------------------------------------
-st.markdown("---")
 st.subheader("📋 Liste des dossiers")
 
 cols_display = [
@@ -145,8 +198,7 @@ cols_display = [
 ]
 
 st.dataframe(
-    clients[cols_display]
-    .sort_values("Dossier N"),
+    df[cols_display]
+    .sort_values(["Dossier Parent", "Dossier Index"]),
     use_container_width=True,
-    height=500
 )
