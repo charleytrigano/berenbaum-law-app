@@ -16,104 +16,141 @@ st.title("➕ Nouveau dossier")
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
-df = pd.DataFrame(clients)
-
-# Toujours travailler Dossier N en STRING
-if not df.empty:
-    df["Dossier N"] = df["Dossier N"].astype(str)
+visa_raw = pd.DataFrame(db.get("visa", []))
 
 # ---------------------------------------------------------
-# GÉNÉRATION DOSSIER N (xxxxx / xxxxx-1 / xxxxx-2)
+# HELPERS
 # ---------------------------------------------------------
-def next_dossier_number(base_number: str) -> str:
-    """
-    Retourne le prochain suffixe disponible :
-    13000 -> 13000
-    13000 existe -> 13000-1
-    13000-1 existe -> 13000-2
-    """
-    existing = df["Dossier N"].tolist() if not df.empty else []
-
-    if base_number not in existing:
-        return base_number
-
-    i = 1
-    while f"{base_number}-{i}" in existing:
-        i += 1
-    return f"{base_number}-{i}"
-
-# Numéro parent proposé
-base_number = st.text_input(
-    "Dossier N (parent)",
-    value=str(
-        max(
-            [int(x.split("-")[0]) for x in df["Dossier N"]] if not df.empty else [13000]
-        ) + 1
+def get_souscats(df, categorie):
+    return sorted(
+        df[df["Categories"] == categorie]["Sous-categories"]
+        .dropna()
+        .unique()
+        .tolist()
     )
+
+def get_visas(df, souscat):
+    return sorted(
+        df[df["Sous-categories"] == souscat]["Visa"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+def nouveau_dossier_numero(parent=None):
+    nums = [str(c.get("Dossier N", "")) for c in clients]
+
+    # Dossier principal
+    if parent is None:
+        racines = []
+        for n in nums:
+            if "-" not in n:
+                try:
+                    racines.append(int(n))
+                except:
+                    pass
+        return str(max(racines) + 1 if racines else 13000)
+
+    # Sous-dossier
+    suffixes = []
+    for n in nums:
+        if n.startswith(f"{parent}-"):
+            try:
+                suffixes.append(int(n.split("-")[1]))
+            except:
+                pass
+
+    next_suffix = max(suffixes) + 1 if suffixes else 1
+    return f"{parent}-{next_suffix}"
+
+# ---------------------------------------------------------
+# TYPE DE DOSSIER
+# ---------------------------------------------------------
+st.subheader("🧬 Type de dossier")
+
+type_dossier = st.radio(
+    "Créer :",
+    ["Dossier principal", "Sous-dossier"],
+    horizontal=True
 )
 
-dossier_n = next_dossier_number(base_number)
-st.info(f"📁 Dossier créé : **{dossier_n}**")
+if type_dossier == "Dossier principal":
+    dossier_n = nouveau_dossier_numero()
+    dossier_racine = dossier_n
+else:
+    parents = sorted(
+        {c["Dossier N"].split("-")[0] for c in clients}
+    )
+    dossier_racine = st.selectbox("📂 Dossier parent", parents)
+    dossier_n = nouveau_dossier_numero(dossier_racine)
 
 # ---------------------------------------------------------
 # FORMULAIRE
 # ---------------------------------------------------------
-st.subheader("📄 Informations générales")
+st.subheader("📄 Informations dossier")
 
-c1, c2, c3 = st.columns(3)
-nom = c1.text_input("Nom du client")
-date_dossier = c2.date_input("Date du dossier")
-visa = c3.text_input("Visa")
-
-c4, c5 = st.columns(2)
-categorie = c4.text_input("Catégorie")
-sous_categorie = c5.text_input("Sous-catégorie")
+col1, col2, col3 = st.columns(3)
+col1.text_input("Dossier N", value=dossier_n, disabled=True)
+nom = col2.text_input("Nom du client")
+date_dossier = col3.date_input("Date de création")
 
 # ---------------------------------------------------------
-# FACTURATION
+# CATEGORIES / VISA
+# ---------------------------------------------------------
+st.subheader("🧩 Catégorisation")
+
+colA, colB, colC = st.columns(3)
+
+categories = ["Choisir..."] + sorted(visa_raw["Categories"].dropna().unique().tolist())
+categorie = colA.selectbox("Catégorie", categories)
+
+if categorie != "Choisir...":
+    souscats = ["Choisir..."] + get_souscats(visa_raw, categorie)
+else:
+    souscats = ["Choisir..."]
+
+sous_categorie = colB.selectbox("Sous-catégorie", souscats)
+
+if sous_categorie != "Choisir...":
+    visas = ["Choisir..."] + get_visas(visa_raw, sous_categorie)
+else:
+    visas = ["Choisir..."]
+
+visa = colC.selectbox("Visa", visas)
+
+# ---------------------------------------------------------
+# FINANCES
 # ---------------------------------------------------------
 st.subheader("💰 Facturation")
 
-f1, f2, f3 = st.columns(3)
-hon = f1.number_input("Montant honoraires (US $)", min_value=0.0, step=50.0)
-frais = f2.number_input("Autres frais (US $)", min_value=0.0, step=10.0)
-f3.number_input("Total facturé", hon + frais, disabled=True)
+colF1, colF2, colF3 = st.columns(3)
+montant_hon = colF1.number_input("Montant honoraires (US $)", min_value=0.0, step=50.0)
+autres_frais = colF2.number_input("Autres frais (US $)", min_value=0.0, step=10.0)
+colF3.number_input("Total facturé", value=montant_hon + autres_frais, disabled=True)
 
 # ---------------------------------------------------------
-# ACOMPTES COMPLETS
+# ACOMPTES
 # ---------------------------------------------------------
 st.subheader("🏦 Paiements")
 
-modes = ["", "Chèque", "CB", "Virement", "Venmo"]
-acomptes = {}
-total_encaisse = 0.0
+colA1, colA2, colA3, colA4 = st.columns(4)
+a1 = colA1.number_input("Acompte 1", min_value=0.0, step=50.0)
+a2 = colA2.number_input("Acompte 2", min_value=0.0, step=50.0)
+a3 = colA3.number_input("Acompte 3", min_value=0.0, step=50.0)
+a4 = colA4.number_input("Acompte 4", min_value=0.0, step=50.0)
 
-for i in range(1, 5):
-    st.markdown(f"### Acompte {i}")
-    a1, a2, a3 = st.columns(3)
+total_encaisse = a1 + a2 + a3 + a4
+solde = (montant_hon + autres_frais) - total_encaisse
+st.info(f"💵 Solde restant : **${solde:,.2f}**")
 
-    montant = a1.number_input(f"Montant Acompte {i}", min_value=0.0, step=50.0)
-    date_paiement = a2.date_input(f"Date Acompte {i}", value=None)
-    mode = a3.selectbox(f"Mode Acompte {i}", modes)
-
-    acomptes[i] = {
-        "montant": montant,
-        "date": str(date_paiement) if date_paiement else "",
-        "mode": mode,
-    }
-
-    total_encaisse += montant
-
-solde = (hon + frais) - total_encaisse
-st.info(f"💵 Total encaissé : ${total_encaisse:,.2f} — Solde dû : ${solde:,.2f}")
+mode_paiement = st.selectbox("Mode de paiement", ["", "Chèque", "CB", "Virement", "Venmo"])
 
 # ---------------------------------------------------------
 # ESCROW
 # ---------------------------------------------------------
 st.subheader("💼 Escrow")
 
-escrow_actif = st.checkbox("Escrow actif")
-st.caption("ℹ️ Le montant en escrow correspond uniquement à **Acompte 1**")
+escrow_actif = st.checkbox("Mettre en Escrow (Acompte 1 uniquement)")
 
 # ---------------------------------------------------------
 # COMMENTAIRE
@@ -126,38 +163,38 @@ commentaire = st.text_area("📝 Commentaire")
 if st.button("💾 Enregistrer le dossier", type="primary"):
 
     if not nom.strip():
-        st.error("❌ Le nom est obligatoire.")
+        st.error("❌ Le nom du client est obligatoire.")
+        st.stop()
+
+    if categorie == "Choisir..." or sous_categorie == "Choisir..." or visa == "Choisir...":
+        st.error("❌ Catégorie, Sous-catégorie et Visa sont obligatoires.")
         st.stop()
 
     new_entry = {
+        # IDENTITÉ
+        "Dossier ID": dossier_n,
+        "Dossier Racine": dossier_racine,
         "Dossier N": dossier_n,
+
+        # INFOS
         "Nom": nom,
         "Date": str(date_dossier),
-
         "Categories": categorie,
         "Sous-categories": sous_categorie,
         "Visa": visa,
+        "Commentaire": commentaire,
 
-        "Montant honoraires (US $)": hon,
-        "Autres frais (US $)": frais,
+        # FINANCES
+        "Montant honoraires (US $)": montant_hon,
+        "Autres frais (US $)": autres_frais,
+        "Acompte 1": a1,
+        "Acompte 2": a2,
+        "Acompte 3": a3,
+        "Acompte 4": a4,
+        "mode de paiement": mode_paiement,
 
-        "Acompte 1": acomptes[1]["montant"],
-        "Acompte 2": acomptes[2]["montant"],
-        "Acompte 3": acomptes[3]["montant"],
-        "Acompte 4": acomptes[4]["montant"],
-
-        "Date Acompte 1": acomptes[1]["date"],
-        "Date Acompte 2": acomptes[2]["date"],
-        "Date Acompte 3": acomptes[3]["date"],
-        "Date Acompte 4": acomptes[4]["date"],
-
-        "Mode Acompte 1": acomptes[1]["mode"],
-        "Mode Acompte 2": acomptes[2]["mode"],
-        "Mode Acompte 3": acomptes[3]["mode"],
-        "Mode Acompte 4": acomptes[4]["mode"],
-
-        # ESCROW (3 états)
-        "Escrow": escrow_actif,
+        # ESCROW (LOGIQUE OFFICIELLE)
+        "Escrow": bool(escrow_actif),
         "Escrow_a_reclamer": False,
         "Escrow_reclame": False,
 
@@ -168,18 +205,17 @@ if st.button("💾 Enregistrer le dossier", type="primary"):
         "Dossier Annule": False,
         "RFE": False,
 
+        # DATES STATUTS
         "Date envoi": "",
         "Date acceptation": "",
         "Date refus": "",
         "Date annulation": "",
         "Date reclamation": "",
-
-        "Commentaire": commentaire,
     }
 
     clients.append(new_entry)
     db["clients"] = clients
     save_database(db)
 
-    st.success(f"✔ Dossier **{dossier_n}** créé avec succès")
-    st.rerun()
+    st.success(f"✔ Dossier **{dossier_n}** créé avec succès.")
+    st.balloons()
