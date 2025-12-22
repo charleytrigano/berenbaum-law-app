@@ -42,18 +42,23 @@ selected = st.selectbox("Sélectionner un dossier", liste)
 row = df[df[DOSSIER_COL] == selected].iloc[0]
 idx = row.name
 
+
 def safe_date(v):
     try:
+        if v in [None, "", "None"]:
+            return None
         d = pd.to_datetime(v, errors="coerce")
         return None if pd.isna(d) else d.date()
-    except:
+    except Exception:
         return None
+
 
 def to_float(v):
     try:
         return float(v)
-    except:
+    except Exception:
         return 0.0
+
 
 # ---------------------------------------------------------
 # INFORMATIONS GÉNÉRALES
@@ -92,7 +97,7 @@ tarif_applique = f1.number_input(
 
 tarif_modifie = f2.checkbox(
     "Tarif modifié manuellement",
-    value=row.get("Tarif modifie manuellement", False)
+    value=bool(row.get("Tarif modifie manuellement", False))
 )
 
 autres_frais = f3.number_input(
@@ -105,18 +110,51 @@ total_facture = tarif_applique + autres_frais
 st.info(f"💵 Total facturé : **${total_facture:,.2f}**")
 
 # ---------------------------------------------------------
-# ACOMPTES
+# ACOMPTES + DATE + MODE
 # ---------------------------------------------------------
 st.subheader("🏦 Paiements")
 
-ac_cols = st.columns(4)
+modes = ["", "Chèque", "CB", "Virement", "Venmo"]
+
 acomptes = {}
+modes_acompte = {}
+dates_acompte = {}
 
 for i in range(1, 5):
-    acomptes[i] = ac_cols[i-1].number_input(
+    st.markdown(f"### Acompte {i}")
+
+    colA, colM, colD = st.columns([1, 1, 1])
+
+    # Montant
+    acomptes[i] = colA.number_input(
         f"Acompte {i}",
         value=to_float(row.get(f"Acompte {i}", 0)),
-        step=50.0
+        step=50.0,
+        key=f"acompte_{i}_{selected}"
+    )
+
+    # Mode de règlement (champ canonique utilisé dans ton app)
+    current_mode = row.get(f"Mode Acompte {i}", "")
+    if current_mode not in modes:
+        current_mode = ""
+
+    modes_acompte[i] = colM.selectbox(
+        f"Mode de règlement (Acompte {i})",
+        options=modes,
+        index=modes.index(current_mode) if current_mode in modes else 0,
+        key=f"mode_acompte_{i}_{selected}"
+    )
+
+    # Date de paiement (compat : Date Paiement i et Date Acompte i)
+    # On lit d'abord Date Paiement i, sinon Date Acompte i
+    existing_date = row.get(f"Date Paiement {i}", "")
+    if existing_date in [None, "", "None"]:
+        existing_date = row.get(f"Date Acompte {i}", "")
+
+    dates_acompte[i] = colD.date_input(
+        f"Date paiement (Acompte {i})",
+        value=safe_date(existing_date),
+        key=f"date_acompte_{i}_{selected}"
     )
 
 total_encaisse = sum(acomptes.values())
@@ -162,14 +200,24 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     df.loc[idx, "Commentaire"] = commentaire
 
     # Facturation
-    df.loc[idx, "Tarif visa applique"] = tarif_applique
+    df.loc[idx, "Tarif visa applique"] = float(tarif_applique)
     df.loc[idx, "Tarif modifie manuellement"] = bool(tarif_modifie)
-    df.loc[idx, "Montant honoraires (US $)"] = tarif_applique
-    df.loc[idx, "Autres frais (US $)"] = autres_frais
+    df.loc[idx, "Montant honoraires (US $)"] = float(tarif_applique)
+    df.loc[idx, "Autres frais (US $)"] = float(autres_frais)
 
-    # Acomptes
+    # Acomptes + Mode + Date
     for i in range(1, 5):
-        df.loc[idx, f"Acompte {i}"] = acomptes[i]
+        df.loc[idx, f"Acompte {i}"] = float(acomptes[i])
+
+        # champs utilisés dans ton "Modifier" historique
+        df.loc[idx, f"Mode Acompte {i}"] = modes_acompte[i]
+
+        # Date : on stocke en string ISO pour éviter Timestamp
+        date_str = str(dates_acompte[i]) if dates_acompte[i] else ""
+        df.loc[idx, f"Date Paiement {i}"] = date_str
+
+        # compat JSON historique
+        df.loc[idx, f"Date Acompte {i}"] = date_str
 
     # Statuts (centralisé)
     df = update_status_row(
