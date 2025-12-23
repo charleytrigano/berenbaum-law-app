@@ -13,45 +13,45 @@ from components.analysis_charts import (
 )
 
 # ---------------------------------------------------------
-# CONFIG PAGE
+# CONFIG & SIDEBAR
 # ---------------------------------------------------------
 st.set_page_config(page_title="📊 Analyses", page_icon="📊", layout="wide")
 render_sidebar()
 st.title("📊 Analyses & Statistiques")
 
 # ---------------------------------------------------------
-# LOAD DATABASE
+# CHARGEMENT BASE
 # ---------------------------------------------------------
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+clients_raw = db.get("clients", [])
 
-if clients.empty:
-    st.warning("Aucun dossier disponible.")
+if not clients_raw:
+    st.warning("Aucun dossier trouvé dans la base.")
     st.stop()
 
+df = pd.DataFrame(clients_raw)
+
 # ---------------------------------------------------------
-# NORMALISATION DE BASE
+# NORMALISATION COLONNES
 # ---------------------------------------------------------
-clients["Dossier N"] = clients["Dossier N"].astype(str)
 
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
-clients["Année"] = clients["Date"].dt.year
-clients["Mois"] = clients["Date"].dt.to_period("M").astype(str)
+# Harmonisation possible des alias de statuts
+rename_map = {
+    "Dossier_envoye": "Dossier envoye",
+    "Dossier Envoye": "Dossier envoye",
+    "Dossier envoyé": "Dossier envoye",
+    "Dossier_accepte": "Dossier accepte",
+    "Dossier accepté": "Dossier accepte",
+    "Dossier refuse": "Dossier refuse",
+    "Dossier_refuse": "Dossier refuse",
+    "Dossier refusé": "Dossier refuse",
+    "Dossier annulé": "Dossier Annule",
+    "Dossier_annule": "Dossier Annule",
+}
 
-# Montants
-for col in [
-    "Montant honoraires (US $)",
-    "Autres frais (US $)",
-    "Acompte 1",
-    "Acompte 2",
-    "Acompte 3",
-    "Acompte 4",
-]:
-    if col not in clients.columns:
-        clients[col] = 0.0
-    clients[col] = pd.to_numeric(clients[col], errors="coerce").fillna(0.0)
+df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}, inplace=True)
 
-# Booléens
+# Garantir les colonnes booléennes
 for col in [
     "Dossier envoye",
     "Dossier accepte",
@@ -59,179 +59,168 @@ for col in [
     "Dossier Annule",
     "RFE",
     "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
 ]:
-    if col not in clients.columns:
-        clients[col] = False
-    clients[col] = clients[col].astype(bool)
+    if col not in df.columns:
+        df[col] = False
+
+def to_bool(x):
+    if isinstance(x, bool):
+        return x
+    if x is None:
+        return False
+    s = str(x).strip().lower()
+    return s in ["true", "1", "1.0", "yes", "oui", "y", "vrai"]
+
+for col in ["Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE", "Escrow"]:
+    df[col] = df[col].apply(to_bool)
+
+# Dates & temps
+df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
+df["Année"] = df["Date"].dt.year
+df["Mois"] = df["Date"].dt.to_period("M").astype(str)
+
+# Numérique
+for col in ["Montant honoraires (US $)", "Autres frais (US $)"]:
+    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
+
+for i in range(1, 5):
+    col_ac = f"Acompte {i}"
+    if col_ac in df.columns:
+        df[col_ac] = pd.to_numeric(df[col_ac], errors="coerce").fillna(0.0)
+    else:
+        df[col_ac] = 0.0
 
 # ---------------------------------------------------------
 # FILTRES
 # ---------------------------------------------------------
 st.subheader("🎛️ Filtres")
 
-colF1, colF2, colF3, colF4 = st.columns(4)
-
-# Année
-years = sorted(clients["Année"].dropna().unique().tolist())
-selected_years = colF1.multiselect(
-    "Année",
-    years,
-    default=years,
-)
+col_f1, col_f2, col_f3, col_f4 = st.columns(4)
 
 # Catégorie
-categories = ["Toutes"] + sorted(
-    clients["Categories"].dropna().unique().tolist()
+categories = ["Tous"] + sorted(
+    [c for c in df["Categories"].dropna().unique().tolist() if c != ""]
 )
-cat = colF2.selectbox("Catégorie", categories)
+filtre_cat = col_f1.selectbox("Catégorie", categories)
 
-# Sous-catégorie
-if cat != "Toutes":
-    souscats = ["Toutes"] + sorted(
-        clients[clients["Categories"] == cat]["Sous-categories"]
-        .dropna()
-        .unique()
-        .tolist()
+# Sous-catégorie (dépendante de la catégorie)
+if filtre_cat != "Tous":
+    souscats = ["Tous"] + sorted(
+        df[df["Categories"] == filtre_cat]["Sous-categories"].dropna().unique().tolist()
     )
 else:
-    souscats = ["Toutes"] + sorted(
-        clients["Sous-categories"].dropna().unique().tolist()
+    souscats = ["Tous"] + sorted(
+        [s for s in df["Sous-categories"].dropna().unique().tolist() if s != ""]
     )
+filtre_souscat = col_f2.selectbox("Sous-catégorie", souscats)
 
-souscat = colF3.selectbox("Sous-catégorie", souscats)
-
-# Visa
-if souscat != "Toutes":
+# Visa (dépendant de la sous-catégorie si filtrée)
+if filtre_souscat != "Tous":
     visas = ["Tous"] + sorted(
-        clients[clients["Sous-categories"] == souscat]["Visa"]
-        .dropna()
-        .unique()
-        .tolist()
+        df[df["Sous-categories"] == filtre_souscat]["Visa"].dropna().unique().tolist()
     )
 else:
-    visas = ["Tous"] + sorted(clients["Visa"].dropna().unique().tolist())
+    visas = ["Tous"] + sorted(
+        [v for v in df["Visa"].dropna().unique().tolist() if v != ""]
+    )
+filtre_visa = col_f3.selectbox("Visa", visas)
 
-visa = colF4.selectbox("Visa", visas)
+# Statut
+statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
+filtre_statut = col_f4.selectbox("Statut du dossier", statuts)
 
 # ---------------------------------------------------------
 # APPLICATION DES FILTRES
 # ---------------------------------------------------------
-df = clients.copy()
+df_filtre = df.copy()
 
-if selected_years:
-    df = df[df["Année"].isin(selected_years)]
+if filtre_cat != "Tous":
+    df_filtre = df_filtre[df_filtre["Categories"] == filtre_cat]
 
-if cat != "Toutes":
-    df = df[df["Categories"] == cat]
+if filtre_souscat != "Tous":
+    df_filtre = df_filtre[df_filtre["Sous-categories"] == filtre_souscat]
 
-if souscat != "Toutes":
-    df = df[df["Sous-categories"] == souscat]
+if filtre_visa != "Tous":
+    df_filtre = df_filtre[df_filtre["Visa"] == filtre_visa]
 
-if visa != "Tous":
-    df = df[df["Visa"] == visa]
+if filtre_statut != "Tous":
+    mapping_statut = {
+        "Envoyé": "Dossier envoye",
+        "Accepté": "Dossier accepte",
+        "Refusé": "Dossier refuse",
+        "Annulé": "Dossier Annule",
+        "RFE": "RFE",
+    }
+    col_statut = mapping_statut[filtre_statut]
+    df_filtre = df_filtre[df_filtre[col_statut] == True]
 
 # ---------------------------------------------------------
 # KPI
 # ---------------------------------------------------------
 st.subheader("📈 Indicateurs clés")
 
-k1, k2, k3, k4 = st.columns(4)
-k5, k6 = st.columns(2)
-
-total_facture = (
-    df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
-).sum()
-
-total_encaisse = df[
-    ["Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4"]
-].sum().sum()
-
-solde_du = total_facture - total_encaisse
-
-escrow_total = df[df["Escrow"] == True]["Acompte 1"].sum()
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 
 with k1:
-    kpi_card(
-        "Nombre de dossiers",
-        len(df),
-        "📁",
-        "Nombre total de dossiers (principaux + sous-dossiers)"
-    )
+    kpi_card("Dossiers filtrés", len(df_filtre), "📁")
 
 with k2:
     kpi_card(
-        "Honoraires",
-        f"${df['Montant honoraires (US $)'].sum():,.0f}",
-        "💼",
-        "Total des honoraires des dossiers filtrés"
+        "CA honoraires (US $)",
+        float(df_filtre["Montant honoraires (US $)"].sum()),
+        "💰",
     )
 
 with k3:
     kpi_card(
-        "Autres frais",
-        f"${df['Autres frais (US $)'].sum():,.0f}",
-        "🧾",
-        "Total des autres frais facturés"
+        "Autres frais (US $)",
+        float(df_filtre["Autres frais (US $)"].sum()),
+        "💵",
     )
 
 with k4:
-    kpi_card(
-        "Total facturé",
-        f"${total_facture:,.0f}",
-        "🧮",
-        "Honoraires + autres frais"
-    )
+    kpi_card("Dossiers envoyés", int(df_filtre["Dossier envoye"].sum()), "📤")
 
 with k5:
-    kpi_card(
-        "Total encaissé",
-        f"${total_encaisse:,.0f}",
-        "🏦",
-        "Somme de tous les acomptes encaissés"
-    )
+    kpi_card("Dossiers acceptés", int(df_filtre["Dossier accepte"].sum()), "✅")
 
 with k6:
-    kpi_card(
-        "Escrow",
-        f"${escrow_total:,.0f}",
-        "🔒",
-        "Montant actuellement en escrow (Acompte 1 uniquement)"
-    )
+    kpi_card("Dossiers refusés", int(df_filtre["Dossier refuse"].sum()), "❌")
 
 # ---------------------------------------------------------
 # GRAPHIQUES
 # ---------------------------------------------------------
-st.subheader("📊 Graphiques")
+st.subheader("📊 Graphiques interactifs")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📅 Mensuel",
-    "📈 Multi-années",
-    "🎯 Catégories",
-    "🔥 Activité",
-    "📊 Revenus",
-])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    [
+        "📅 Histogramme mensuel",
+        "📈 Courbes multi-années",
+        "🎯 Répartition catégories",
+        "🔥 Heatmap activité",
+        "📊 Revenus par catégories",
+    ]
+)
 
 with tab1:
-    st.plotly_chart(monthly_hist(df), use_container_width=True)
+    st.plotly_chart(monthly_hist(df_filtre), use_container_width=True)
 
 with tab2:
-    st.plotly_chart(multi_year_line(df), use_container_width=True)
+    st.plotly_chart(multi_year_line(df_filtre), use_container_width=True)
 
 with tab3:
-    st.plotly_chart(category_donut(df), use_container_width=True)
+    st.plotly_chart(category_donut(df_filtre), use_container_width=True)
 
 with tab4:
-    st.plotly_chart(heatmap_month(df), use_container_width=True)
+    st.plotly_chart(heatmap_month(df_filtre), use_container_width=True)
 
 with tab5:
-    st.plotly_chart(category_bars(df), use_container_width=True)
+    st.plotly_chart(category_bars(df_filtre), use_container_width=True)
 
 # ---------------------------------------------------------
-# TABLEAU DÉTAIL
+# TABLEAU DES DOSSIERS FILTRÉS
 # ---------------------------------------------------------
-st.subheader("📋 Dossiers filtrés")
+st.subheader("📋 Détails des dossiers filtrés")
 
 cols_display = [
     "Dossier N",
@@ -242,15 +231,18 @@ cols_display = [
     "Visa",
     "Montant honoraires (US $)",
     "Autres frais (US $)",
-    "Acompte 1",
-    "Acompte 2",
-    "Acompte 3",
-    "Acompte 4",
+    "Dossier envoye",
+    "Dossier accepte",
+    "Dossier refuse",
+    "Dossier Annule",
+    "RFE",
     "Escrow",
 ]
 
+cols_display = [c for c in cols_display if c in df_filtre.columns]
+
 st.dataframe(
-    df[cols_display].sort_values("Dossier N"),
+    df_filtre[cols_display].sort_values("Date", ascending=False),
     use_container_width=True,
-    height=420,
+    height=450,
 )
