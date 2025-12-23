@@ -84,7 +84,7 @@ st.subheader("💰 Facturation")
 
 f1, f2, f3 = st.columns(3)
 
-# ✅ CHANGEMENT ICI : LIBELLÉ UNIQUEMENT
+# Montant d'honoraires (ex tarif appliqué)
 tarif_applique = f1.number_input(
     "Montant honoraires (US $)",
     value=to_float(row.get("Montant honoraires (US $)", tarif_auto)),
@@ -150,6 +150,32 @@ annule = s4.checkbox("Dossier annulé", normalize_bool(row.get("Dossier Annule")
 rfe = s5.checkbox("RFE", normalize_bool(row.get("RFE")))
 
 # ---------------------------------------------------------
+# DATES DE STATUTS (AJOUT)
+# ---------------------------------------------------------
+d1, d2, d3, d4, d5 = st.columns(5)
+
+date_envoye = d1.date_input(
+    "Date dossier envoyé",
+    safe_date(row.get("Date envoi"))
+)
+date_accepte = d2.date_input(
+    "Date dossier accepté",
+    safe_date(row.get("Date acceptation"))
+)
+date_refuse = d3.date_input(
+    "Date dossier refusé",
+    safe_date(row.get("Date refus"))
+)
+date_annule = d4.date_input(
+    "Date dossier annulé",
+    safe_date(row.get("Date annulation"))
+)
+date_rfe = d5.date_input(
+    "Date RFE",
+    safe_date(row.get("Date reclamation"))
+)
+
+# ---------------------------------------------------------
 # SAUVEGARDE
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications", type="primary"):
@@ -171,7 +197,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     for i in range(1, 5):
         df.loc[idx, f"Acompte {i}"] = acomptes[i]
 
-    # Statuts
+    # Statuts (centralisé)
     df = update_status_row(
         df,
         idx,
@@ -182,7 +208,14 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         rfe=rfe,
     )
 
-    # Escrow
+    # Dates de statuts
+    df.loc[idx, "Date envoi"] = str(date_envoye) if date_envoye else ""
+    df.loc[idx, "Date acceptation"] = str(date_accepte) if date_accepte else ""
+    df.loc[idx, "Date refus"] = str(date_refuse) if date_refuse else ""
+    df.loc[idx, "Date annulation"] = str(date_annule) if date_annule else ""
+    df.loc[idx, "Date reclamation"] = str(date_rfe) if date_rfe else ""
+
+    # Escrow (règle claire)
     if escrow_actif:
         df.loc[idx, "Escrow"] = True
         df.loc[idx, "Escrow_a_reclamer"] = False
