@@ -5,7 +5,11 @@ from datetime import datetime
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
 from utils.tarif_utils import get_tarif_for_visa
-from utils.status_utils import normalize_status_columns, update_status_row, normalize_bool
+from utils.status_utils import (
+    normalize_status_columns,
+    update_status_row,
+    normalize_bool,
+)
 
 # ---------------------------------------------------------
 # CONFIG
@@ -15,10 +19,11 @@ render_sidebar()
 st.title("✏️ Modifier un dossier")
 
 # ---------------------------------------------------------
-# CHARGEMENT BASE
+# LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
 clients = db.get("clients", [])
+visa_table = pd.DataFrame(db.get("visa", []))
 tarifs = db.get("tarifs", [])
 
 if not clients:
@@ -26,22 +31,14 @@ if not clients:
     st.stop()
 
 df = pd.DataFrame(clients)
-
-# Normalisation statuts
 df = normalize_status_columns(df)
 
 DOSSIER_COL = "Dossier N"
 df[DOSSIER_COL] = df[DOSSIER_COL].astype(str)
 
 # ---------------------------------------------------------
-# SÉLECTION DOSSIER
+# UTILS
 # ---------------------------------------------------------
-liste = sorted(df[DOSSIER_COL].unique())
-selected = st.selectbox("Sélectionner un dossier", liste)
-
-row = df[df[DOSSIER_COL] == selected].iloc[0]
-idx = row.name
-
 def safe_date(v):
     try:
         d = pd.to_datetime(v, errors="coerce")
@@ -55,54 +52,90 @@ def to_float(v):
     except:
         return 0.0
 
+def get_souscats(cat):
+    return sorted(
+        visa_table[visa_table["Categories"] == cat]["Sous-categories"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+def get_visas(souscat):
+    return sorted(
+        visa_table[visa_table["Sous-categories"] == souscat]["Visa"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
 # ---------------------------------------------------------
-# INFORMATIONS GÉNÉRALES
+# SÉLECTION DOSSIER
+# ---------------------------------------------------------
+liste = sorted(df[DOSSIER_COL].unique())
+selected = st.selectbox("Sélectionner un dossier", liste)
+
+row = df[df[DOSSIER_COL] == selected].iloc[0]
+idx = row.name
+
+# ---------------------------------------------------------
+# INFOS GÉNÉRALES
 # ---------------------------------------------------------
 st.subheader(f"📄 Dossier {selected}")
 
 c1, c2, c3 = st.columns(3)
 nom = c1.text_input("Nom", row.get("Nom", ""))
 date_dossier = c2.date_input("Date du dossier", safe_date(row.get("Date")))
-visa = c3.text_input("Visa", row.get("Visa", ""))
 
-c4, c5 = st.columns(2)
-categorie = c4.text_input("Catégorie", row.get("Categories", ""))
-sous_categorie = c5.text_input("Sous-catégorie", row.get("Sous-categories", ""))
+# ----------------- CATEGORIES / SOUS-CATEGORIES / VISA -----------------
+st.subheader("🧩 Catégorisation")
+
+colA, colB, colC = st.columns(3)
+
+cat_list = sorted(visa_table["Categories"].dropna().unique().tolist())
+categorie = colA.selectbox(
+    "Catégorie",
+    cat_list,
+    index=cat_list.index(row.get("Categories")) if row.get("Categories") in cat_list else 0
+)
+
+souscat_list = get_souscats(categorie)
+sous_categorie = colB.selectbox(
+    "Sous-catégorie",
+    souscat_list,
+    index=souscat_list.index(row.get("Sous-categories")) if row.get("Sous-categories") in souscat_list else 0
+)
+
+visa_list = get_visas(sous_categorie)
+visa = colC.selectbox(
+    "Visa",
+    visa_list,
+    index=visa_list.index(row.get("Visa")) if row.get("Visa") in visa_list else 0
+)
 
 commentaire = st.text_area("📝 Commentaire", row.get("Commentaire", ""))
 
 # ---------------------------------------------------------
-# TARIF / HONORAIRES
+# FACTURATION
 # ---------------------------------------------------------
-tarif_auto = get_tarif_for_visa(
-    visa,
-    date_dossier,
-    tarifs
-)
+tarif_auto = get_tarif_for_visa(visa, date_dossier, tarifs)
 
 st.subheader("💰 Facturation")
 
-f1, f2, f3 = st.columns(3)
+f1, f2 = st.columns(2)
 
-# Montant d'honoraires (ex tarif appliqué)
-tarif_applique = f1.number_input(
+honoraires = f1.number_input(
     "Montant honoraires (US $)",
     value=to_float(row.get("Montant honoraires (US $)", tarif_auto)),
     step=50.0
 )
 
-tarif_modifie = f2.checkbox(
-    "Tarif modifié manuellement",
-    value=row.get("Tarif modifie manuellement", False)
-)
-
-autres_frais = f3.number_input(
-    "Autres frais",
+autres_frais = f2.number_input(
+    "Autres frais (US $)",
     value=to_float(row.get("Autres frais (US $)", 0)),
     step=10.0
 )
 
-total_facture = tarif_applique + autres_frais
+total_facture = honoraires + autres_frais
 st.info(f"💵 Total facturé : **${total_facture:,.2f}**")
 
 # ---------------------------------------------------------
@@ -150,54 +183,23 @@ annule = s4.checkbox("Dossier annulé", normalize_bool(row.get("Dossier Annule")
 rfe = s5.checkbox("RFE", normalize_bool(row.get("RFE")))
 
 # ---------------------------------------------------------
-# DATES DE STATUTS (AJOUT)
-# ---------------------------------------------------------
-d1, d2, d3, d4, d5 = st.columns(5)
-
-date_envoye = d1.date_input(
-    "Date dossier envoyé",
-    safe_date(row.get("Date envoi"))
-)
-date_accepte = d2.date_input(
-    "Date dossier accepté",
-    safe_date(row.get("Date acceptation"))
-)
-date_refuse = d3.date_input(
-    "Date dossier refusé",
-    safe_date(row.get("Date refus"))
-)
-date_annule = d4.date_input(
-    "Date dossier annulé",
-    safe_date(row.get("Date annulation"))
-)
-date_rfe = d5.date_input(
-    "Date RFE",
-    safe_date(row.get("Date reclamation"))
-)
-
-# ---------------------------------------------------------
 # SAUVEGARDE
 # ---------------------------------------------------------
 if st.button("💾 Enregistrer les modifications", type="primary"):
 
-    # Infos générales
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = str(date_dossier)
-    df.loc[idx, "Visa"] = visa
     df.loc[idx, "Categories"] = categorie
     df.loc[idx, "Sous-categories"] = sous_categorie
+    df.loc[idx, "Visa"] = visa
     df.loc[idx, "Commentaire"] = commentaire
 
-    # Facturation
-    df.loc[idx, "Montant honoraires (US $)"] = tarif_applique
-    df.loc[idx, "Tarif modifie manuellement"] = bool(tarif_modifie)
+    df.loc[idx, "Montant honoraires (US $)"] = honoraires
     df.loc[idx, "Autres frais (US $)"] = autres_frais
 
-    # Acomptes
     for i in range(1, 5):
         df.loc[idx, f"Acompte {i}"] = acomptes[i]
 
-    # Statuts (centralisé)
     df = update_status_row(
         df,
         idx,
@@ -208,14 +210,6 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         rfe=rfe,
     )
 
-    # Dates de statuts
-    df.loc[idx, "Date envoi"] = str(date_envoye) if date_envoye else ""
-    df.loc[idx, "Date acceptation"] = str(date_accepte) if date_accepte else ""
-    df.loc[idx, "Date refus"] = str(date_refuse) if date_refuse else ""
-    df.loc[idx, "Date annulation"] = str(date_annule) if date_annule else ""
-    df.loc[idx, "Date reclamation"] = str(date_rfe) if date_rfe else ""
-
-    # Escrow (règle claire)
     if escrow_actif:
         df.loc[idx, "Escrow"] = True
         df.loc[idx, "Escrow_a_reclamer"] = False
@@ -223,7 +217,6 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     else:
         df.loc[idx, "Escrow"] = False
 
-    # Sauvegarde
     db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
