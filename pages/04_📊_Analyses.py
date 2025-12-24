@@ -131,9 +131,15 @@ visa_sel = fil4.selectbox("Visa", ["Tous"] + sorted(visa_options))
 statut_options = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
 statut_sel = fil5.selectbox("Statut dossier", statut_options)
 
-# Filtre “dossiers non soldés”
-only_non_soldes = st.checkbox(
-    "Afficher uniquement les dossiers non soldés (solde > 0)", value=False
+# Filtre sur le solde (soldé / non soldé / < 0)
+solde_filter = st.selectbox(
+    "Filtre sur le solde",
+    [
+        "Tous",
+        "Dossiers non soldés (solde > 0)",
+        "Dossiers soldés (solde = 0)",
+        "Dossiers créditeurs (solde < 0)",
+    ],
 )
 
 # ---------------------------------------------------------
@@ -170,9 +176,14 @@ if statut_sel != "Tous":
     if col_statut:
         df_filt = df_filt[df_filt[col_statut] == True]
 
-# Dossiers non soldés
-if only_non_soldes:
-    df_filt = df_filt[df_filt["Solde"] > 0.01]
+# Filtre solde
+EPS = 0.01  # petite tolérance pour "solde = 0"
+if solde_filter == "Dossiers non soldés (solde > 0)":
+    df_filt = df_filt[df_filt["Solde"] > EPS]
+elif solde_filter == "Dossiers soldés (solde = 0)":
+    df_filt = df_filt[df_filt["Solde"].abs() <= EPS]
+elif solde_filter == "Dossiers créditeurs (solde < 0)":
+    df_filt = df_filt[df_filt["Solde"] < -EPS]
 
 # Sécurité si plus rien
 if df_filt.empty:
@@ -292,7 +303,6 @@ cols_display = [
 ]
 
 cols_present = [c for c in cols_display if c in df_filt.columns]
-
 df_show = df_filt[cols_present].copy()
 
 st.dataframe(df_show, use_container_width=True, height=450)
