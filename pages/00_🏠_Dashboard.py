@@ -1,10 +1,10 @@
+import os
 import streamlit as st
-import pandas as pd
+
+st.write("ROOT FILES:", os.listdir("."))
+st.write("UTILS DIR:", os.listdir("utils") if os.path.isdir("utils") else "NO utils/ folder")
 
 from utils.sidebar import render_sidebar
-from backend.dropbox_utils import load_database
-from components.kpi_cards import kpi_card
-from utils.dossier_hierarchy import add_hierarchy_columns
 
 # ---------------------------------------------------------
 # CONFIG
