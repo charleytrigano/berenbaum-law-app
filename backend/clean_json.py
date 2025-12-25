@@ -1,5 +1,4 @@
 import pandas as pd
-from datetime import datetime, date
 
 # Colonnes standardisées
 VALID_COLUMNS = {
@@ -20,17 +19,24 @@ VALID_COLUMNS = {
     "Date Acompte 3": "",
     "Date Acompte 4": "",
     "mode de paiement": "",
+    "Commentaire": "",  # ✅ AJOUT
+
     "Escrow": False,
     "Escrow_a_reclamer": False,
     "Escrow_reclame": False,
-    "Dossier envoye": False,
+
+    "Dossier_envoye": False,
     "Date envoi": "",
+
     "Dossier accepte": False,
     "Date acceptation": "",
+
     "Dossier refuse": False,
     "Date refus": "",
+
     "Dossier Annule": False,
     "Date annulation": "",
+
     "RFE": False,
     "Date reclamation": "",
 }
@@ -39,52 +45,46 @@ VALID_COLUMNS = {
 def normalize_bool(v):
     if isinstance(v, bool):
         return v
-    if v is None:
-        return False
-    return str(v).strip().lower() in ["1", "true", "yes", "oui"]
-
-
-def serialize_value(val):
-    """
-    🔒 FONCTION CRITIQUE
-    Convertit toute valeur non sérialisable JSON
-    """
-    if isinstance(val, pd.Timestamp):
-        return val.date().isoformat()
-    if isinstance(val, (datetime, date)):
-        return val.isoformat()
-    if pd.isna(val):
-        return ""
-    return val
+    if str(v).strip().lower() in ["1", "true", "yes", "oui"]:
+        return True
+    return False
 
 
 def clean_database(db):
     cleaned_clients = []
 
     for item in db.get("clients", []):
+        if not isinstance(item, dict):
+            continue
+
         clean = {}
 
         for col, default in VALID_COLUMNS.items():
             if col in item:
                 val = item[col]
+
+                # bool
+                if isinstance(default, bool):
+                    val = normalize_bool(val)
+
+                # float
+                elif isinstance(default, float):
+                    try:
+                        val = float(val)
+                    except Exception:
+                        val = default
+
+                # date (laisser string)
+                elif isinstance(default, str) and "Date" in col:
+                    val = val if val else ""
+
+                # text
+                elif isinstance(default, str):
+                    val = val if val else ""
+
+                clean[col] = val
             else:
-                val = default
-
-            # Booléens
-            if isinstance(default, bool):
-                val = normalize_bool(val)
-
-            # Floats
-            elif isinstance(default, float):
-                try:
-                    val = float(val)
-                except Exception:
-                    val = default
-
-            # Dates / Timestamp / NaT
-            val = serialize_value(val)
-
-            clean[col] = val
+                clean[col] = default
 
         cleaned_clients.append(clean)
 
@@ -93,5 +93,7 @@ def clean_database(db):
         "visa": db.get("visa", []),
         "escrow": db.get("escrow", []),
         "compta": db.get("compta", []),
+        "tarifs": db.get("tarifs", []),
+        "tarifs_history": db.get("tarifs_history", []),
         "history": db.get("history", []),
     }
