@@ -1,17 +1,26 @@
 # utils/sidebar.py
-import streamlit as st
 import os
-from PIL import Image
+import re
+import streamlit as st
 
-def _safe_page_link(page_path: str, label: str, icon: str = None):
+
+def _extract_order(filename: str) -> int:
     """
-    Affiche un lien vers une page Streamlit uniquement si le fichier existe.
-    Évite StreamlitPageNotFoundError qui casse toute l'app.
+    Extrait le préfixe numérique d'une page Streamlit: "08_📤_Export_Excel.py" -> 8
+    Si absent, renvoie 9999.
     """
-    if os.path.exists(page_path):
-        st.page_link(page_path, label=label, icon=icon)
-        return True
-    return False
+    m = re.match(r"^(\d+)_", filename)
+    return int(m.group(1)) if m else 9999
+
+
+def _label_from_filename(filename: str) -> str:
+    """
+    Transforme "08_📤_Export_Excel.py" -> "📤 Export Excel"
+    """
+    name = filename[:-3] if filename.endswith(".py") else filename
+    name = re.sub(r"^\d+_", "", name)  # retire "08_"
+    name = name.replace("_", " ")
+    return name
 
 
 def render_sidebar():
@@ -37,27 +46,28 @@ def render_sidebar():
 
         st.markdown("---")
 
-        # --- NAVIGATION (liens pages) ---
-        # IMPORTANT : les chemins doivent correspondre EXACTEMENT aux noms de fichiers dans /pages
-        _safe_page_link("pages/00_🏠_Dashboard.py", "🏠 Dashboard")
-        _safe_page_link("pages/01_📁_Liste_dossiers.py", "📁 Liste des dossiers")
-        _safe_page_link("pages/02_➕_Nouveau_dossier.py", "➕ Nouveau dossier")
-        _safe_page_link("pages/03_✏️_Modifier_dossier.py", "✏️ Modifier dossier")
-        _safe_page_link("pages/04_📊_Analyses.py", "📊 Analyses")
-        _safe_page_link("pages/06_💰_Escrow.py", "💰 Escrow")
-        _safe_page_link("pages/07_🛂_Visa.py", "🛂 Visa")
-        _safe_page_link("pages/09_⚙️_Parametres.py", "⚙️ Paramètres")
-        _safe_page_link("pages/10_❓_Aide.py", "❓ Aide")
-        _safe_page_link("pages/11_📄_Fiche_dossier.py", "📄 Fiche dossier")
+        # --- AUTO NAVIGATION À PARTIR DU DOSSIER /pages ---
+        pages_dir = "pages"
+        if not os.path.isdir(pages_dir):
+            st.error("❌ Dossier 'pages' introuvable.")
+            return
 
-        # --- OPTIONNEL : Export Excel ↔ JSON ---
-        # Ce lien ne s’affichera QUE si le fichier existe.
-        # Tu peux garder ce bloc même si la page n’est pas encore créée.
-        found = _safe_page_link(
-            "pages/14_🔄_Export_JSON_Excel.py",
-            "🔄 Export Excel ↔ JSON"
-        )
+        files = [f for f in os.listdir(pages_dir) if f.endswith(".py")]
+        files = sorted(files, key=_extract_order)
 
-        # (Option debug : si tu veux voir quand ça manque)
-        # if not found:
-        #     st.caption("ℹ️ Page Export Excel ↔ JSON non installée (fichier absent).")
+        # Affiche tous les liens dans l'ordre: 00, 01, 02, ...
+        for f in files:
+            page_path = os.path.join(pages_dir, f)
+
+            # IMPORTANT: st.page_link exige un chemin existant
+            if os.path.exists(page_path):
+                label = _label_from_filename(f)
+
+                # Sécurité: si Streamlit refuse un nom bizarre, on n'explose pas
+                try:
+                    st.page_link(page_path, label=label)
+                except Exception:
+                    # fallback minimal si un fichier a un nom "incompatible"
+                    st.write(f"• {label}")
+
+        st.markdown("---")
