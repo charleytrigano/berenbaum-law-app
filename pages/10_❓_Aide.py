@@ -1,13 +1,15 @@
 # pages/10_❓_Aide.py
-import streamlit as st
+import os
 from io import BytesIO
 from datetime import datetime
 
+import streamlit as st
 from utils.sidebar import render_sidebar
 
 # PDF (ReportLab)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -18,7 +20,18 @@ from reportlab.pdfgen import canvas
 # =========================================================
 st.set_page_config(page_title="❓ Aide", page_icon="❓", layout="wide")
 render_sidebar()
-st.title("❓ Aide – Mode d’emploi (interne cabinet)")
+
+# =========================================================
+# PARAMÈTRES (Logo + Nom cabinet)
+# =========================================================
+DEFAULT_CABINET_NAME = "Berenbaum Law"
+LOGO_PATH = "assets/logo.png"
+
+# Ces 2 valeurs sont éditables dans la page, mais gardées en session
+if "cabinet_name" not in st.session_state:
+    st.session_state["cabinet_name"] = DEFAULT_CABINET_NAME
+if "help_logo_path" not in st.session_state:
+    st.session_state["help_logo_path"] = LOGO_PATH
 
 
 # =========================================================
@@ -36,7 +49,7 @@ Cette application permet de gérer les dossiers du cabinet :
 
 ## 2. Navigation
 Utilisez la barre latérale (sidebar) pour accéder aux pages :
-Dashboard, Liste, Nouveau, Modifier, Analyses, Escrow, Visa, Tarifs, Exports, Paramètres.
+Dashboard, Liste, Nouveau, Modifier, Analyses, Escrow, Visa, Tarifs, Exports, Paramètres, Aide.
 
 ## 3. Dashboard
 - Filtres : Année, Catégorie, Sous-catégorie, Visa, Statut
@@ -82,7 +95,7 @@ This app helps manage the firm’s cases:
 
 ## 2. Navigation
 Use the left sidebar to open pages:
-Dashboard, List, New, Edit, Analytics, Escrow, Visa, Pricing, Exports, Settings.
+Dashboard, List, New, Edit, Analytics, Escrow, Visa, Pricing, Exports, Settings, Help.
 
 ## 3. Dashboard
 - Filters: Year, Category, Sub-category, Visa, Status
@@ -118,9 +131,9 @@ Filters + KPIs + time comparisons.
 
 
 # =========================================================
-# PDF BUILDER (dans ce fichier pour éviter les imports manquants)
+# PDF BUILDER (Logo + Nom cabinet)
 # =========================================================
-def _register_font_if_available():
+def _register_font_if_available() -> str:
     """
     Optionnel : si tu ajoutes un fichier TTF dans assets/ (ex: assets/DejaVuSans.ttf),
     on l'utilise pour mieux supporter accents et symboles.
@@ -132,42 +145,76 @@ def _register_font_if_available():
         return "Helvetica"
 
 
-def build_help_pdf_bytes(title: str, content: str, footer: str = "") -> bytes:
+def _safe_image_reader(path: str):
+    try:
+        if path and os.path.exists(path):
+            return ImageReader(path)
+    except Exception:
+        pass
+    return None
+
+
+def build_help_pdf_bytes(
+    cabinet_name: str,
+    title: str,
+    content: str,
+    footer: str = "",
+    logo_path: str = "assets/logo.png",
+) -> bytes:
     """
-    Génère un PDF A4 simple, propre, imprimable.
-    - Supporte sauts de ligne
-    - Coupe les lignes trop longues
+    Génère un PDF A4 :
+    - En-tête avec logo + nom cabinet + titre
+    - Corps texte paginé
+    - Footer optionnel
     """
     font_name = _register_font_if_available()
-
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
 
     width, height = A4
     left = 2.0 * cm
     right = 2.0 * cm
-    top = 2.0 * cm
+    top = 1.6 * cm
     bottom = 2.0 * cm
-
     max_width = width - left - right
 
-    # Styles simples
-    title_size = 16
+    # Styles
+    header_name_size = 14
+    header_title_size = 12
     body_size = 10
     line_height = 14  # points
 
-    y = height - top
+    logo = _safe_image_reader(logo_path)
 
-    # Titre
-    c.setFont(font_name, title_size)
-    c.drawString(left, y, title[:120])
-    y -= 24
+    def draw_header():
+        y_top = height - top
 
-    c.setFont(font_name, body_size)
+        # Logo
+        if logo is not None:
+            # dimension logo
+            logo_w = 2.0 * cm
+            logo_h = 2.0 * cm
+            c.drawImage(logo, left, y_top - logo_h, width=logo_w, height=logo_h, mask="auto")
+            x_text = left + logo_w + 0.6 * cm
+        else:
+            x_text = left
 
-    def wrap_line(line: str):
-        # wrap simple par mots
-        words = line.split(" ")
+        # Nom cabinet
+        c.setFont(font_name, header_name_size)
+        c.drawString(x_text, y_top - 0.6 * cm, (cabinet_name or "").strip()[:70])
+
+        # Titre document
+        c.setFont(font_name, header_title_size)
+        c.drawString(x_text, y_top - 1.25 * cm, title[:90])
+
+        # Trait séparation
+        c.setLineWidth(0.5)
+        c.line(left, y_top - 2.2 * cm, width - right, y_top - 2.2 * cm)
+
+        return y_top - 2.7 * cm  # position de départ du corps
+
+    def wrap_line(text: str):
+        words = text.split(" ")
         lines = []
         current = ""
         for w in words:
@@ -182,27 +229,33 @@ def build_help_pdf_bytes(title: str, content: str, footer: str = "") -> bytes:
             lines.append(current)
         return lines
 
-    # Corps (markdown "léger" -> rendu texte)
-    # On transforme certains marqueurs (#, ##, -) en texte lisible.
+    y = draw_header()
+    c.setFont(font_name, body_size)
+
     raw_lines = content.replace("\r\n", "\n").split("\n")
+
+    def new_page():
+        c.showPage()
+        return draw_header()
+
     for raw in raw_lines:
         line = raw.strip()
 
-        # Sauts / espaces
         if line == "":
             y -= line_height
+            if y < bottom:
+                y = new_page()
+                c.setFont(font_name, body_size)
             continue
 
-        # Petites conventions markdown
+        # Markdown "léger"
         if line.startswith("### "):
             c.setFont(font_name, 12)
             text = line[4:].strip()
-            y -= 4
+            y -= 2
             for wl in wrap_line(text):
                 if y < bottom:
-                    c.showPage()
-                    c.setFont(font_name, body_size)
-                    y = height - top
+                    y = new_page()
                     c.setFont(font_name, 12)
                 c.drawString(left, y, wl)
                 y -= line_height
@@ -212,12 +265,10 @@ def build_help_pdf_bytes(title: str, content: str, footer: str = "") -> bytes:
         if line.startswith("## "):
             c.setFont(font_name, 13)
             text = line[3:].strip()
-            y -= 6
+            y -= 4
             for wl in wrap_line(text):
                 if y < bottom:
-                    c.showPage()
-                    c.setFont(font_name, body_size)
-                    y = height - top
+                    y = new_page()
                     c.setFont(font_name, 13)
                 c.drawString(left, y, wl)
                 y -= line_height
@@ -227,32 +278,26 @@ def build_help_pdf_bytes(title: str, content: str, footer: str = "") -> bytes:
         if line.startswith("# "):
             c.setFont(font_name, 14)
             text = line[2:].strip()
-            y -= 8
+            y -= 6
             for wl in wrap_line(text):
                 if y < bottom:
-                    c.showPage()
-                    c.setFont(font_name, body_size)
-                    y = height - top
+                    y = new_page()
                     c.setFont(font_name, 14)
                 c.drawString(left, y, wl)
                 y -= line_height
             c.setFont(font_name, body_size)
             continue
 
-        if line.startswith("- "):
-            text = "• " + line[2:].strip()
-        else:
-            text = line
+        text = "• " + line[2:].strip() if line.startswith("- ") else line
 
         for wl in wrap_line(text):
             if y < bottom:
-                c.showPage()
+                y = new_page()
                 c.setFont(font_name, body_size)
-                y = height - top
             c.drawString(left, y, wl)
             y -= line_height
 
-    # Footer
+    # Footer (sur la dernière page)
     if footer:
         c.setFont(font_name, 8)
         c.drawString(left, bottom - 10, footer[:160])
@@ -262,14 +307,37 @@ def build_help_pdf_bytes(title: str, content: str, footer: str = "") -> bytes:
 
 
 # =========================================================
+# UI – Header page (Logo + Nom cabinet)
+# =========================================================
+cabinet_name = st.session_state["cabinet_name"]
+logo_path = st.session_state["help_logo_path"]
+
+header_left, header_right = st.columns([1, 4])
+with header_left:
+    if logo_path and os.path.exists(logo_path):
+        st.image(logo_path, width=95)
+with header_right:
+    st.markdown(f"## {cabinet_name}")
+    st.caption("Espace Aide – consultation, édition et export PDF")
+
+st.markdown("---")
+
+with st.expander("⚙️ Paramètres de l’aide (logo / nom cabinet)", expanded=False):
+    st.session_state["cabinet_name"] = st.text_input("Nom du cabinet", value=st.session_state["cabinet_name"])
+    st.session_state["help_logo_path"] = st.text_input("Chemin du logo", value=st.session_state["help_logo_path"])
+    if st.session_state["help_logo_path"] and not os.path.exists(st.session_state["help_logo_path"]):
+        st.warning("Logo introuvable à ce chemin. Le PDF sera généré sans logo.")
+
+
+# =========================================================
 # UI – Edition + Export PDF
 # =========================================================
 st.markdown("### 📘 Consulter / éditer l’aide")
-colA, colB, colC = st.columns([2, 2, 2])
 
+colA, colB, colC = st.columns([2, 2, 2])
 lang = colA.selectbox("Langue", ["Français", "English"], index=0)
 mode = colB.selectbox("Mode", ["Édition", "Lecture"], index=0)
-pdf_branding = colC.selectbox("En-tête PDF", ["Cabinet interne", "Sans en-tête"], index=0)
+pdf_branding = colC.selectbox("Type PDF", ["Cabinet interne", "Sans en-tête"], index=0)
 
 if "help_fr" not in st.session_state:
     st.session_state["help_fr"] = DEFAULT_HELP_FR
@@ -277,13 +345,12 @@ if "help_en" not in st.session_state:
     st.session_state["help_en"] = DEFAULT_HELP_EN
 
 content_key = "help_fr" if lang == "Français" else "help_en"
-content_value = st.session_state[content_key]
 
 if mode == "Édition":
-    st.info("Vous pouvez modifier le texte ci-dessous puis exporter en PDF.")
+    st.info("Modifiez le texte ci-dessous puis exportez en PDF.")
     edited = st.text_area(
         "Contenu de l’aide (modifiable)",
-        value=content_value,
+        value=st.session_state[content_key],
         height=520,
     )
     st.session_state[content_key] = edited
@@ -293,13 +360,10 @@ else:
 st.markdown("---")
 st.markdown("### 📄 Export PDF")
 
-export_title = st.text_input(
-    "Titre PDF",
-    value="Aide – Berenbaum Law App" if lang == "Français" else "Help – Berenbaum Law App",
-)
+default_title = "Aide – Berenbaum Law App" if lang == "Français" else "Help – Berenbaum Law App"
+export_title = st.text_input("Titre du document", value=default_title)
 
 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-footer = ""
 if pdf_branding == "Cabinet interne":
     footer = f"Document interne cabinet – généré le {now_str}"
 else:
@@ -307,11 +371,12 @@ else:
 
 if st.button("📄 Générer le PDF", type="primary"):
     pdf_bytes = build_help_pdf_bytes(
+        cabinet_name=st.session_state["cabinet_name"] if pdf_branding == "Cabinet interne" else "",
         title=export_title,
         content=st.session_state[content_key],
         footer=footer,
+        logo_path=st.session_state["help_logo_path"] if pdf_branding == "Cabinet interne" else "",
     )
-    st.success("PDF généré. Vous pouvez le télécharger ci-dessous.")
 
     filename = f"aide_{'FR' if lang=='Français' else 'EN'}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
     st.download_button(
@@ -322,6 +387,6 @@ if st.button("📄 Générer le PDF", type="primary"):
     )
 
 st.caption(
-    "Astuce : si vous souhaitez une meilleure gestion des accents dans le PDF, "
-    "ajoutez un fichier police TTF dans assets/ (ex: assets/DejaVuSans.ttf)."
+    "Astuce : pour une meilleure gestion des accents dans le PDF, "
+    "vous pouvez ajouter une police TTF dans assets/ (ex: assets/DejaVuSans.ttf)."
 )
