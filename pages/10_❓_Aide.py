@@ -1,155 +1,426 @@
-import streamlit as st
+import os
 from datetime import datetime
 
-from utils.sidebar import render_sidebar
-from utils.help_pdf import build_help_pdf_bytes
+import streamlit as st
 
-# ---------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------
+from utils.sidebar import render_sidebar
+
+# =========================================================
+# PDF BUILDER (AUTONOUS / NO EXTERNAL IMPORT)
+# =========================================================
+from io import BytesIO
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Image,
+    PageBreak,
+    Table,
+    TableStyle,
+)
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+
+def _try_register_fonts():
+    font_dir = os.path.join("assets", "fonts")
+    dejavu = os.path.join(font_dir, "DejaVuSans.ttf")
+    dejavu_b = os.path.join(font_dir, "DejaVuSans-Bold.ttf")
+    try:
+        if os.path.exists(dejavu):
+            pdfmetrics.registerFont(TTFont("DejaVuSans", dejavu))
+        if os.path.exists(dejavu_b):
+            pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", dejavu_b))
+    except Exception:
+        pass
+
+
+def _styles():
+    _try_register_fonts()
+    styles = getSampleStyleSheet()
+
+    base_font = "Helvetica"
+    base_bold = "Helvetica-Bold"
+    if "DejaVuSans" in pdfmetrics.getRegisteredFontNames():
+        base_font = "DejaVuSans"
+    if "DejaVuSans-Bold" in pdfmetrics.getRegisteredFontNames():
+        base_bold = "DejaVuSans-Bold"
+
+    title = ParagraphStyle(
+        "Title",
+        parent=styles["Title"],
+        fontName=base_bold,
+        fontSize=20,
+        leading=24,
+        spaceAfter=14,
+    )
+    h1 = ParagraphStyle(
+        "H1",
+        parent=styles["Heading1"],
+        fontName=base_bold,
+        fontSize=14,
+        leading=18,
+        spaceBefore=14,
+        spaceAfter=8,
+    )
+    h2 = ParagraphStyle(
+        "H2",
+        parent=styles["Heading2"],
+        fontName=base_bold,
+        fontSize=12,
+        leading=16,
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+    body = ParagraphStyle(
+        "Body",
+        parent=styles["BodyText"],
+        fontName=base_font,
+        fontSize=10.5,
+        leading=14,
+        spaceAfter=4,
+    )
+    small = ParagraphStyle(
+        "Small",
+        parent=styles["BodyText"],
+        fontName=base_font,
+        fontSize=9,
+        leading=12,
+        textColor=colors.grey,
+        spaceAfter=6,
+    )
+    mono = ParagraphStyle(
+        "Mono",
+        parent=styles["BodyText"],
+        fontName="Courier",
+        fontSize=9.5,
+        leading=12,
+        backColor=colors.whitesmoke,
+        borderColor=colors.lightgrey,
+        borderWidth=0.5,
+        borderPadding=6,
+        spaceAfter=6,
+    )
+    return {
+        "title": title,
+        "h1": h1,
+        "h2": h2,
+        "body": body,
+        "small": small,
+        "mono": mono,
+        "base_font": base_font,
+        "base_bold": base_bold,
+    }
+
+
+def _escape(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _paragraphs_from_text(text: str, body_style, mono_style):
+    flow = []
+    lines = text.split("\n")
+    in_code = False
+    code_buf = []
+    bullet_buf = []
+
+    def flush_code():
+        nonlocal code_buf
+        if code_buf:
+            code_text = "<br/>".join(_escape(x) for x in code_buf)
+            flow.append(Paragraph(code_text, mono_style))
+            code_buf = []
+
+    def flush_bullets():
+        nonlocal bullet_buf
+        if bullet_buf:
+            items = "".join(f"<li>{_escape(x)}</li>" for x in bullet_buf)
+            flow.append(Paragraph(f"<ul>{items}</ul>", body_style))
+            bullet_buf = []
+
+    for raw in lines:
+        line = raw.rstrip()
+
+        if line.strip().startswith("```"):
+            if not in_code:
+                flush_bullets()
+                in_code = True
+                code_buf = []
+            else:
+                in_code = False
+                flush_code()
+            continue
+
+        if in_code:
+            code_buf.append(line)
+            continue
+
+        if line.strip() == "":
+            flush_bullets()
+            flow.append(Spacer(1, 6))
+            continue
+
+        if line.lstrip().startswith("- "):
+            bullet_buf.append(line.lstrip()[2:])
+            continue
+
+        flush_bullets()
+        flow.append(Paragraph(_escape(line), body_style))
+
+    flush_bullets()
+    flush_code()
+    return flow
+
+
+def _header_footer(canvas, doc, title_text: str):
+    canvas.saveState()
+    canvas.setFont("Helvetica", 9)
+    canvas.setFillColor(colors.grey)
+
+    canvas.line(1.7 * cm, 1.6 * cm, A4[0] - 1.7 * cm, 1.6 * cm)
+    canvas.drawString(1.7 * cm, 1.1 * cm, title_text)
+    canvas.drawRightString(A4[0] - 1.7 * cm, 1.1 * cm, f"Page {doc.page}")
+
+    canvas.restoreState()
+
+
+def build_help_pdf_bytes(
+    *,
+    lang_code: str,
+    app_name: str,
+    subtitle: str,
+    sections: list,
+    faq: list,
+    screenshots_dir: str = "assets/help_screens",
+    logo_path: str = "assets/logo.png",
+):
+    stl = _styles()
+    bio = BytesIO()
+
+    doc = SimpleDocTemplate(
+        bio,
+        pagesize=A4,
+        leftMargin=1.7 * cm,
+        rightMargin=1.7 * cm,
+        topMargin=1.6 * cm,
+        bottomMargin=2.0 * cm,
+        title=f"{app_name} - Help",
+        author=app_name,
+    )
+
+    story = []
+
+    if os.path.exists(logo_path):
+        try:
+            story.append(Image(logo_path, width=3.2 * cm, height=3.2 * cm))
+            story.append(Spacer(1, 10))
+        except Exception:
+            pass
+
+    story.append(Paragraph(_escape(app_name), stl["title"]))
+    story.append(Paragraph(_escape(subtitle), stl["body"]))
+    story.append(Spacer(1, 8))
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    story.append(Paragraph(_escape(f"Version : {now}"), stl["small"]))
+    story.append(Spacer(1, 10))
+
+    story.append(Paragraph(_escape("Sommaire" if lang_code == "FR" else "Contents"), stl["h1"]))
+
+    toc_data = [[_escape("Section" if lang_code == "FR" else "Section"),
+                 _escape("Description" if lang_code == "FR" else "Description")]]
+
+    for s in sections:
+        toc_data.append([_escape(s.get("title", "")), _escape(s.get("toc", ""))])
+
+    toc_table = Table(toc_data, colWidths=[7.5 * cm, 8.0 * cm])
+    toc_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F2F2F2")),
+        ("FONTNAME", (0, 0), (-1, 0), stl["base_bold"]),
+        ("FONTSIZE", (0, 0), (-1, 0), 10),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTSIZE", (0, 1), (-1, -1), 9.5),
+        ("FONTNAME", (0, 1), (-1, -1), stl["base_font"]),
+    ]))
+    story.append(toc_table)
+    story.append(PageBreak())
+
+    for s in sections:
+        story.append(Paragraph(_escape(s.get("title", "")), stl["h1"]))
+        story.append(Spacer(1, 4))
+
+        story.extend(_paragraphs_from_text(s.get("body", ""), stl["body"], stl["mono"]))
+        story.append(Spacer(1, 10))
+
+        img_name = s.get("image")
+        if img_name:
+            img_path = os.path.join(screenshots_dir, img_name)
+            if os.path.exists(img_path):
+                try:
+                    caption = s.get("caption", "")
+                    if caption:
+                        story.append(Paragraph(_escape(caption), stl["small"]))
+                    story.append(Image(img_path, width=16.0 * cm, height=9.0 * cm))
+                    story.append(Spacer(1, 10))
+                except Exception:
+                    story.append(Paragraph(_escape("Capture non lisible (format/poids)."), stl["small"]))
+            else:
+                note = f"Capture introuvable : {img_path}" if lang_code == "FR" else f"Screenshot not found: {img_path}"
+                story.append(Paragraph(_escape(note), stl["small"]))
+
+        story.append(Spacer(1, 6))
+
+    story.append(PageBreak())
+    story.append(Paragraph(_escape("FAQ – Questions fréquentes" if lang_code == "FR" else "FAQ – Common questions"), stl["h1"]))
+    story.append(Spacer(1, 6))
+
+    for item in faq:
+        story.append(Paragraph(_escape("Q: " + item["q"]), stl["h2"]))
+        story.extend(_paragraphs_from_text(item["a"], stl["body"], stl["mono"]))
+        story.append(Spacer(1, 8))
+
+    footer_title = f"{app_name} – {'Aide' if lang_code == 'FR' else 'Help'}"
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _header_footer(c, d, footer_title),
+        onLaterPages=lambda c, d: _header_footer(c, d, footer_title),
+    )
+
+    bio.seek(0)
+    return bio.getvalue()
+
+
+# =========================================================
+# STREAMLIT PAGE
+# =========================================================
 st.set_page_config(page_title="❓ Aide & Mode d’emploi", page_icon="❓", layout="wide")
 render_sidebar()
 st.title("❓ Aide & Mode d’emploi (FR / EN)")
 
-# ---------------------------------------------------------
-# LANGUE
-# ---------------------------------------------------------
 lang = st.radio("🌍 Langue / Language", ["Français 🇫🇷", "English 🇺🇸"], horizontal=True)
 is_fr = "Français" in lang
 lang_code = "FR" if is_fr else "EN"
 
-# ---------------------------------------------------------
-# CONTENU STRUCTURÉ (AFFICHAGE + PDF)
-# ---------------------------------------------------------
 APP_NAME = "Berenbaum Law App"
-
-SUBTITLE_FR = "Guide utilisateur officiel (néophytes) – Version imprimable + PDF"
-SUBTITLE_EN = "Official user guide (beginners) – Printable version + PDF"
+subtitle = "Guide utilisateur officiel (néophytes) – Version imprimable + PDF" if is_fr else "Official user guide (beginners) – Printable version + PDF"
+st.caption(subtitle)
 
 sections_fr = [
     {
         "title": "1) Objectif de l’application",
         "toc": "À quoi sert l’application et à qui elle s’adresse.",
         "body": (
-            "Berenbaum Law App est une application Streamlit de gestion de dossiers juridiques.\n"
+            "Berenbaum Law App est une application Streamlit de gestion de dossiers.\n"
             "Elle centralise : clients, paiements, statuts, escrow, analyses et exports.\n\n"
-            "- Vous n’avez besoin d’aucune compétence technique.\n"
-            "- Tout se fait via des pages et des boutons.\n"
-            "- La barre latérale (menu à gauche) sert à naviguer."
+            "- Navigation simple via le menu à gauche\n"
+            "- Pas de compétence technique requise\n"
+            "- Les données sont stockées dans un JSON sur Dropbox"
         ),
         "image": "01_dashboard.png",
         "caption": "Écran : Dashboard (exemple).",
     },
     {
         "title": "2) Navigation (barre latérale)",
-        "toc": "Comprendre le menu et comment accéder aux pages.",
+        "toc": "Comprendre le menu et accéder aux pages.",
         "body": (
-            "Le menu à gauche est toujours visible.\n\n"
+            "Le menu à gauche sert à naviguer entre les pages.\n\n"
             "Pages principales :\n"
-            "- Dashboard : vue globale\n"
-            "- Liste des dossiers : recherche + filtres\n"
-            "- Nouveau dossier : création\n"
-            "- Modifier dossier : édition complète\n"
-            "- Escrow : suivi en 3 états\n"
-            "- Analyses : statistiques\n"
-            "- Export : Excel / JSON\n"
-            "- Paramètres : outils avancés\n\n"
-            "Astuce : si une page n’apparaît pas, cela signifie souvent que le fichier n’existe pas dans /pages "
-            "ou que son nom a changé."
+            "- Dashboard\n"
+            "- Liste des dossiers\n"
+            "- Nouveau dossier\n"
+            "- Modifier dossier\n"
+            "- Escrow\n"
+            "- Analyses\n"
+            "- Export\n"
+            "- Paramètres\n"
+            "- Aide"
         ),
         "image": "02_sidebar.png",
         "caption": "Écran : Sidebar / Menu.",
     },
     {
         "title": "3) Dossiers parents et sous-dossiers",
-        "toc": "Comprendre la logique parent/fils et les numéros.",
+        "toc": "Comprendre la logique parent/fils.",
         "body": (
-            "Un dossier peut être :\n"
-            "- Parent (ex: 12937)\n"
-            "- Fils (ex: 12937-1, 12937-2)\n\n"
-            "Chaque fils peut avoir :\n"
-            "- un visa différent,\n"
-            "- ses propres montants,\n"
-            "- ses propres acomptes,\n"
-            "- ses propres statuts.\n\n"
-            "Important : les KPI du Dashboard peuvent compter parents + fils."
+            "Un dossier peut être Parent (ex: 12937) ou Fils (ex: 12937-1).\n\n"
+            "Chaque fils peut avoir un visa différent et ses propres montants/statuts.\n"
+            "Les KPI peuvent compter parents + fils selon la page."
         ),
         "image": "03_hierarchy.png",
-        "caption": "Écran : Exemple de groupe dossier (parent + fils).",
+        "caption": "Écran : Groupe dossier (exemple).",
     },
     {
         "title": "4) Créer un nouveau dossier",
-        "toc": "Création simple + règles de paiement visibles.",
+        "toc": "Création et champs obligatoires.",
         "body": (
-            "Sur la page « Nouveau dossier » :\n"
-            "1) Remplir Nom, Date, Catégorie, Sous-catégorie, Visa\n"
-            "2) Saisir Montant honoraires et Autres frais\n"
-            "3) Saisir Acompte 1 + Date + Mode de règlement\n\n"
-            "Note : les acomptes 2/3/4 seront visibles dans « Modifier dossier ».\n\n"
-            "Mode de règlement : Chèque / CB / Virement / Venmo."
+            "Sur « Nouveau dossier » :\n"
+            "- Renseigner Nom et Date\n"
+            "- Choisir Catégorie, Sous-catégorie, Visa\n"
+            "- Saisir Montant honoraires et Autres frais\n"
+            "- Saisir Acompte 1 + Date de paiement + Mode (Chèque/CB/Virement/Venmo)\n\n"
+            "Les acomptes 2/3/4 se gèrent dans « Modifier dossier »."
         ),
         "image": "04_new_case.png",
         "caption": "Écran : Nouveau dossier (exemple).",
     },
     {
-        "title": "5) Modifier un dossier (édition complète)",
-        "toc": "Tout modifier : facture, acomptes, dates, statuts, commentaire.",
+        "title": "5) Modifier un dossier",
+        "toc": "Édition complète : montants, acomptes, statuts, commentaire.",
         "body": (
-            "Sur la page « Modifier dossier » vous pouvez modifier :\n"
-            "- Identité / visa / catégorisation\n"
-            "- Montants\n"
-            "- Acomptes 1 à 4 + dates de paiement + modes de règlement\n"
-            "- Statuts + dates associées\n"
-            "- Commentaire\n\n"
-            "Important : après « Enregistrer », le dossier doit conserver les cases cochées.\n"
-            "Si ce n’est pas le cas, cela vient généralement d’un problème de normalisation JSON ou de colonnes alias."
+            "Sur « Modifier dossier » :\n"
+            "- Mettre à jour Montant honoraires (US $)\n"
+            "- Gérer Acomptes 1 à 4 avec dates et modes\n"
+            "- Cocher les statuts + dates associées\n"
+            "- Renseigner le champ Commentaire\n\n"
+            "Après enregistrement : vérifier que les cases restent cochées."
         ),
         "image": "05_edit_case.png",
         "caption": "Écran : Modifier dossier (exemple).",
     },
     {
-        "title": "6) Escrow (3 états) et montants",
-        "toc": "Escrow actif → à réclamer → réclamé (montant = Acompte 1).",
+        "title": "6) Escrow (3 états) + montants",
+        "toc": "Actif → à réclamer → réclamé (montant = Acompte 1).",
         "body": (
-            "L’Escrow fonctionne en 3 étapes :\n"
+            "Escrow fonctionne en 3 états :\n"
             "1) Escrow actif\n"
             "2) Escrow à réclamer\n"
             "3) Escrow réclamé\n\n"
-            "Règle de montant : le montant escrow est toujours égal à Acompte 1.\n\n"
-            "Lorsqu’un dossier passe de « à réclamer » vers « réclamé »,\n"
-            "- il doit disparaître de « à réclamer »\n"
-            "- et apparaître dans « réclamé »."
+            "Règle : le montant en escrow est toujours égal à Acompte 1.\n"
+            "Un dossier doit être dans un seul état à la fois."
         ),
         "image": "06_escrow.png",
         "caption": "Écran : Escrow (exemple).",
     },
     {
         "title": "7) Analyses",
-        "toc": "Filtres, statuts, soldés / non soldés, comparaisons.",
+        "toc": "Filtres, comparaisons, soldés/non soldés.",
         "body": (
-            "La page Analyses sert à piloter l’activité :\n"
-            "- filtres Catégorie / Sous-catégorie / Visa\n"
-            "- filtre Statuts\n"
-            "- dossiers soldés / non soldés / solde < 0\n"
-            "- comparaisons temporelles\n\n"
-            "Note : si un graphique échoue avec KeyError Date, c’est souvent qu’on envoie au graphique un df déjà agrégé "
-            "sans colonne Date. Les fonctions graphiques doivent recevoir des lignes dossiers, pas un groupby."
+            "La page Analyses permet :\n"
+            "- Filtrer par Catégorie / Sous-catégorie / Visa\n"
+            "- Filtrer par Statuts\n"
+            "- Filtrer dossiers soldés / non soldés / solde < 0\n"
+            "- Comparaisons temporelles\n\n"
+            "Si un graphique plante (KeyError Date), il faut vérifier que la fonction reçoit un df avec colonne Date."
         ),
         "image": "07_analytics.png",
         "caption": "Écran : Analyses (exemple).",
     },
     {
-        "title": "8) Export (Excel / JSON) et bonnes pratiques",
-        "toc": "Exporter, archiver, recharger, Excel multi-feuilles horodaté.",
+        "title": "8) Export et bonnes pratiques",
+        "toc": "Exporter, archiver, recharger.",
         "body": (
-            "L’export est essentiel pour sauvegarder et travailler hors application.\n\n"
-            "Recommandation :\n"
-            "- Export Excel multi-feuilles horodaté\n"
-            "- Stockage sur Dropbox\n"
-            "- Utilisation Clients.xlsx pour audits\n\n"
-            "Si tu vois : « Timestamp is not JSON serializable »\n"
-            "- cela signifie qu’une date pandas Timestamp a été écrite dans le JSON.\n"
-            "- il faut convertir en str avant save_database."
+            "Exporter régulièrement est recommandé.\n\n"
+            "Bonnes pratiques :\n"
+            "- Faire un export Excel multi-feuilles horodaté\n"
+            "- Conserver l’historique\n\n"
+            "Erreur typique : « Timestamp is not JSON serializable »\n"
+            "→ il faut convertir les dates en chaînes avant sauvegarde JSON."
         ),
         "image": "08_export.png",
         "caption": "Écran : Export (exemple).",
@@ -158,51 +429,37 @@ sections_fr = [
 
 faq_fr = [
     {
-        "q": "Pourquoi je ne vois plus mes dossiers après import Excel ?",
-        "a": (
-            "Causes fréquentes :\n"
-            "- mauvais mapping des colonnes Excel\n"
-            "- feuille Excel vide ou mauvais nom d’onglet\n"
-            "- erreur silencieuse : l’import recrée un JSON vide\n\n"
-            "Solution :\n"
-            "- vérifier que Clients.xlsx contient bien des lignes\n"
-            "- vérifier les noms exacts de colonnes attendues\n"
-            "- ajouter un affichage du nombre de lignes importées avant save_database."
-        ),
-    },
-    {
         "q": "Pourquoi une case cochée revient décochée ?",
         "a": (
-            "Cause la plus fréquente : colonnes alias (ex: Dossier_envoye vs Dossier envoye) ou nettoyage JSON "
-            "qui écrase la valeur.\n\n"
+            "Causes fréquentes :\n"
+            "- colonnes alias (ex: Dossier_envoye vs Dossier envoye)\n"
+            "- une fonction de nettoyage qui écrase la valeur\n\n"
             "Solution :\n"
-            "- normaliser les colonnes au chargement\n"
-            "- écrire dans la colonne canonique ET ses alias si nécessaire\n"
-            "- éviter les clean_database qui remettent systématiquement False."
+            "- normaliser les statuts au chargement\n"
+            "- écrire dans la colonne canonique et ses alias si nécessaire."
         ),
     },
     {
-        "q": "Pourquoi un dossier apparaît dans Escrow à réclamer alors qu’Escrow actif est décoché ?",
+        "q": "Pourquoi le JSON devient vide après import Excel ?",
         "a": (
-            "C’est souvent une règle métier automatique :\n"
-            "- si le dossier est marqué « envoyé », on peut basculer vers « à réclamer ».\n\n"
-            "Important : on ne change pas la logique si elle correspond à ton process.\n"
-            "Dans tous les cas, le dossier doit être dans un seul état escrow à la fois."
+            "Cause : mapping Excel incorrect ou feuille vide.\n\n"
+            "Solution :\n"
+            "- vérifier que Clients.xlsx a des lignes\n"
+            "- afficher le nombre de lignes importées avant save."
         ),
     },
 ]
 
-# EN content (mirror)
 sections_en = [
     {
         "title": "1) Purpose of the application",
         "toc": "What the app is for and who it is for.",
         "body": (
-            "Berenbaum Law App is a Streamlit application for legal case management.\n"
+            "Berenbaum Law App is a Streamlit application for case management.\n"
             "It centralizes clients, payments, statuses, escrow, analytics and exports.\n\n"
-            "- No technical knowledge is required.\n"
-            "- Everything is done via pages and buttons.\n"
-            "- The left sidebar is used for navigation."
+            "- Easy navigation via the left menu\n"
+            "- No technical skills required\n"
+            "- Data stored as a JSON file on Dropbox"
         ),
         "image": "01_dashboard.png",
         "caption": "Screen: Dashboard (example).",
@@ -211,111 +468,98 @@ sections_en = [
         "title": "2) Navigation (sidebar)",
         "toc": "How to use the menu and open pages.",
         "body": (
-            "The left sidebar is always visible.\n\n"
+            "The left sidebar is used to navigate between pages.\n\n"
             "Main pages:\n"
-            "- Dashboard: global overview\n"
-            "- Case list: search + filters\n"
-            "- New case: create\n"
-            "- Edit case: full edition\n"
-            "- Escrow: 3-state tracking\n"
-            "- Analytics: statistics\n"
-            "- Export: Excel / JSON\n"
-            "- Settings: advanced tools\n\n"
-            "Tip: if a page is missing, the file may not exist in /pages or its name changed."
+            "- Dashboard\n"
+            "- Case list\n"
+            "- New case\n"
+            "- Edit case\n"
+            "- Escrow\n"
+            "- Analytics\n"
+            "- Export\n"
+            "- Settings\n"
+            "- Help"
         ),
         "image": "02_sidebar.png",
         "caption": "Screen: Sidebar / Menu.",
     },
     {
         "title": "3) Parent and child cases",
-        "toc": "Understand parent/child logic and numbering.",
+        "toc": "Understand parent/child logic.",
         "body": (
-            "A case can be:\n"
-            "- Parent (e.g., 12937)\n"
-            "- Child (e.g., 12937-1, 12937-2)\n\n"
-            "Each child case can have:\n"
-            "- a different visa,\n"
-            "- its own amounts,\n"
-            "- its own deposits,\n"
-            "- its own statuses.\n\n"
-            "Dashboard KPIs may count both parents and children."
+            "A case can be Parent (e.g., 12937) or Child (e.g., 12937-1).\n\n"
+            "Each child can have a different visa and its own amounts/statuses.\n"
+            "KPIs may count both parents and children depending on the page."
         ),
         "image": "03_hierarchy.png",
-        "caption": "Screen: Case group example (parent + children).",
+        "caption": "Screen: Case group (example).",
     },
     {
         "title": "4) Creating a new case",
-        "toc": "Simple creation + visible payment rules.",
+        "toc": "Creation and required fields.",
         "body": (
-            "On the “New case” page:\n"
-            "1) Fill Name, Date, Category, Sub-category, Visa\n"
-            "2) Enter Legal fees and Additional fees\n"
-            "3) Enter Deposit 1 + Payment date + Payment method\n\n"
-            "Note: Deposits 2/3/4 are handled in “Edit case”.\n\n"
-            "Payment method: Check / Card / Wire / Venmo."
+            "On “New case”:\n"
+            "- Fill Name and Date\n"
+            "- Choose Category, Sub-category, Visa\n"
+            "- Enter Legal fees and Additional fees\n"
+            "- Enter Deposit 1 + Payment date + Method (Check/Card/Wire/Venmo)\n\n"
+            "Deposits 2/3/4 are managed in “Edit case”."
         ),
         "image": "04_new_case.png",
         "caption": "Screen: New case (example).",
     },
     {
-        "title": "5) Editing a case (full edition)",
-        "toc": "Edit billing, deposits, dates, statuses, comment.",
+        "title": "5) Editing a case",
+        "toc": "Full edition: amounts, deposits, statuses, comment.",
         "body": (
-            "On “Edit case”, you can edit:\n"
-            "- identity / visa / categorization\n"
-            "- amounts\n"
-            "- deposits 1–4 + payment dates + payment methods\n"
-            "- statuses + associated dates\n"
-            "- comments\n\n"
-            "Important: after saving, checkboxes must remain checked.\n"
-            "If not, it is usually due to JSON normalization or alias columns."
+            "On “Edit case”:\n"
+            "- Update Legal fees (US $)\n"
+            "- Manage Deposits 1–4 with dates and methods\n"
+            "- Set statuses + associated dates\n"
+            "- Fill the Comment field\n\n"
+            "After saving: check that boxes remain checked."
         ),
         "image": "05_edit_case.png",
         "caption": "Screen: Edit case (example).",
     },
     {
-        "title": "6) Escrow (3 states) and amounts",
-        "toc": "Active → To be claimed → Claimed (amount = Deposit 1).",
+        "title": "6) Escrow (3 states) + amounts",
+        "toc": "Active → to be claimed → claimed (amount = Deposit 1).",
         "body": (
-            "Escrow works in 3 steps:\n"
+            "Escrow has 3 states:\n"
             "1) Active\n"
             "2) To be claimed\n"
             "3) Claimed\n\n"
-            "Amount rule: escrow amount always equals Deposit 1.\n\n"
-            "When moving from “to be claimed” to “claimed”,\n"
-            "- it must disappear from “to be claimed”\n"
-            "- and appear under “claimed”."
+            "Rule: escrow amount always equals Deposit 1.\n"
+            "A case must be in only one escrow state at a time."
         ),
         "image": "06_escrow.png",
         "caption": "Screen: Escrow (example).",
     },
     {
         "title": "7) Analytics",
-        "toc": "Filters, statuses, paid/unpaid, comparisons.",
+        "toc": "Filters, comparisons, paid/unpaid.",
         "body": (
-            "Analytics is used to monitor activity:\n"
-            "- Category / Sub-category / Visa filters\n"
-            "- Status filter\n"
-            "- paid / unpaid / negative balance\n"
-            "- time comparisons\n\n"
-            "If a chart fails with KeyError Date, the chart probably received a grouped dataframe "
-            "without a Date column. Charts must receive case-level rows, not a groupby result."
+            "Analytics allows:\n"
+            "- Filter by Category / Sub-category / Visa\n"
+            "- Filter by Status\n"
+            "- Filter paid / unpaid / negative balance\n"
+            "- Time comparisons\n\n"
+            "If a chart fails (KeyError Date), the chart probably received a dataframe without a Date column."
         ),
         "image": "07_analytics.png",
         "caption": "Screen: Analytics (example).",
     },
     {
-        "title": "8) Export (Excel / JSON) and best practices",
-        "toc": "Export, archive, reload, multi-sheet Excel with timestamp.",
+        "title": "8) Export and best practices",
+        "toc": "Export, archive, reload.",
         "body": (
-            "Export is essential for backup and offline work.\n\n"
-            "Recommendation:\n"
-            "- timestamped multi-sheet Excel export\n"
-            "- store on Dropbox\n"
-            "- use Clients.xlsx for audits\n\n"
-            "If you see: “Timestamp is not JSON serializable”,\n"
-            "- a pandas Timestamp was written into JSON.\n"
-            "- convert to string before save_database."
+            "Regular exporting is recommended.\n\n"
+            "Best practices:\n"
+            "- Timestamped multi-sheet Excel export\n"
+            "- Keep history\n\n"
+            "Typical error: “Timestamp is not JSON serializable”\n"
+            "→ convert dates to strings before JSON save."
         ),
         "image": "08_export.png",
         "caption": "Screen: Export (example).",
@@ -324,44 +568,26 @@ sections_en = [
 
 faq_en = [
     {
-        "q": "Why do I see no cases after Excel import?",
-        "a": (
-            "Common causes:\n"
-            "- wrong Excel column mapping\n"
-            "- empty worksheet or wrong sheet name\n"
-            "- silent failure producing an empty JSON\n\n"
-            "Fix:\n"
-            "- check Clients.xlsx has rows\n"
-            "- check expected column names\n"
-            "- display imported row counts before save_database."
-        ),
-    },
-    {
         "q": "Why does a checked box become unchecked after saving?",
         "a": (
-            "Most common cause: alias columns (e.g. Dossier_envoye vs Dossier envoye) or a JSON cleaner "
-            "overwriting values.\n\n"
+            "Common causes:\n"
+            "- alias columns (e.g., Dossier_envoye vs Dossier envoye)\n"
+            "- a cleaning function overwriting values\n\n"
             "Fix:\n"
-            "- normalize columns on load\n"
-            "- write to canonical column AND its aliases\n"
-            "- avoid cleaners that reset values to False."
+            "- normalize statuses on load\n"
+            "- write to canonical columns and aliases if needed."
         ),
     },
     {
-        "q": "Why does a case appear in “Escrow to be claimed” when “Escrow active” is unchecked?",
+        "q": "Why does JSON become empty after Excel import?",
         "a": (
-            "Often due to a business rule:\n"
-            "- if the case is marked as “sent”, it may move to “to be claimed”.\n\n"
-            "In any case, a case must belong to one escrow state at a time."
+            "Cause: wrong Excel mapping or empty sheet.\n\n"
+            "Fix:\n"
+            "- ensure Clients.xlsx has rows\n"
+            "- display imported row count before saving."
         ),
     },
 ]
-
-# ---------------------------------------------------------
-# RENDU PAGE
-# ---------------------------------------------------------
-subtitle = SUBTITLE_FR if is_fr else SUBTITLE_EN
-st.caption(subtitle)
 
 sections = sections_fr if is_fr else sections_en
 faq = faq_fr if is_fr else faq_en
@@ -370,8 +596,6 @@ st.markdown("## 📘 Guide")
 for sec in sections:
     st.markdown(f"### {sec['title']}")
     st.write(sec["body"])
-
-    # Info screenshot
     if sec.get("image"):
         st.info(
             ("Capture attendue : " if is_fr else "Expected screenshot: ")
@@ -385,17 +609,14 @@ for item in faq:
     st.markdown(f"**Q:** {item['q']}")
     st.write(item["a"])
 
-# ---------------------------------------------------------
-# EXPORT PDF PREMIUM
-# ---------------------------------------------------------
 st.markdown("---")
-st.subheader("📄 Export PDF (mise en page premium)")
+st.subheader("📄 Export PDF imprimable")
 
 filename = f"Aide_{'FR' if is_fr else 'EN'}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
 
 if st.button("📤 Générer le PDF imprimable", type="primary"):
     pdf_bytes = build_help_pdf_bytes(
-        lang_code=("FR" if is_fr else "EN"),
+        lang_code=lang_code,
         app_name=APP_NAME,
         subtitle=subtitle,
         sections=sections,
@@ -425,6 +646,6 @@ Pour inclure des captures dans le PDF, place tes images ici :
 - `assets/help_screens/07_analytics.png`
 - `assets/help_screens/08_export.png`
 
-Si un fichier n’existe pas, le PDF affichera simplement une note “capture introuvable”.
+Si un fichier n’existe pas, le PDF affichera une note “capture introuvable”.
 """
 )
