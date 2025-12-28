@@ -51,8 +51,7 @@ df["Est Parent"] = df["Dossier Index"].eq(0)
 df["Est Fils"] = df["Dossier Index"].gt(0)
 
 # =====================================================
-# IMPORTANT : la liste doit contenir UNIQUEMENT les parents
-# qui ont AU MOINS un fils xxxxx-1 / xxxxx-2 / ...
+# IMPORTANT : liste UNIQUEMENT des parents ayant AU MOINS un fils
 # =====================================================
 parents_avec_fils = (
     df.loc[df["Est Fils"] & df["Dossier Parent"].ne(""), "Dossier Parent"]
@@ -62,7 +61,6 @@ parents_avec_fils = (
     .tolist()
 )
 
-# Tri "intelligent" : numériques d'abord, sinon tri alpha
 def sort_key_parent(x: str):
     s = str(x).strip()
     return (0, int(s)) if s.isdigit() else (1, s)
@@ -75,19 +73,50 @@ if not parents_avec_fils:
     st.info("Aucun sous-dossier détecté (aucun dossier de type xxxxx-1 / xxxxx-2 / ...).")
     st.stop()
 
-parent_selected = st.selectbox("Dossier parent (avec fils)", parents_avec_fils)
+# =====================================================
+# LABEL "Dossier N + Nom" pour le filtre
+# - Nom du parent si la ligne parent existe
+# - Sinon, Nom du premier fils
+# =====================================================
+def get_name_for_parent(parent_id: str) -> str:
+    # Parent si existe
+    p = df[(df["Dossier N"] == str(parent_id)) & (df["Est Parent"])]
+    if not p.empty:
+        name = str(p.iloc[0].get("Nom", "") or "").strip()
+        if name:
+            return name
+
+    # Sinon premier fils
+    kids = df[(df["Dossier Parent"] == str(parent_id)) & (df["Est Fils"])].sort_values(["Dossier Index", "Dossier N"])
+    if not kids.empty:
+        name = str(kids.iloc[0].get("Nom", "") or "").strip()
+        if name:
+            return name
+
+    return ""
+
+parent_labels = {}
+for p in parents_avec_fils:
+    nom = get_name_for_parent(p)
+    label = f"{p} — {nom}" if nom else f"{p}"
+    parent_labels[p] = label
+
+# Selectbox affiche "Dossier N + Nom" mais renvoie le parent_id
+parent_selected = st.selectbox(
+    "Groupe (Dossier N + Nom)",
+    options=parents_avec_fils,
+    format_func=lambda x: parent_labels.get(x, str(x)),
+)
 
 # =====================================================
 # CONSTRUCTION GROUPE : parent + tous ses fils
-# (on reconstruit le groupe à partir du parent_selected)
 # =====================================================
-group_df = df[df["Dossier Parent"] == parent_selected].copy()
+group_df = df[df["Dossier Parent"] == str(parent_selected)].copy()
 
-# Parent: si absent, on le reconstruit virtuellement via la meilleure ligne (rare)
 parent_df = group_df[group_df["Est Parent"]].copy()
 children_df = group_df[group_df["Est Fils"]].copy()
 
-# Tri stable : Parent puis enfants par index
+# Tri stable : Parent puis enfants
 group_df["Parent Num"] = pd.to_numeric(group_df["Dossier Parent"], errors="coerce")
 group_df = group_df.sort_values(
     ["Parent Num", "Dossier Parent", "Dossier Index", "Dossier N"],
