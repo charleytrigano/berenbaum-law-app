@@ -1,8 +1,6 @@
 # pages/12_📁_Fiche_groupe_dossier.py
 import os
 from io import BytesIO
-import inspect
-
 import streamlit as st
 import pandas as pd
 
@@ -34,8 +32,6 @@ df = pd.DataFrame(clients).copy()
 
 # =====================================================
 # NORMALISATION Dossier N + HIERARCHIE
-# Parent = partie avant '-'
-# Index  = partie après '-' si existe, sinon 0
 # =====================================================
 df["Dossier N"] = df.get("Dossier N", "").astype(str).fillna("").str.strip()
 
@@ -62,7 +58,7 @@ df["Est Parent"] = df["Dossier Index"].eq(0)
 df["Est Fils"] = df["Dossier Index"].gt(0)
 
 # =====================================================
-# Liste UNIQUEMENT des parents ayant AU MOINS un fils
+# Parents ayant au moins un fils
 # =====================================================
 parents_avec_fils = (
     df.loc[df["Est Fils"] & df["Dossier Parent"].ne(""), "Dossier Parent"]
@@ -86,9 +82,7 @@ if not parents_avec_fils:
     st.info("Aucun sous-dossier détecté (aucun dossier de type xxxxx-1 / xxxxx-2 / ...).")
     st.stop()
 
-# =====================================================
-# LABEL "Dossier N + Nom"
-# =====================================================
+
 def get_name_for_parent(parent_id: str) -> str:
     p = df[(df["Dossier N"] == str(parent_id)) & (df["Est Parent"])]
     if not p.empty:
@@ -110,7 +104,8 @@ def get_name_for_parent(parent_id: str) -> str:
 parent_labels = {}
 for p in parents_avec_fils:
     nom = get_name_for_parent(p)
-    parent_labels[p] = f"{p} — {nom}" if nom else f"{p}"
+    label = f"{p} — {nom}" if nom else f"{p}"
+    parent_labels[p] = label
 
 parent_selected = st.selectbox(
     "Groupe (Dossier N + Nom)",
@@ -119,7 +114,7 @@ parent_selected = st.selectbox(
 )
 
 # =====================================================
-# CONSTRUCTION GROUPE : parent + tous ses fils
+# Groupe = toutes les lignes dont Dossier Parent == parent_selected
 # =====================================================
 group_df = df[df["Dossier Parent"] == str(parent_selected)].copy()
 
@@ -133,7 +128,7 @@ group_df = group_df.sort_values(
 )
 
 # =====================================================
-# AFFICHAGE PARENT
+# Affichage parent
 # =====================================================
 st.markdown("---")
 st.subheader(f"📄 Groupe {parent_selected} (parent + fils)")
@@ -163,7 +158,7 @@ else:
         st.write(commentaire_parent)
 
 # =====================================================
-# AFFICHAGE FILS
+# Affichage fils
 # =====================================================
 st.markdown("---")
 st.subheader("📎 Sous-dossiers (fils)")
@@ -192,7 +187,7 @@ else:
     )
 
 # =====================================================
-# KPI GROUPE (parent + fils)
+# KPI groupe
 # =====================================================
 st.markdown("---")
 st.subheader("📊 KPI du groupe (parent + fils)")
@@ -217,7 +212,6 @@ for i in range(1, 5):
 
 solde = total_facture - total_encaisse
 
-# Escrow = Acompte 1 uniquement, si un des flags escrow est vrai
 escrow_flags = pd.Series([False] * len(group_df))
 for k in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
     if k in group_df.columns:
@@ -240,96 +234,27 @@ k6.metric("Escrow total (Acompte 1)", f"${escrow_total:,.2f}")
 st.info(f"Solde dû (groupe) : ${solde:,.2f}")
 
 # =====================================================
-# ✅ EXPORT PDF (groupe) — compatible payload dict
+# ✅ EXPORT PDF (groupe)
 # =====================================================
 st.markdown("---")
 st.subheader("📄 Export PDF (groupe)")
-
-
-def generate_groupe_pdf_bytes(parent_data: dict, children_records: list, parent_id: str) -> bytes:
-    """
-    Force un payload dict (évite l'erreur list.get()) et génère des bytes PDF.
-    """
-    payload = {
-        "parent": parent_data or {},
-        "children": children_records or [],
-        "parent_id": str(parent_id),
-    }
-
-    tmp_path = f"/tmp/groupe_{parent_id}.pdf"
-    buf = BytesIO()
-
-    try:
-        sig = inspect.signature(export_groupe_pdf)
-        params = [p.name.lower() for p in sig.parameters.values()]
-        n = len(params)
-    except Exception:
-        params = []
-        n = None
-
-    # 1) export_groupe_pdf(payload) -> bytes
-    try:
-        res = export_groupe_pdf(payload)
-        if isinstance(res, (bytes, bytearray)) and len(res) > 100:
-            return bytes(res)
-    except TypeError:
-        pass
-
-    # 2) export_groupe_pdf(payload, path)
-    try:
-        export_groupe_pdf(payload, tmp_path)
-        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 100:
-            with open(tmp_path, "rb") as f:
-                return f.read()
-    except TypeError:
-        pass
-
-    # 3) export_groupe_pdf(payload, buffer)
-    try:
-        export_groupe_pdf(payload, buf)
-        data = buf.getvalue()
-        if len(data) > 100:
-            return data
-    except TypeError:
-        pass
-
-    # 4) export_groupe_pdf(payload, children, path) / export_groupe_pdf(parent, children, path)
-    # IMPORTANT: on ne met JAMAIS la liste en premier argument.
-    try:
-        export_groupe_pdf(payload, children_records, tmp_path)
-        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 100:
-            with open(tmp_path, "rb") as f:
-                return f.read()
-    except TypeError:
-        pass
-
-    try:
-        export_groupe_pdf(parent_data or {}, children_records or [], tmp_path)
-        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 100:
-            with open(tmp_path, "rb") as f:
-                return f.read()
-    except TypeError:
-        pass
-
-    raise Exception(
-        "Impossible de générer le PDF groupe (signature export_groupe_pdf non compatible). "
-        f"Signature détectée: {str(inspect.signature(export_groupe_pdf)) if hasattr(export_groupe_pdf, '__call__') else 'inconnue'}"
-    )
-
 
 if st.button("📄 Exporter la fiche groupe en PDF", type="primary"):
     try:
         parent_data = parent_dict if parent_dict else {}
         children_data = children_df.sort_values(["Dossier Index", "Dossier N"]).to_dict(orient="records")
 
-        pdf_bytes = generate_groupe_pdf_bytes(parent_data, children_data, parent_selected)
+        output = f"/tmp/groupe_{parent_selected}.pdf"
+        export_groupe_pdf(parent_data, children_data, output)
 
-        st.download_button(
-            "⬇️ Télécharger le PDF (groupe)",
-            data=pdf_bytes,
-            file_name=f"Groupe_{parent_selected}.pdf",
-            mime="application/pdf",
-        )
+        with open(output, "rb") as f:
+            st.download_button(
+                "⬇️ Télécharger le PDF (groupe)",
+                data=f,
+                file_name=f"Groupe_{parent_selected}.pdf",
+                mime="application/pdf",
+            )
+
         st.success("✔ PDF généré avec succès.")
 
     except Exception as e:
