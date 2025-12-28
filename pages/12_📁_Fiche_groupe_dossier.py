@@ -25,116 +25,132 @@ if not clients:
 df = pd.DataFrame(clients).copy()
 
 # =====================================================
-# HIERARCHIE DOSSIER (robuste)
-# - Parent: partie avant '-'
-# - Index: partie après '-' si existe sinon 0
+# NORMALISATION Dossier N + HIERARCHIE
+# Parent = partie avant '-'
+# Index  = partie après '-' si existe, sinon 0
 # =====================================================
 df["Dossier N"] = df.get("Dossier N", "").astype(str).fillna("").str.strip()
 
-def parse_parent_num(dossier_n: str) -> str:
+def parse_parent(dossier_n: str) -> str:
     if not dossier_n:
         return ""
-    return dossier_n.split("-")[0].strip()
+    return dossier_n.split("-", 1)[0].strip()
 
 def parse_index(dossier_n: str) -> int:
     if not dossier_n or "-" not in dossier_n:
         return 0
-    part = dossier_n.split("-", 1)[1].strip()
+    suffix = dossier_n.split("-", 1)[1].strip()
     try:
-        return int(part)
+        return int(suffix)
     except Exception:
         return 0
 
-df["Dossier Parent"] = df["Dossier N"].apply(parse_parent_num)
+df["Dossier Parent"] = df["Dossier N"].apply(parse_parent)
 df["Dossier Index"] = df["Dossier N"].apply(parse_index)
 df["Est Parent"] = df["Dossier Index"].eq(0)
+df["Est Fils"] = df["Dossier Index"].gt(0)
 
-# Liste des parents (uniquement)
-parents = (
-    df[df["Est Parent"] & df["Dossier Parent"].ne("")]["Dossier Parent"]
+# =====================================================
+# IMPORTANT : la liste doit contenir UNIQUEMENT les parents
+# qui ont AU MOINS un fils xxxxx-1 / xxxxx-2 / ...
+# =====================================================
+parents_avec_fils = (
+    df.loc[df["Est Fils"] & df["Dossier Parent"].ne(""), "Dossier Parent"]
     .dropna()
     .astype(str)
     .unique()
     .tolist()
 )
-parents = sorted(parents, key=lambda x: (int(x) if x.isdigit() else 10**18, x))
 
-if not parents:
-    st.warning("Aucun dossier parent détecté. Vérifie le format de 'Dossier N'.")
+# Tri "intelligent" : numériques d'abord, sinon tri alpha
+def sort_key_parent(x: str):
+    s = str(x).strip()
+    return (0, int(s)) if s.isdigit() else (1, s)
+
+parents_avec_fils = sorted(parents_avec_fils, key=sort_key_parent)
+
+st.subheader("🎯 Sélectionner un groupe (parents qui ont des fils)")
+
+if not parents_avec_fils:
+    st.info("Aucun sous-dossier détecté (aucun dossier de type xxxxx-1 / xxxxx-2 / ...).")
     st.stop()
 
-# =====================================================
-# SELECTION PARENT
-# =====================================================
-st.subheader("🎯 Sélectionner un dossier parent")
-parent_selected = st.selectbox("Dossier parent", parents)
+parent_selected = st.selectbox("Dossier parent (avec fils)", parents_avec_fils)
 
 # =====================================================
-# CONSTRUCTION GROUPE (IMPORTANT : on ne filtre PAS avant)
-# Groupe = parent + tous les fils qui commencent par parent-
+# CONSTRUCTION GROUPE : parent + tous ses fils
+# (on reconstruit le groupe à partir du parent_selected)
 # =====================================================
 group_df = df[df["Dossier Parent"] == parent_selected].copy()
 
-# Sécurités de tri
-group_df["Dossier Parent Num"] = pd.to_numeric(group_df["Dossier Parent"], errors="coerce")
+# Parent: si absent, on le reconstruit virtuellement via la meilleure ligne (rare)
+parent_df = group_df[group_df["Est Parent"]].copy()
+children_df = group_df[group_df["Est Fils"]].copy()
+
+# Tri stable : Parent puis enfants par index
+group_df["Parent Num"] = pd.to_numeric(group_df["Dossier Parent"], errors="coerce")
 group_df = group_df.sort_values(
-    by=["Dossier Parent Num", "Dossier Parent", "Dossier Index", "Dossier N"],
+    ["Parent Num", "Dossier Parent", "Dossier Index", "Dossier N"],
     ascending=[True, True, True, True],
 )
 
-# Parent et fils
-parent_row = group_df[group_df["Est Parent"]].head(1)
-children_df = group_df[~group_df["Est Parent"]].copy()
-
 # =====================================================
-# AFFICHAGE
+# AFFICHAGE PARENT
 # =====================================================
-if parent_row.empty:
-    st.error(
-        "Le parent n'a pas été trouvé dans la base (ou a été transformé). "
-        "Vérifie que le parent existe bien en 'xxxxx' sans suffixe."
-    )
-    st.stop()
-
-p = parent_row.iloc[0].to_dict()
-
 st.markdown("---")
-st.subheader(f"📄 Parent : {p.get('Dossier N','')} — {p.get('Nom','')}")
+st.subheader(f"📄 Groupe {parent_selected} (parent + fils)")
 
-c1, c2, c3 = st.columns(3)
-c1.write(f"**Date** : {p.get('Date','')}")
-c2.write(f"**Catégorie** : {p.get('Categories','')}")
-c3.write(f"**Sous-catégorie** : {p.get('Sous-categories','')}")
+if parent_df.empty:
+    st.warning(
+        "Le parent (xxxxx) n'existe pas comme ligne distincte dans le JSON. "
+        "Le groupe affichera uniquement les fils."
+    )
+else:
+    p = parent_df.iloc[0].to_dict()
 
-c4, c5, c6 = st.columns(3)
-c4.write(f"**Visa** : {p.get('Visa','')}")
-c5.write(f"**Honoraires (US $)** : {p.get('Montant honoraires (US $)', 0)}")
-c6.write(f"**Autres frais (US $)** : {p.get('Autres frais (US $)', 0)}")
+    c1, c2, c3 = st.columns(3)
+    c1.write(f"**Parent** : {p.get('Dossier N','')}")
+    c2.write(f"**Nom** : {p.get('Nom','')}")
+    c3.write(f"**Date** : {p.get('Date','')}")
 
-commentaire_parent = p.get("Commentaire", "")
-if str(commentaire_parent).strip():
-    st.markdown("**📝 Commentaire (parent)**")
-    st.write(commentaire_parent)
+    c4, c5, c6 = st.columns(3)
+    c4.write(f"**Catégorie** : {p.get('Categories','')}")
+    c5.write(f"**Sous-catégorie** : {p.get('Sous-categories','')}")
+    c6.write(f"**Visa** : {p.get('Visa','')}")
 
+    commentaire_parent = p.get("Commentaire", "")
+    if str(commentaire_parent).strip():
+        st.markdown("**📝 Commentaire (parent)**")
+        st.write(commentaire_parent)
+
+# =====================================================
+# AFFICHAGE FILS
+# =====================================================
 st.markdown("---")
 st.subheader("📎 Sous-dossiers (fils)")
 
 if children_df.empty:
-    st.info("Aucun sous-dossier (fils) pour ce parent.")
+    st.info("Aucun fils pour ce parent (ce cas ne devrait pas arriver avec ce filtre).")
 else:
-    # Colonnes d'affichage (robuste : uniquement celles qui existent)
     wanted_cols = [
         "Dossier N", "Nom", "Date",
         "Categories", "Sous-categories", "Visa",
         "Montant honoraires (US $)", "Autres frais (US $)",
         "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4",
+        "Date Acompte 1", "Date Acompte 2", "Date Acompte 3", "Date Acompte 4",
+        "Mode Acompte 1", "Mode Acompte 2", "Mode Acompte 3", "Mode Acompte 4",
+        "mode de paiement",
         "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
         "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE",
-        "Commentaire"
+        "Date envoi", "Date acceptation", "Date refus", "Date annulation", "Date reclamation",
+        "Commentaire",
     ]
     cols_display = [c for c in wanted_cols if c in children_df.columns]
 
-    st.dataframe(children_df[cols_display], use_container_width=True)
+    st.dataframe(
+        children_df.sort_values(["Dossier Index", "Dossier N"])[cols_display],
+        use_container_width=True
+    )
 
 # =====================================================
 # KPI GROUPE (parent + fils)
@@ -160,11 +176,11 @@ for i in range(1, 5):
 
 solde = total_facture - total_encaisse
 
-# Escrow = Acompte 1 uniquement, dossiers ayant un des flags escrow à True
+# Escrow = Acompte 1 uniquement, si un des flags escrow est vrai
 escrow_flags = pd.Series([False] * len(group_df))
 for k in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
     if k in group_df.columns:
-        escrow_flags = escrow_flags | group_df[k].astype(str).str.lower().isin(["true", "1", "yes", "oui"])
+        escrow_flags = escrow_flags | group_df[k].astype(str).str.strip().str.lower().isin(["true", "1", "yes", "oui"])
 
 escrow_total = 0.0
 if "Acompte 1" in group_df.columns:
@@ -177,4 +193,5 @@ k3.metric("Autres frais", f"${frais:,.2f}")
 k4.metric("Total facturé", f"${total_facture:,.2f}")
 k5.metric("Total encaissé", f"${total_encaisse:,.2f}")
 k6.metric("Escrow total (Acompte 1)", f"${escrow_total:,.2f}")
+
 st.info(f"Solde dû (groupe) : ${solde:,.2f}")
