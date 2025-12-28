@@ -62,7 +62,7 @@ df["Est Parent"] = df["Dossier Index"].eq(0)
 df["Est Fils"] = df["Dossier Index"].gt(0)
 
 # =====================================================
-# IMPORTANT : liste UNIQUEMENT des parents ayant AU MOINS un fils
+# Liste UNIQUEMENT des parents ayant AU MOINS un fils
 # =====================================================
 parents_avec_fils = (
     df.loc[df["Est Fils"] & df["Dossier Parent"].ne(""), "Dossier Parent"]
@@ -87,9 +87,7 @@ if not parents_avec_fils:
     st.stop()
 
 # =====================================================
-# LABEL "Dossier N + Nom" pour le filtre
-# - Nom du parent si la ligne parent existe
-# - Sinon, Nom du premier fils
+# LABEL "Dossier N + Nom"
 # =====================================================
 def get_name_for_parent(parent_id: str) -> str:
     p = df[(df["Dossier N"] == str(parent_id)) & (df["Est Parent"])]
@@ -242,7 +240,7 @@ k6.metric("Escrow total (Acompte 1)", f"${escrow_total:,.2f}")
 st.info(f"Solde dû (groupe) : ${solde:,.2f}")
 
 # =====================================================
-# ✅ EXPORT PDF (robuste)
+# ✅ EXPORT PDF (groupe) — compatible payload dict
 # =====================================================
 st.markdown("---")
 st.subheader("📄 Export PDF (groupe)")
@@ -250,68 +248,72 @@ st.subheader("📄 Export PDF (groupe)")
 
 def generate_groupe_pdf_bytes(parent_data: dict, children_records: list, parent_id: str) -> bytes:
     """
-    Appelle utils.pdf_export_groupe.export_groupe_pdf quelle que soit sa signature probable.
-    Retourne toujours des bytes PDF, ou lève une Exception explicite.
+    Force un payload dict (évite l'erreur list.get()) et génère des bytes PDF.
     """
-    title = f"Groupe {parent_id}"
+    payload = {
+        "parent": parent_data or {},
+        "children": children_records or [],
+        "parent_id": str(parent_id),
+    }
 
-    # 1) Tentative: export_groupe_pdf(parent, children) -> bytes
+    tmp_path = f"/tmp/groupe_{parent_id}.pdf"
+    buf = BytesIO()
+
     try:
-        res = export_groupe_pdf(parent_data, children_records)
+        sig = inspect.signature(export_groupe_pdf)
+        params = [p.name.lower() for p in sig.parameters.values()]
+        n = len(params)
+    except Exception:
+        params = []
+        n = None
+
+    # 1) export_groupe_pdf(payload) -> bytes
+    try:
+        res = export_groupe_pdf(payload)
         if isinstance(res, (bytes, bytearray)) and len(res) > 100:
             return bytes(res)
     except TypeError:
         pass
 
-    # 2) Tentative: export_groupe_pdf(parent, children, buffer)
-    buf = BytesIO()
+    # 2) export_groupe_pdf(payload, path)
     try:
-        export_groupe_pdf(parent_data, children_records, buf)
-        data = buf.getvalue()
-        if len(data) > 100:
-            return data
-    except TypeError:
-        pass
-
-    # 3) Tentative: export_groupe_pdf(parent, children, path)
-    tmp_path = f"/tmp/groupe_{parent_id}.pdf"
-    try:
-        export_groupe_pdf(parent_data, children_records, tmp_path)
+        export_groupe_pdf(payload, tmp_path)
         if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 100:
             with open(tmp_path, "rb") as f:
                 return f.read()
     except TypeError:
         pass
 
-    # 4) Tentative: export_groupe_pdf(path, parent, children)
-    tmp_path2 = f"/tmp/groupe_{parent_id}_v2.pdf"
+    # 3) export_groupe_pdf(payload, buffer)
     try:
-        export_groupe_pdf(tmp_path2, parent_data, children_records)
-        if os.path.exists(tmp_path2) and os.path.getsize(tmp_path2) > 100:
-            with open(tmp_path2, "rb") as f:
+        export_groupe_pdf(payload, buf)
+        data = buf.getvalue()
+        if len(data) > 100:
+            return data
+    except TypeError:
+        pass
+
+    # 4) export_groupe_pdf(payload, children, path) / export_groupe_pdf(parent, children, path)
+    # IMPORTANT: on ne met JAMAIS la liste en premier argument.
+    try:
+        export_groupe_pdf(payload, children_records, tmp_path)
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 100:
+            with open(tmp_path, "rb") as f:
                 return f.read()
     except TypeError:
         pass
 
-    # 5) Tentative avec kwargs (title) si supporté
-    tmp_path3 = f"/tmp/groupe_{parent_id}_v3.pdf"
     try:
-        export_groupe_pdf(parent_data, children_records, tmp_path3, title=title)
-        if os.path.exists(tmp_path3) and os.path.getsize(tmp_path3) > 100:
-            with open(tmp_path3, "rb") as f:
+        export_groupe_pdf(parent_data or {}, children_records or [], tmp_path)
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 100:
+            with open(tmp_path, "rb") as f:
                 return f.read()
     except TypeError:
         pass
-
-    # Debug utile: afficher la signature réelle si possible
-    try:
-        sig = str(inspect.signature(export_groupe_pdf))
-    except Exception:
-        sig = "(signature inconnue)"
 
     raise Exception(
-        "Impossible de générer le PDF groupe : signature export_groupe_pdf non compatible. "
-        f"Signature détectée: {sig}"
+        "Impossible de générer le PDF groupe (signature export_groupe_pdf non compatible). "
+        f"Signature détectée: {str(inspect.signature(export_groupe_pdf)) if hasattr(export_groupe_pdf, '__call__') else 'inconnue'}"
     )
 
 
