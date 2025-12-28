@@ -1,5 +1,8 @@
 # pages/12_📁_Fiche_groupe_dossier.py
 import os
+from io import BytesIO
+import inspect
+
 import streamlit as st
 import pandas as pd
 
@@ -109,8 +112,7 @@ def get_name_for_parent(parent_id: str) -> str:
 parent_labels = {}
 for p in parents_avec_fils:
     nom = get_name_for_parent(p)
-    label = f"{p} — {nom}" if nom else f"{p}"
-    parent_labels[p] = label
+    parent_labels[p] = f"{p} — {nom}" if nom else f"{p}"
 
 parent_selected = st.selectbox(
     "Groupe (Dossier N + Nom)",
@@ -240,28 +242,92 @@ k6.metric("Escrow total (Acompte 1)", f"${escrow_total:,.2f}")
 st.info(f"Solde dû (groupe) : ${solde:,.2f}")
 
 # =====================================================
-# ✅ EXPORT PDF (groupe parent + fils)
+# ✅ EXPORT PDF (robuste)
 # =====================================================
 st.markdown("---")
 st.subheader("📄 Export PDF (groupe)")
 
+
+def generate_groupe_pdf_bytes(parent_data: dict, children_records: list, parent_id: str) -> bytes:
+    """
+    Appelle utils.pdf_export_groupe.export_groupe_pdf quelle que soit sa signature probable.
+    Retourne toujours des bytes PDF, ou lève une Exception explicite.
+    """
+    title = f"Groupe {parent_id}"
+
+    # 1) Tentative: export_groupe_pdf(parent, children) -> bytes
+    try:
+        res = export_groupe_pdf(parent_data, children_records)
+        if isinstance(res, (bytes, bytearray)) and len(res) > 100:
+            return bytes(res)
+    except TypeError:
+        pass
+
+    # 2) Tentative: export_groupe_pdf(parent, children, buffer)
+    buf = BytesIO()
+    try:
+        export_groupe_pdf(parent_data, children_records, buf)
+        data = buf.getvalue()
+        if len(data) > 100:
+            return data
+    except TypeError:
+        pass
+
+    # 3) Tentative: export_groupe_pdf(parent, children, path)
+    tmp_path = f"/tmp/groupe_{parent_id}.pdf"
+    try:
+        export_groupe_pdf(parent_data, children_records, tmp_path)
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 100:
+            with open(tmp_path, "rb") as f:
+                return f.read()
+    except TypeError:
+        pass
+
+    # 4) Tentative: export_groupe_pdf(path, parent, children)
+    tmp_path2 = f"/tmp/groupe_{parent_id}_v2.pdf"
+    try:
+        export_groupe_pdf(tmp_path2, parent_data, children_records)
+        if os.path.exists(tmp_path2) and os.path.getsize(tmp_path2) > 100:
+            with open(tmp_path2, "rb") as f:
+                return f.read()
+    except TypeError:
+        pass
+
+    # 5) Tentative avec kwargs (title) si supporté
+    tmp_path3 = f"/tmp/groupe_{parent_id}_v3.pdf"
+    try:
+        export_groupe_pdf(parent_data, children_records, tmp_path3, title=title)
+        if os.path.exists(tmp_path3) and os.path.getsize(tmp_path3) > 100:
+            with open(tmp_path3, "rb") as f:
+                return f.read()
+    except TypeError:
+        pass
+
+    # Debug utile: afficher la signature réelle si possible
+    try:
+        sig = str(inspect.signature(export_groupe_pdf))
+    except Exception:
+        sig = "(signature inconnue)"
+
+    raise Exception(
+        "Impossible de générer le PDF groupe : signature export_groupe_pdf non compatible. "
+        f"Signature détectée: {sig}"
+    )
+
+
 if st.button("📄 Exporter la fiche groupe en PDF", type="primary"):
     try:
-        # On exporte le parent (si existe) + les fils
         parent_data = parent_dict if parent_dict else {}
         children_data = children_df.sort_values(["Dossier Index", "Dossier N"]).to_dict(orient="records")
 
-        output = f"/tmp/groupe_{parent_selected}.pdf"
-        export_groupe_pdf(parent_data, children_data, output)
+        pdf_bytes = generate_groupe_pdf_bytes(parent_data, children_data, parent_selected)
 
-        with open(output, "rb") as f:
-            st.download_button(
-                "⬇️ Télécharger le PDF (groupe)",
-                data=f,
-                file_name=f"Groupe_{parent_selected}.pdf",
-                mime="application/pdf",
-            )
-
+        st.download_button(
+            "⬇️ Télécharger le PDF (groupe)",
+            data=pdf_bytes,
+            file_name=f"Groupe_{parent_selected}.pdf",
+            mime="application/pdf",
+        )
         st.success("✔ PDF généré avec succès.")
 
     except Exception as e:
