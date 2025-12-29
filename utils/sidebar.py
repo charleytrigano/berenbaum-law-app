@@ -1,64 +1,83 @@
 # utils/sidebar.py
-import streamlit as st
 import os
+import streamlit as st
+
+try:
+    # Streamlit >= 1.32
+    from streamlit.errors import StreamlitPageNotFoundError
+except Exception:  # pragma: no cover
+    StreamlitPageNotFoundError = Exception
+
 
 # =====================================================
-# SIDEBAR PRINCIPALE
+# Helpers
+# =====================================================
+def _safe_page_link(path: str, label: str):
+    """
+    Affiche un lien vers une page Streamlit sans jamais casser l'app.
+    - Vérifie l'existence du fichier
+    - Attrape StreamlitPageNotFoundError si Streamlit ne "voit" pas la page
+    """
+    # 1) Fichier absent -> lien inactif
+    if not os.path.exists(path):
+        st.markdown(f"<span style='opacity:0.55'>{label} (introuvable)</span>", unsafe_allow_html=True)
+        return
+
+    # 2) Fichier présent mais Streamlit refuse -> lien inactif (no crash)
+    try:
+        st.page_link(path, label=label)
+    except StreamlitPageNotFoundError:
+        st.markdown(f"<span style='opacity:0.55'>{label} (non chargé par Streamlit)</span>", unsafe_allow_html=True)
+    except Exception:
+        # Dernier filet de sécurité : pas de crash
+        st.markdown(f"<span style='opacity:0.55'>{label} (erreur lien)</span>", unsafe_allow_html=True)
+
+
+def _logo_block():
+    logo_path = "assets/logo.png"
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=140)
+    else:
+        st.markdown("### 🏛️ Cabinet")
+
+
+# =====================================================
+# Sidebar principale
 # =====================================================
 def render_sidebar():
     with st.sidebar:
-
-        # -------------------------------------------------
-        # LOGO CABINET
-        # -------------------------------------------------
-        logo_path = "assets/logo.png"
-        if os.path.exists(logo_path):
-            st.image(logo_path, width=140)
-        else:
-            st.markdown("### 🏛️ Cabinet")
-
+        _logo_block()
         st.markdown("---")
 
         # -------------------------------------------------
-        # NAVIGATION PRINCIPALE
+        # NAVIGATION (paths EXACTS)
         # -------------------------------------------------
-        st.page_link("pages/00_🏠_Dashboard.py", label="🏠 Dashboard")
-        st.page_link("pages/01_📁_Liste_dossiers.py", label="📁 Liste des dossiers")
-        st.page_link("pages/02_➕_Nouveau_dossier.py", label="➕ Nouveau dossier")
-        st.page_link("pages/03_✏️_Modifier_dossier.py", label="✏️ Modifier un dossier")
-        st.page_link("pages/04_📊_Analyses.py", label="📊 Analyses")
-        st.page_link("pages/05_🔎_Recherche_universelle.py", label="🔎 Recherche universelle")
-        st.page_link("pages/06_💰_Escrow.py", label="💰 Escrow")
+        # NOTE : si Streamlit Cloud n'aime pas certains noms Unicode,
+        # cette sidebar ne cassera plus : elle "grise" simplement le lien.
+
+        _safe_page_link("pages/00_🏠_Dashboard.py", "🏠 Dashboard")
+        _safe_page_link("pages/01_📁_Liste_dossiers.py", "📁 Liste des dossiers")
+        _safe_page_link("pages/02_➕_Nouveau_dossier.py", "➕ Nouveau dossier")
+        _safe_page_link("pages/03_✏️_Modifier_dossier.py", "✏️ Modifier un dossier")
+        _safe_page_link("pages/04_📊_Analyses.py", "📊 Analyses")
+        _safe_page_link("pages/06_💰_Escrow.py", "💰 Escrow")
 
         st.markdown("---")
 
-        # -------------------------------------------------
-        # DONNÉES & PARAMÉTRAGE
-        # -------------------------------------------------
-        st.page_link("pages/07_🛂_Visa.py", label="🛂 Visas")
-        st.page_link("pages/13_💲_Tarifs.py", label="💲 Tarifs par Visa")
-        st.page_link("pages/08_📤_Export_Excel.py", label="📤 Export Excel")
-        st.page_link("pages/14_📤_Export_JSON_Excel.py", label="🔄 Export JSON ↔ Excel")
+        _safe_page_link("pages/07_🛂_Visa.py", "🛂 Visa")
+        _safe_page_link("pages/13_💲_Tarifs.py", "💲 Tarifs par Visa")
+        _safe_page_link("pages/08_📤_Export_Excel.py", "📤 Export Excel")
+        _safe_page_link("pages/14_📤_Export_JSON_Excel.py", "🔄 Export JSON ↔ Excel")
 
         st.markdown("---")
 
-        # -------------------------------------------------
-        # FICHES & DOCUMENTS
-        # -------------------------------------------------
-        st.page_link("pages/11_📄_Fiche_dossier.py", label="📄 Fiche dossier")
-        st.page_link("pages/12_📁_Fiche_groupe_dossier.py", label="📁 Fiche groupe dossier")
+        _safe_page_link("pages/11_📄_Fiche_dossier.py", "📄 Fiche dossier")
+        _safe_page_link("pages/12_📁_Fiche_groupe_dossier.py", "📁 Fiche groupe dossier")
 
         st.markdown("---")
 
-        # -------------------------------------------------
-        # PARAMÈTRES & AIDE
-        # -------------------------------------------------
-        st.page_link("pages/09_⚙️_Parametres.py", label="⚙️ Paramètres")
-        st.page_link("pages/10_❓_Aide.py", label="❓ Aide & mode d’emploi")
+        _safe_page_link("pages/09_⚙️_Parametres.py", "⚙️ Paramètres")
+        _safe_page_link("pages/10_❓_Aide.py", "❓ Aide & mode d’emploi")
 
         st.markdown("---")
-
-        # -------------------------------------------------
-        # FOOTER
-        # -------------------------------------------------
         st.caption("Berenbaum Law App — Interne Cabinet")
