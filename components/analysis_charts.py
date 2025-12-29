@@ -1,167 +1,220 @@
-import plotly.express as px
-import plotly.graph_objects as go
+# components/analysis_charts.py
 import pandas as pd
+import plotly.express as px
+from typing import Optional, List
 
-# ================================================
-# 🎨 THEME LUXE – COULEURS PREMIUM
-# ================================================
-COLOR_GOLD = "#B8860B"
-COLOR_TEXT = "#E6E6E6"
-COLOR_GRID = "rgba(255,255,255,0.08)"
 
-PALETTE = [
-    "#B8860B",  # Gold deep
-    "#8C6A18",  # Gold soft
-    "#D2B48C",  # Tan gold
-    "#C0903D",  # Bronze
-    "#A67C00",  # Golden brown
-]
+def _ensure_datetime(df: pd.DataFrame, col: str = "Date") -> pd.DataFrame:
+    df = df.copy()
+    if col in df.columns:
+        df[col] = pd.to_datetime(df[col], errors="coerce")
+    return df
 
-# ================================================
-# 🔧 BASE LAYOUT GRAPHES (premium)
-# ================================================
-def apply_theme(fig):
+
+def _coerce_float(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce").fillna(0.0)
+
+
+def _infer_period_col(df: pd.DataFrame) -> Optional[str]:
+    for c in ["Periode", "Période", "Mois", "Trimestre", "Semestre", "Année", "Annee", "Year", "Month"]:
+        if c in df.columns:
+            return c
+    return None
+
+
+def _build_period(df: pd.DataFrame, period_type: str) -> pd.DataFrame:
+    df = _ensure_datetime(df, "Date")
+    df = df[df["Date"].notna()].copy()
+
+    if df.empty:
+        df["Periode"] = pd.Series([], dtype=str)
+        return df
+
+    if period_type == "Mois":
+        df["Periode"] = df["Date"].dt.to_period("M").astype(str)
+    elif period_type == "Trimestre":
+        df["Periode"] = df["Date"].dt.to_period("Q").astype(str)
+    elif period_type == "Semestre":
+        half = df["Date"].dt.month.apply(lambda m: "S1" if m <= 6 else "S2")
+        df["Periode"] = df["Date"].dt.year.astype(str) + "-" + half
+    elif period_type == "Année":
+        df["Periode"] = df["Date"].dt.year.astype(str)
+    else:
+        df["Periode"] = df["Date"].dt.date.astype(str)
+
+    return df
+
+
+def _empty_fig(title: str):
+    fig = px.scatter(title=title)
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=COLOR_TEXT),
-        margin=dict(l=20, r=20, t=40, b=20),
-        xaxis=dict(gridcolor=COLOR_GRID),
-        yaxis=dict(gridcolor=COLOR_GRID),
-        legend=dict(
-            bgcolor="rgba(0,0,0,0)",
-            bordercolor=COLOR_GRID,
-            borderwidth=1
-        )
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        annotations=[
+            dict(
+                text="Aucune donnée à afficher avec les filtres actuels.",
+                x=0.5,
+                y=0.5,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=14),
+            )
+        ],
     )
     return fig
 
 
-# ===========================================================
-# 📊 1 — Histogramme mensuel premium
-# ===========================================================
-def monthly_hist(df, date_col="Date", amount_col="Montant honoraires (US $)"):
+def monthly_hist(df: pd.DataFrame, period_type: str = "Mois"):
+    if df is None or df.empty:
+        return _empty_fig("📅 Histogramme — aucune donnée")
+
+    df = df.copy()
+
+    if "Date" in df.columns:
+        df = _build_period(df, period_type)
+        if df.empty:
+            return _empty_fig("📅 Histogramme — aucune donnée")
+        g = df.groupby("Periode").size().reset_index(name="Dossiers")
+        xcol = "Periode"
+    else:
+        xcol = _infer_period_col(df)
+        if not xcol:
+            return _empty_fig("📅 Histogramme — colonnes période introuvables")
+        if "Dossiers" not in df.columns:
+            if "Count" in df.columns:
+                df["Dossiers"] = df["Count"]
+            else:
+                df["Dossiers"] = 0
+        g = df[[xcol, "Dossiers"]].copy()
+        g = g.dropna(subset=[xcol])
+
+    fig = px.bar(g.sort_values(xcol), x=xcol, y="Dossiers", title="📅 Dossiers par période")
+    fig.update_layout(xaxis_title="Période", yaxis_title="Nombre de dossiers")
+    return fig
+
+
+def multi_year_line(df: pd.DataFrame, years: Optional[List[int]] = None):
+    if df is None or df.empty:
+        return _empty_fig("📈 Courbes multi-années — aucune donnée")
+
+    if "Date" not in df.columns:
+        return _empty_fig("📈 Courbes multi-années — colonne 'Date' introuvable")
+
+    df = _ensure_datetime(df, "Date")
+    df = df[df["Date"].notna()].copy()
     if df.empty:
-        return go.Figure()
+        return _empty_fig("📈 Courbes multi-années — aucune date valide")
 
-    df = df.copy()
-    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-    df["Mois"] = df[date_col].dt.to_period("M").astype(str)
-
-    grouped = df.groupby("Mois")[amount_col].sum().reset_index()
-
-    fig = px.bar(
-        grouped,
-        x="Mois",
-        y=amount_col,
-        title="Revenus mensuels",
-        color_discrete_sequence=[COLOR_GOLD]
-    )
-
-    return apply_theme(fig)
-
-
-# ===========================================================
-# 📊 2 — Comparaison multi-années (version patchée)
-# ===========================================================
-def multi_year_line(df_grouped):
-    """
-    df_grouped doit contenir : Année, Mois, Montant honoraires (US $)
-    """
-    if df_grouped.empty:
-        return go.Figure()
-
-    df = df_grouped.copy()
-
-    df["Année"] = pd.to_numeric(df["Année"], errors="coerce")
-    df["Mois"] = pd.to_numeric(df["Mois"], errors="coerce")
-
-    fig = go.Figure()
-
-    for i, year in enumerate(sorted(df["Année"].dropna().unique())):
-        sub = df[df["Année"] == year]
-        fig.add_trace(go.Scatter(
-            x=sub["Mois"],
-            y=sub["Montant honoraires (US $)"],
-            mode="lines+markers",
-            name=str(int(year)),
-            line=dict(color=PALETTE[i % len(PALETTE)], width=3)
-        ))
-
-    fig.update_layout(title="Comparaison multi-années")
-    return apply_theme(fig)
-
-
-# ===========================================================
-# 📊 3 — Donut catégories
-# ===========================================================
-def category_donut(df):
-    df = df.copy()
-    df["Categories"] = df["Categories"].fillna("Non défini")
-
-    summary = df["Categories"].value_counts().reset_index()
-    summary.columns = ["Categories", "count"]
-
-    if summary.empty:
-        return px.pie(values=[1], names=["Aucune donnée"])
-
-    fig = px.pie(
-        summary,
-        values="count",
-        names="Categories",
-        hole=0.5,
-        color_discrete_sequence=px.colors.sequential.Oranges
-    )
-
-    fig.update_layout(title="Répartition par catégories")
-    return apply_theme(fig)
-
-
-# ===========================================================
-# 📊 4 — Heatmap mensuelle
-# ===========================================================
-def heatmap_month(df):
-    if df.empty:
-        return go.Figure()
-
-    df = df.copy()
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Année"] = df["Date"].dt.year
-    df["Mois"] = df["Date"].dt.month
+    df["MoisNum"] = df["Date"].dt.month
 
-    pivot = df.pivot_table(
-        index="Année",
-        columns="Mois",
-        values="Dossier N",
-        aggfunc="count",
-        fill_value=0
+    if years:
+        df = df[df["Année"].isin(years)].copy()
+        if df.empty:
+            return _empty_fig("📈 Courbes multi-années — aucune donnée pour ces années")
+
+    g = df.groupby(["Année", "MoisNum"]).size().reset_index(name="Dossiers")
+    g = g.sort_values(["Année", "MoisNum"])
+
+    fig = px.line(
+        g,
+        x="MoisNum",
+        y="Dossiers",
+        color="Année",
+        markers=True,
+        title="📈 Comparaison multi-années (volume mensuel)",
     )
-
-    fig = px.imshow(
-        pivot,
-        color_continuous_scale=["#2b2b2b", COLOR_GOLD],
-        labels=dict(color="Nb dossiers")
+    fig.update_layout(
+        xaxis_title="Mois",
+        yaxis_title="Nombre de dossiers",
+        xaxis=dict(
+            tickmode="array",
+            tickvals=list(range(1, 13)),
+            ticktext=[pd.to_datetime(m, format="%m").strftime("%b") for m in range(1, 13)],
+        ),
     )
-
-    fig.update_layout(title="Heatmap activité mensuelle")
-    return apply_theme(fig)
+    return fig
 
 
-# ===========================================================
-# 📊 5 — Bar chart revenus / catégories
-# ===========================================================
-def category_bars(df):
+def category_donut(df: pd.DataFrame):
+    if df is None or df.empty:
+        return _empty_fig("🎯 Répartition catégories — aucune donnée")
+
+    if "Categories" not in df.columns:
+        return _empty_fig("🎯 Répartition catégories — colonne introuvable")
+
+    g = df["Categories"].fillna("").replace("", "Non renseigné").value_counts().reset_index()
+    g.columns = ["Catégorie", "Dossiers"]
+    fig = px.pie(g, names="Catégorie", values="Dossiers", hole=0.55, title="🎯 Répartition par catégorie")
+    return fig
+
+
+def heatmap_month(df: pd.DataFrame):
+    if df is None or df.empty:
+        return _empty_fig("🔥 Heatmap — aucune donnée")
+
+    if "Date" not in df.columns:
+        return _empty_fig("🔥 Heatmap — colonne 'Date' introuvable")
+
+    df = _ensure_datetime(df, "Date")
+    df = df[df["Date"].notna()].copy()
     if df.empty:
-        return go.Figure()
+        return _empty_fig("🔥 Heatmap — aucune date valide")
 
-    grouped = df.groupby("Categories")["Montant honoraires (US $)"].sum().reset_index()
+    df["Année"] = df["Date"].dt.year
+    df["MoisNum"] = df["Date"].dt.month
 
-    fig = px.bar(
-        grouped,
-        x="Categories",
-        y="Montant honoraires (US $)",
-        title="Revenus par catégories",
-        color="Categories",
-        color_discrete_sequence=PALETTE
+    g = df.groupby(["Année", "MoisNum"]).size().reset_index(name="Dossiers")
+    pivot = g.pivot(index="Année", columns="MoisNum", values="Dossiers").fillna(0)
+
+    fig = px.imshow(pivot, aspect="auto", title="🔥 Heatmap d’activité (année × mois)")
+    fig.update_layout(
+        xaxis=dict(
+            tickmode="array",
+            tickvals=list(range(0, 12)),
+            ticktext=[pd.to_datetime(m, format="%m").strftime("%b") for m in range(1, 13)],
+        ),
+        yaxis_title="Année",
+        xaxis_title="Mois",
     )
-    return apply_theme(fig)
+    return fig
+
+
+def category_bars(df: pd.DataFrame):
+    if df is None or df.empty:
+        return _empty_fig("📊 Revenus par catégories — aucune donnée")
+
+    if "Categories" not in df.columns:
+        return _empty_fig("📊 Revenus par catégories — colonne 'Categories' introuvable")
+
+    honor_col = "Montant honoraires (US $)" if "Montant honoraires (US $)" in df.columns else None
+    frais_col = "Autres frais (US $)" if "Autres frais (US $)" in df.columns else None
+
+    if not honor_col and not frais_col:
+        return _empty_fig("📊 Revenus par catégories — colonnes montants introuvables")
+
+    d = df.copy()
+    d["Catégorie"] = d["Categories"].fillna("").replace("", "Non renseigné")
+    d["Honoraires"] = _coerce_float(d[honor_col]) if honor_col else 0.0
+    d["Frais"] = _coerce_float(d[frais_col]) if frais_col else 0.0
+    d["Total"] = d["Honoraires"] + d["Frais"]
+
+    g = d.groupby("Catégorie")["Total"].sum().reset_index().sort_values("Total", ascending=False)
+    fig = px.bar(g, x="Catégorie", y="Total", title="📊 Revenus (honoraires + frais) par catégorie")
+    fig.update_layout(xaxis_title="Catégorie", yaxis_title="Montant (US $)")
+    return fig
+
+
+def top_visa(df: pd.DataFrame, top_n: int = 10):
+    if df is None or df.empty:
+        return _empty_fig("🛂 Top Visas — aucune donnée")
+
+    if "Visa" not in df.columns:
+        return _empty_fig("🛂 Top Visas — colonne 'Visa' introuvable")
+
+    g = df["Visa"].fillna("").replace("", "Non renseigné").value_counts().head(top_n).reset_index()
+    g.columns = ["Visa", "Dossiers"]
+    fig = px.bar(g, x="Visa", y="Dossiers", title="🛂 Top Visas (volume)")
+    fig.update_layout(xaxis_title="Visa", yaxis_title="Nombre de dossiers")
+    return fig
