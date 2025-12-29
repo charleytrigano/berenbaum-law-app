@@ -1,31 +1,10 @@
-# pages/11_📄_Fiche_dossier.py
-
 import streamlit as st
 import pandas as pd
-from io import BytesIO
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
 from utils.timeline_builder import build_timeline
 from utils.pdf_export import export_dossier_pdf
-
-# ---------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------
-def to_float(v):
-    try:
-        return float(v or 0)
-    except Exception:
-        return 0.0
-
-def to_bool(v):
-    if isinstance(v, bool):
-        return v
-    s = str(v).strip().lower()
-    return s in ["true", "1", "1.0", "yes", "oui", "y", "vrai"]
-
-def safe_str(v):
-    return "" if v is None else str(v)
 
 # ---------------------------------------------------------
 # CONFIG & SIDEBAR
@@ -44,41 +23,76 @@ if not clients:
     st.error("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients)
+df = pd.DataFrame(clients).copy()
 
-if "Dossier N" not in df.columns:
-    st.error("Colonne 'Dossier N' introuvable dans la base.")
+# Normalisation Dossier N (support xxxxx-1)
+df["Dossier N"] = df.get("Dossier N", "").astype(str).fillna("").str.strip()
+
+def norm_txt(x):
+    return str(x or "").strip()
+
+df["_Nom_norm"] = df.get("Nom", "").apply(norm_txt)
+df["_Dossier_norm"] = df["Dossier N"].apply(norm_txt)
+
+# =========================================================
+# ✅ RECHERCHE DOSSIER (Nom OU Dossier N)
+# =========================================================
+st.subheader("🔎 Rechercher un dossier")
+
+search = st.text_input(
+    "Recherche (Nom ou Dossier N)",
+    value="",
+    placeholder="Ex: 12904 ou LUCAS",
+)
+
+if search.strip():
+    s = search.strip().lower()
+    df_filtered = df[
+        df["_Nom_norm"].str.lower().str.contains(s, na=False)
+        | df["_Dossier_norm"].str.lower().str.contains(s, na=False)
+    ].copy()
+else:
+    df_filtered = df.copy()
+
+df_filtered["_label"] = df_filtered.apply(
+    lambda r: f"{norm_txt(r.get('Dossier N'))} — {norm_txt(r.get('Nom'))}",
+    axis=1
+)
+
+options = df_filtered["_label"].tolist()
+
+if not options:
+    st.warning("Aucun dossier ne correspond à la recherche.")
     st.stop()
 
-# Support xxxxx-1, xxxxx-2 etc.
-df["Dossier N"] = df["Dossier N"].astype(str)
+selected_label = st.selectbox("Sélectionner un dossier", options)
 
-nums = sorted(df["Dossier N"].unique())
-selected = st.selectbox("Sélectionner un dossier", nums)
-
-dossier = df[df["Dossier N"] == selected].iloc[0].to_dict()
+selected = df_filtered[df_filtered["_label"] == selected_label].iloc[0]["Dossier N"]
+dossier = df[df["Dossier N"] == str(selected)].iloc[0].to_dict()
 
 # ---------------------------------------------------------
 # INFOS GÉNÉRALES
 # ---------------------------------------------------------
-st.subheader(f"Dossier {safe_str(dossier.get('Dossier N'))} — {safe_str(dossier.get('Nom'))}")
+st.markdown("---")
+st.subheader(f"Dossier {dossier.get('Dossier N','')} — {dossier.get('Nom','')}")
 
 c1, c2, c3 = st.columns(3)
-c1.write(f"**Catégorie** : {safe_str(dossier.get('Categories'))}")
-c2.write(f"**Sous-catégorie** : {safe_str(dossier.get('Sous-categories'))}")
-c3.write(f"**Visa** : {safe_str(dossier.get('Visa'))}")
+c1.write(f"**Catégorie** : {dossier.get('Categories','')}")
+c2.write(f"**Sous-catégorie** : {dossier.get('Sous-categories','')}")
+c3.write(f"**Visa** : {dossier.get('Visa','')}")
 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# FACTURATION & RÈGLEMENTS
+# FACTURATION & RÈGLEMENTS (MÊME LIGNE)
 # ---------------------------------------------------------
 st.subheader("💰 Facturation & règlements")
+
 colF, colP = st.columns(2)
 
 with colF:
-    honoraires = to_float(dossier.get("Montant honoraires (US $)", 0))
-    frais = to_float(dossier.get("Autres frais (US $)", 0))
+    honoraires = float(dossier.get("Montant honoraires (US $)", 0) or 0)
+    frais = float(dossier.get("Autres frais (US $)", 0) or 0)
     total_facture = honoraires + frais
 
     st.metric("Montant honoraires", f"${honoraires:,.2f}")
@@ -87,26 +101,20 @@ with colF:
 
 with colP:
     total_encaisse = 0.0
-
-    # Affiche chaque acompte + date + mode si présents
     for i in range(1, 5):
-        a = to_float(dossier.get(f"Acompte {i}", 0))
+        a = float(dossier.get(f"Acompte {i}", 0) or 0)
         total_encaisse += a
 
         if a > 0:
-            # Mode (nouveaux champs) → fallback sur mode de paiement
-            mode = dossier.get(f"Mode Acompte {i}", dossier.get("mode de paiement", ""))
-            # Date (nouveaux champs) → fallback sur Date Paiement i / Date Acompte i
-            date_paiement = dossier.get(f"Date Paiement {i}", dossier.get(f"Date Acompte {i}", ""))
-
+            mode = dossier.get(f"Mode Acompte {i}", "") or dossier.get("mode de paiement", "")
+            date_paiement = dossier.get(f"Date Acompte {i}", "")
             st.write(
-                f"**Acompte {i}** : ${a:,.2f} — "
-                f"Mode: {safe_str(mode)} — "
-                f"Date: {safe_str(date_paiement)}"
+                f"**Acompte {i}** : ${a:,.2f}  \n"
+                f"Mode : {mode}  \n"
+                f"Date : {date_paiement}"
             )
 
     solde = total_facture - total_encaisse
-
     st.metric("Total encaissé", f"${total_encaisse:,.2f}")
     st.metric("Solde dû", f"${solde:,.2f}")
 
@@ -127,20 +135,41 @@ else:
 # ---------------------------------------------------------
 st.subheader("💼 Escrow")
 
-escrow_amount = to_float(dossier.get("Acompte 1", 0))
+escrow_amount = float(dossier.get("Acompte 1", 0) or 0)
 
-escrow_actif = to_bool(dossier.get("Escrow", False))
-escrow_a_reclamer = to_bool(dossier.get("Escrow_a_reclamer", False))
-escrow_reclame = to_bool(dossier.get("Escrow_reclame", False))
-
-if escrow_actif:
+if bool(dossier.get("Escrow")):
     st.info(f"💼 Escrow actif — ${escrow_amount:,.2f}")
-elif escrow_a_reclamer:
+elif bool(dossier.get("Escrow_a_reclamer")):
     st.warning(f"📤 Escrow à réclamer — ${escrow_amount:,.2f}")
-elif escrow_reclame:
+elif bool(dossier.get("Escrow_reclame")):
     st.success(f"✅ Escrow réclamé — ${escrow_amount:,.2f}")
 else:
     st.write("Aucun escrow pour ce dossier.")
+
+# ---------------------------------------------------------
+# STATUTS (présentation améliorée : valeurs décalées à droite)
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("📦 Statuts du dossier")
+
+def yesno(v):
+    return "✅ Oui" if str(v).strip().lower() in ["true", "1", "yes", "oui"] or v is True else "❌ Non"
+
+left, right = st.columns([1, 2])
+
+with left:
+    st.write("**Dossier envoyé**")
+    st.write("**Dossier accepté**")
+    st.write("**Dossier refusé**")
+    st.write("**Dossier annulé**")
+    st.write("**RFE**")
+
+with right:
+    st.write(yesno(dossier.get("Dossier envoye", False)))
+    st.write(yesno(dossier.get("Dossier accepte", False)))
+    st.write(yesno(dossier.get("Dossier refuse", False)))
+    st.write(yesno(dossier.get("Dossier Annule", False)))
+    st.write(yesno(dossier.get("RFE", False)))
 
 # ---------------------------------------------------------
 # TIMELINE
@@ -154,50 +183,28 @@ if not timeline:
     st.info("Aucun événement enregistré.")
 else:
     for ev in timeline:
-        d = ev.get("date")
-        label = ev.get("label", "")
-        amount = ev.get("amount", None)
-
-        try:
-            d_str = pd.to_datetime(d, errors="coerce")
-            d_out = d_str.date().isoformat() if not pd.isna(d_str) else safe_str(d)
-        except Exception:
-            d_out = safe_str(d)
-
-        line = f"**{d_out}** — {label}"
-        if amount is not None:
-            try:
-                line += f" — ${float(amount):,.2f}"
-            except Exception:
-                pass
+        line = f"**{ev['date'].date()}** — {ev['label']}"
+        if ev.get("amount"):
+            line += f" — ${ev['amount']:,.2f}"
         st.markdown(line)
 
 # ---------------------------------------------------------
-# EXPORT PDF (ROBUSTE STREAMLIT CLOUD)
+# EXPORT PDF
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📄 Export PDF")
 
 if st.button("📄 Exporter la fiche dossier en PDF", type="primary"):
-    pdf_buffer = BytesIO()
-
-    # On essaie la signature la plus probable: export_dossier_pdf(dossier, buffer)
+    output = f"/tmp/dossier_{dossier['Dossier N']}.pdf"
     try:
-        result = export_dossier_pdf(dossier, pdf_buffer)
-        if isinstance(result, (bytes, bytearray)):
-            pdf_bytes = bytes(result)
-        else:
-            pdf_bytes = pdf_buffer.getvalue()
-    except TypeError:
-        # Fallback si la fonction retourne directement les bytes
-        pdf_bytes = export_dossier_pdf(dossier)
-
-    if not pdf_bytes:
-        st.error("❌ Export PDF impossible : aucun contenu généré.")
-    else:
-        st.download_button(
-            "⬇️ Télécharger le PDF",
-            data=pdf_bytes,
-            file_name=f"Dossier_{safe_str(dossier.get('Dossier N'))}.pdf",
-            mime="application/pdf",
-        )
+        export_dossier_pdf(dossier, output)
+        with open(output, "rb") as f:
+            st.download_button(
+                "⬇️ Télécharger le PDF",
+                data=f,
+                file_name=f"Dossier_{dossier['Dossier N']}.pdf",
+                mime="application/pdf"
+            )
+        st.success("✔ PDF généré avec succès.")
+    except Exception as e:
+        st.error(f"❌ Erreur export PDF : {e}")
