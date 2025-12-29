@@ -1,83 +1,123 @@
 # utils/sidebar.py
-import os
 import streamlit as st
-
-try:
-    from streamlit.errors import StreamlitPageNotFoundError
-except Exception:
-    StreamlitPageNotFoundError = Exception
+import os
 
 
-# =====================================================
-# LIEN DE PAGE SÉCURISÉ (ANTI-CRASH)
-# =====================================================
-def safe_page_link(path: str, label: str):
-    if not os.path.exists(path):
-        return  # on n’affiche rien si la page n’existe pas
-
-    try:
-        st.page_link(path, label=label)
-    except StreamlitPageNotFoundError:
-        pass
-    except Exception:
-        pass
-
-
-# =====================================================
-# SIDEBAR ÉPURÉE
-# =====================================================
 def render_sidebar():
-    with st.sidebar:
+    """
+    Sidebar unique (logo + navigation custom).
+    - Cache définitivement la navigation automatique Streamlit ("main", "View less", etc.)
+    - Affiche le logo en haut
+    - Fournit des liens vers les pages existantes (compatibles avec tes noms actuels)
+    """
 
-        # -------------------------------
-        # LOGO UNIQUEMENT
-        # -------------------------------
+    # =====================================================
+    # 1) CSS : cacher le menu automatique Streamlit (GARANTI)
+    # =====================================================
+    st.markdown(
+        """
+        <style>
+        /* Cache le menu auto "Pages" (main / View less / etc.) */
+        [data-testid="stSidebarNav"] { display: none !important; }
+        [data-testid="stSidebarNavItems"] { display: none !important; }
+        [data-testid="stSidebarNavSeparator"] { display: none !important; }
+
+        /* Ajustements spacing logo */
+        [data-testid="stSidebar"] img {
+            margin-bottom: 16px;
+            margin-top: 0px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # =====================================================
+    # 2) UI Sidebar
+    # =====================================================
+    with st.sidebar:
+        # --- Logo ---
         logo_path = "assets/logo.png"
         if os.path.exists(logo_path):
             st.image(logo_path, width=140)
+        else:
+            st.warning("⚠️ Logo introuvable : assets/logo.png")
 
         st.markdown("---")
 
-        # -------------------------------
-        # NAVIGATION PRINCIPALE
-        # -------------------------------
-        safe_page_link("pages/00_Dashboard.py", "🏠 Dashboard")
-        safe_page_link("pages/01_📁_Liste_dossiers.py", "📁 Dossiers")
-        safe_page_link("pages/02_➕_Nouveau_dossier.py", "➕ Nouveau dossier")
-        safe_page_link("pages/03_✏️_Modifier_dossier.py", "✏️ Modifier dossier")
-        safe_page_link("pages/04_📊_Analyses.py", "📊 Analyses")
-        safe_page_link("pages/06_💰_Escrow.py", "💰 Escrow")
+        # =================================================
+        # 3) Navigation custom (page_link)
+        # IMPORTANT : chemins = noms EXACTS dans /pages
+        # =================================================
+        try:
+            st.page_link("pages/00_Dashboard.py", label="🏠 Dashboard")
+        except Exception:
+            st.write("🏠 Dashboard")
+
+        try:
+            st.page_link("pages/01_📁_Liste_dossiers.py", label="📁 Liste dossiers")
+        except Exception:
+            st.write("📁 Liste dossiers")
+
+        try:
+            st.page_link("pages/02_➕_Nouveau_dossier.py", label="➕ Nouveau dossier")
+        except Exception:
+            st.write("➕ Nouveau dossier")
+
+        try:
+            st.page_link("pages/03_✏️_Modifier_dossier.py", label="✏️ Modifier dossier")
+        except Exception:
+            st.write("✏️ Modifier dossier")
+
+        try:
+            st.page_link("pages/04_📊_Analyses.py", label="📊 Analyses")
+        except Exception:
+            st.write("📊 Analyses")
+
+        try:
+            st.page_link("pages/06_💰_Escrow.py", label="💰 Escrow")
+        except Exception:
+            st.write("💰 Escrow")
+
+        try:
+            st.page_link("pages/07_🛂_Visa.py", label="🛂 Visa")
+        except Exception:
+            st.write("🛂 Visa")
+
+        try:
+            st.page_link("pages/08_📤_Export_Excel.py", label="📤 Export Excel")
+        except Exception:
+            st.write("📤 Export Excel")
+
+        try:
+            st.page_link("pages/09_⚙️_Parametres.py", label="⚙️ Paramètres")
+        except Exception:
+            st.write("⚙️ Paramètres")
+
+        try:
+            st.page_link("pages/10_❓_Aide.py", label="❓ Aide")
+        except Exception:
+            st.write("❓ Aide")
+
+        try:
+            st.page_link("pages/11_📄_Fiche_dossier.py", label="📄 Fiche dossier")
+        except Exception:
+            st.write("📄 Fiche dossier")
+
+        try:
+            st.page_link("pages/12_📁_Fiche_groupe_dossier.py", label="📁 Fiche groupe dossier")
+        except Exception:
+            st.write("📁 Fiche groupe dossier")
+
+        try:
+            st.page_link("pages/13_💲_Tarifs.py", label="💲 Tarifs")
+        except Exception:
+            st.write("💲 Tarifs")
+
+        try:
+            st.page_link("pages/14_📤_Export_JSON_Excel.py", label="📤 Export JSON ↔ Excel")
+        except Exception:
+            st.write("📤 Export JSON ↔ Excel")
 
         st.markdown("---")
-
-        # -------------------------------
-        # RÉFÉRENTIELS
-        # -------------------------------
-        safe_page_link("pages/07_🛂_Visa.py", "🛂 Visas")
-        safe_page_link("pages/13_💲_Tarifs.py", "💲 Tarifs")
-
-        st.markdown("---")
-
-        # -------------------------------
-        # EXPORTS
-        # -------------------------------
-        safe_page_link("pages/08_📤_Export_Excel.py", "📤 Export Excel")
-        safe_page_link("pages/14_📤_Export_JSON_Excel.py", "🔄 Export JSON ↔ Excel")
-
-        st.markdown("---")
-
-        # -------------------------------
-        # FICHES
-        # -------------------------------
-        safe_page_link("pages/11_📄_Fiche_dossier.py", "📄 Fiche dossier")
-        safe_page_link("pages/12_📁_Fiche_groupe_dossier.py", "📁 Fiche groupe")
-
-        st.markdown("---")
-
-        # -------------------------------
-        # ADMIN / AIDE
-        # -------------------------------
-        safe_page_link("pages/09_⚙️_Parametres.py", "⚙️ Paramètres")
-        safe_page_link("pages/10_❓_Aide.py", "❓ Aide")
-
-        st.markdown("---")
+        st.caption("Berenbaum Law App — Interne")
