@@ -23,58 +23,26 @@ if not clients:
     st.error("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients).copy()
+df = pd.DataFrame(clients)
 
-# Normalisation Dossier N (support xxxxx-1)
-df["Dossier N"] = df.get("Dossier N", "").astype(str).fillna("").str.strip()
+# Support des sous-dossiers (xxxxx-1, etc.)
+df["Dossier N"] = df["Dossier N"].astype(str)
 
-def norm_txt(x):
-    return str(x or "").strip()
+# ---------------------------------------------------------
+# SÉLECTION DOSSIER (N° + NOM)
+# ---------------------------------------------------------
+df["Label"] = df["Dossier N"] + " — " + df.get("Nom", "").astype(str)
 
-df["_Nom_norm"] = df.get("Nom", "").apply(norm_txt)
-df["_Dossier_norm"] = df["Dossier N"].apply(norm_txt)
+labels = df["Label"].unique().tolist()
+selected_label = st.selectbox("Sélectionner un dossier", labels)
 
-# =========================================================
-# ✅ RECHERCHE DOSSIER (Nom OU Dossier N)
-# =========================================================
-st.subheader("🔎 Rechercher un dossier")
-
-search = st.text_input(
-    "Recherche (Nom ou Dossier N)",
-    value="",
-    placeholder="Ex: 12904 ou LUCAS",
-)
-
-if search.strip():
-    s = search.strip().lower()
-    df_filtered = df[
-        df["_Nom_norm"].str.lower().str.contains(s, na=False)
-        | df["_Dossier_norm"].str.lower().str.contains(s, na=False)
-    ].copy()
-else:
-    df_filtered = df.copy()
-
-df_filtered["_label"] = df_filtered.apply(
-    lambda r: f"{norm_txt(r.get('Dossier N'))} — {norm_txt(r.get('Nom'))}",
-    axis=1
-)
-
-options = df_filtered["_label"].tolist()
-
-if not options:
-    st.warning("Aucun dossier ne correspond à la recherche.")
-    st.stop()
-
-selected_label = st.selectbox("Sélectionner un dossier", options)
-
-selected = df_filtered[df_filtered["_label"] == selected_label].iloc[0]["Dossier N"]
-dossier = df[df["Dossier N"] == str(selected)].iloc[0].to_dict()
+selected_row = df[df["Label"] == selected_label].iloc[0]
+dossier = selected_row.to_dict()
 
 # ---------------------------------------------------------
 # INFOS GÉNÉRALES
 # ---------------------------------------------------------
-st.markdown("---")
-st.subheader(f"Dossier {dossier.get('Dossier N','')} — {dossier.get('Nom','')}")
+st.subheader(f"Dossier {dossier.get('Dossier N')} — {dossier.get('Nom','')}")
 
 c1, c2, c3 = st.columns(3)
 c1.write(f"**Catégorie** : {dossier.get('Categories','')}")
@@ -84,7 +52,7 @@ c3.write(f"**Visa** : {dossier.get('Visa','')}")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# FACTURATION & RÈGLEMENTS (MÊME LIGNE)
+# FACTURATION & RÈGLEMENTS
 # ---------------------------------------------------------
 st.subheader("💰 Facturation & règlements")
 
@@ -101,18 +69,32 @@ with colF:
 
 with colP:
     total_encaisse = 0.0
-    for i in range(1, 5):
-        a = float(dossier.get(f"Acompte {i}", 0) or 0)
-        total_encaisse += a
+    paiements = []
 
-        if a > 0:
-            mode = dossier.get(f"Mode Acompte {i}", "") or dossier.get("mode de paiement", "")
-            date_paiement = dossier.get(f"Date Acompte {i}", "")
-            st.write(
-                f"**Acompte {i}** : ${a:,.2f}  \n"
-                f"Mode : {mode}  \n"
-                f"Date : {date_paiement}"
-            )
+    for i in range(1, 5):
+        montant = float(dossier.get(f"Acompte {i}", 0) or 0)
+        date_p = dossier.get(f"Date Acompte {i}", "")
+        mode = dossier.get(f"Mode Acompte {i}", dossier.get("mode de paiement", ""))
+
+        if montant > 0:
+            paiements.append([
+                f"Acompte {i}",
+                f"${montant:,.2f}",
+                date_p,
+                mode
+            ])
+            total_encaisse += montant
+
+    if paiements:
+        st.markdown("**Paiements encaissés**")
+        st.dataframe(
+            pd.DataFrame(
+                paiements,
+                columns=["Acompte", "Montant", "Date de paiement", "Mode"]
+            ),
+            hide_index=True,
+            use_container_width=True
+        )
 
     solde = total_facture - total_encaisse
     st.metric("Total encaissé", f"${total_encaisse:,.2f}")
@@ -124,11 +106,11 @@ st.markdown("---")
 # STATUT FINANCIER
 # ---------------------------------------------------------
 if solde <= 0:
-    st.success("✅ Dossier payé")
+    st.success("✅ Dossier soldé")
 elif total_encaisse > 0:
     st.warning("🟡 Paiement partiel")
 else:
-    st.error("🔴 Impayé")
+    st.error("🔴 Aucun paiement enregistré")
 
 # ---------------------------------------------------------
 # ESCROW
@@ -137,17 +119,17 @@ st.subheader("💼 Escrow")
 
 escrow_amount = float(dossier.get("Acompte 1", 0) or 0)
 
-if bool(dossier.get("Escrow")):
+if dossier.get("Escrow"):
     st.info(f"💼 Escrow actif — ${escrow_amount:,.2f}")
-elif bool(dossier.get("Escrow_a_reclamer")):
+elif dossier.get("Escrow_a_reclamer"):
     st.warning(f"📤 Escrow à réclamer — ${escrow_amount:,.2f}")
-elif bool(dossier.get("Escrow_reclame")):
+elif dossier.get("Escrow_reclame"):
     st.success(f"✅ Escrow réclamé — ${escrow_amount:,.2f}")
 else:
     st.write("Aucun escrow pour ce dossier.")
 
 # ---------------------------------------------------------
-# STATUTS (présentation améliorée : valeurs décalées à droite)
+# 📦 STATUTS DU DOSSIER (TABLEAU ALIGNÉ)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📦 Statuts du dossier")
@@ -155,24 +137,22 @@ st.subheader("📦 Statuts du dossier")
 def yesno(v):
     return "✅ Oui" if str(v).strip().lower() in ["true", "1", "yes", "oui"] or v is True else "❌ Non"
 
-left, right = st.columns([1, 2])
+statuts_rows = [
+    ("Dossier envoyé", yesno(dossier.get("Dossier envoye", False))),
+    ("Dossier accepté", yesno(dossier.get("Dossier accepte", False))),
+    ("Dossier refusé", yesno(dossier.get("Dossier refuse", False))),
+    ("Dossier annulé", yesno(dossier.get("Dossier Annule", False))),
+    ("RFE", yesno(dossier.get("RFE", False))),
+]
 
-with left:
-    st.write("**Dossier envoyé**")
-    st.write("**Dossier accepté**")
-    st.write("**Dossier refusé**")
-    st.write("**Dossier annulé**")
-    st.write("**RFE**")
-
-with right:
-    st.write(yesno(dossier.get("Dossier envoye", False)))
-    st.write(yesno(dossier.get("Dossier accepte", False)))
-    st.write(yesno(dossier.get("Dossier refuse", False)))
-    st.write(yesno(dossier.get("Dossier Annule", False)))
-    st.write(yesno(dossier.get("RFE", False)))
+st.dataframe(
+    pd.DataFrame(statuts_rows, columns=["Statut", "Valeur"]),
+    hide_index=True,
+    use_container_width=True
+)
 
 # ---------------------------------------------------------
-# TIMELINE
+# 🕓 TIMELINE
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🕓 Timeline du dossier")
@@ -189,22 +169,26 @@ else:
         st.markdown(line)
 
 # ---------------------------------------------------------
-# EXPORT PDF
+# 📝 COMMENTAIRE
+# ---------------------------------------------------------
+commentaire = dossier.get("Commentaire", "")
+if str(commentaire).strip():
+    st.markdown("---")
+    st.subheader("📝 Commentaire")
+    st.write(commentaire)
+
+# ---------------------------------------------------------
+# 📄 EXPORT PDF
 # ---------------------------------------------------------
 st.markdown("---")
-st.subheader("📄 Export PDF")
-
-if st.button("📄 Exporter la fiche dossier en PDF", type="primary"):
+if st.button("📄 Exporter la fiche dossier en PDF"):
     output = f"/tmp/dossier_{dossier['Dossier N']}.pdf"
-    try:
-        export_dossier_pdf(dossier, output)
-        with open(output, "rb") as f:
-            st.download_button(
-                "⬇️ Télécharger le PDF",
-                data=f,
-                file_name=f"Dossier_{dossier['Dossier N']}.pdf",
-                mime="application/pdf"
-            )
-        st.success("✔ PDF généré avec succès.")
-    except Exception as e:
-        st.error(f"❌ Erreur export PDF : {e}")
+    export_dossier_pdf(dossier, output)
+
+    with open(output, "rb") as f:
+        st.download_button(
+            "⬇️ Télécharger le PDF",
+            f,
+            file_name=f"Dossier_{dossier['Dossier N']}.pdf",
+            mime="application/pdf"
+        )
