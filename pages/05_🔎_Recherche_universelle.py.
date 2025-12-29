@@ -1,0 +1,289 @@
+# pages/05_🔎_Recherche_universelle.py
+import re
+import io
+import pandas as pd
+import streamlit as st
+
+from utils.sidebar import render_sidebar
+from backend.dropbox_utils import load_database
+
+# ================================
+# CONFIG
+# ================================
+st.set_page_config(page_title="🔎 Recherche universelle", page_icon="🔎", layout="wide")
+render_sidebar()
+st.title("🔎 Recherche universelle")
+
+# ================================
+# LOAD DATABASE
+# ================================
+db = load_database()
+clients = db.get("clients", [])
+if not clients:
+    st.info("Aucun dossier en base.")
+    st.stop()
+
+df = pd.DataFrame(clients).copy()
+
+# ---------------- Normalisations utiles ----------------
+def to_str(x):
+    try:
+        return str(x).strip()
+    except Exception:
+        return ""
+
+df["Dossier N"] = df.get("Dossier N", "").apply(to_str)
+df["Nom"] = df.get("Nom", "").apply(to_str)
+df["Visa"] = df.get("Visa", "").apply(to_str)
+df["Categories"] = df.get("Categories", "").apply(to_str)
+df["Sous-categories"] = df.get("Sous-categories", "").apply(to_str)
+
+def parse_parent(dn: str) -> str:
+    if not dn:
+        return ""
+    return dn.split("-", 1)[0].strip()
+
+def parse_index(dn: str) -> int:
+    if not dn or "-" not in dn:
+        return 0
+    try:
+        return int(dn.split("-", 1)[1].strip())
+    except Exception:
+        return 0
+
+df["Dossier Parent"] = df["Dossier N"].apply(parse_parent)
+df["Dossier Index"] = df["Dossier N"].apply(parse_index)
+df["Est Parent"] = df["Dossier Index"].eq(0)
+df["Est Fils"] = df["Dossier Index"].gt(0)
+
+# Encaissements + soldes
+def to_float(v):
+    try:
+        return float(v or 0)
+    except Exception:
+        return 0.0
+
+df["Honoraires"] = df.get("Montant honoraires (US $)", 0).apply(to_float)
+df["Frais"] = df.get("Autres frais (US $)", 0).apply(to_float)
+df["Total facture"] = df["Honoraires"] + df["Frais"]
+
+enc_cols = [c for c in [f"Acompte {i}" for i in range(1,5)] if c in df.columns]
+if enc_cols:
+    df["Total encaisse"] = df[enc_cols].applymap(to_float).sum(axis=1)
+else:
+    df["Total encaisse"] = 0.0
+df["Solde du"] = df["Total facture"] - df["Total encaisse"]
+
+# Escrow flags (texte/bool -> bool)
+def to_bool(v):
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    return s in ("true", "1", "yes", "oui", "y", "vrai")
+
+for k in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame",
+          "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"]:
+    if k not in df.columns:
+        df[k] = False
+    df[k] = df[k].apply(to_bool)
+
+# Montant Escrow = Acompte 1 uniquement
+df["Escrow Amount"] = df.get("Acompte 1", 0.0)
+df["Escrow Amount"] = df["Escrow Amount"].apply(to_float)
+df["Escrow Any"] = df["Escrow"] | df["Escrow_a_reclamer"] | df["Escrow_reclame"]
+
+# ================================
+# BARRE DE RECHERCHE + OPTIONS
+# ================================
+with st.container():
+    q = st.text_input(
+        "Rechercher par Nom, Dossier N (ex: 13068 ou 13068-2), Visa, Catégorie, Sous-catégorie "
+        "— Filtres avancés possibles (ex: `status:envoye escrow:actif solde:negatif`)",
+        value="",
+        placeholder="Exemples: 'Garcia', '12904-1', 'B1/B2', 'Family', 'status:accepte escrow:reclame'"
+    )
+
+    c1, c2, c3 = st.columns([1,1,2])
+    only_groups = c1.checkbox("Afficher seulement les groupes (parents ayant des fils)", value=False)
+    show_children = c2.checkbox("Toujours inclure les sous-dossiers du parent trouvé", value=True)
+    sort_mode = c3.selectbox("Tri", ["Hiérarchie (parent, index)", "Nom", "Dossier N"])
+
+# ================================
+# PARSEUR DE MOTS-CLÉS/FILTRES
+# ================================
+# Patterns supportés:
+# - status:envoye|accepte|refuse|annule|rfe
+# - escrow:actif|areclamer|reclame|any
+# - solde:oui|non|negatif
+status_map = {
+    "envoye": "Dossier envoye",
+    "envoyé": "Dossier envoye",
+    "accepte": "Dossier accepte",
+    "accepté": "Dossier accepte",
+    "refuse": "Dossier refuse",
+    "refusé": "Dossier refuse",
+    "annule": "Dossier Annule",
+    "annulé": "Dossier Annule",
+    "rfe": "RFE",
+}
+
+escrow_keys = {"actif": "Escrow", "areclamer": "Escrow_a_reclamer", "àreclamer": "Escrow_a_reclamer", "reclame": "Escrow_reclame", "any": "ANY"}
+
+solde_keys = {"oui": "POS", "non": "ZERO", "negatif": "NEG"}
+
+raw_terms = re.findall(r'(?:"[^"]+"|\S+)', q.strip())
+terms = []
+filters = {"status": None, "escrow": None, "solde": None}
+for t in raw_terms:
+    t = t.strip().strip('"')
+    if ":" in t:
+        k, v = t.split(":", 1)
+        k = k.lower().strip()
+        v = v.lower().strip()
+        if k == "status":
+            filters["status"] = status_map.get(v, None)
+        elif k == "escrow":
+            filters["escrow"] = escrow_keys.get(v, None)
+        elif k == "solde":
+            filters["solde"] = solde_keys.get(v, None)
+        else:
+            terms.append(t)
+    else:
+        terms.append(t)
+
+# ================================
+# RECHERCHE TEXTE
+# ================================
+df_view = df.copy()
+
+def contains_ci(series: pd.Series, needle: str) -> pd.Series:
+    needle = needle.lower()
+    return series.fillna("").astype(str).str.lower().str.contains(re.escape(needle))
+
+if terms:
+    mask = pd.Series([True] * len(df_view))
+    # Chaque terme doit correspondre à au moins 1 des colonnes cibles
+    cols_search = ["Dossier N", "Nom", "Visa", "Categories", "Sous-categories"]
+    for t in terms:
+        m_any = pd.Series([False] * len(df_view))
+        for col in cols_search:
+            m_any = m_any | contains_ci(df_view[col], t)
+        # Si le terme ressemble à un ID pur (ex: 13068), élargir au parent + fils
+        if re.fullmatch(r"\d+(-\d+)?", t):
+            m_any = m_any | df_view["Dossier Parent"].str.lower().eq(t.split("-")[0].lower())
+        mask = mask & m_any
+    df_view = df_view[mask]
+
+# ================================
+# APPLICATION FILTRES AVANCÉS
+# ================================
+if filters["status"]:
+    df_view = df_view[df_view[filters["status"]] == True]
+
+if filters["escrow"]:
+    key = filters["escrow"]
+    if key == "ANY":
+        df_view = df_view[df_view["Escrow Any"] == True]
+    else:
+        df_view = df_view[df_view[key] == True]
+
+if filters["solde"]:
+    key = filters["solde"]
+    if key == "POS":
+        df_view = df_view[df_view["Solde du"] > 0.000001]
+    elif key == "ZERO":
+        df_view = df_view[df_view["Solde du"].abs() < 0.000001]
+    elif key == "NEG":
+        df_view = df_view[df_view["Solde du"] < -0.000001]
+
+# Inclure automatiquement les fils d’un parent trouvé
+if show_children and not df_view.empty:
+    parents = df_view["Dossier Parent"].unique().tolist()
+    # Ajouter tous les dossiers dont le parent est dans `parents`
+    extra = df[df["Dossier Parent"].isin(parents)]
+    df_view = pd.concat([df_view, extra], ignore_index=True).drop_duplicates(subset=["Dossier N"])
+
+# Filtrer uniquement les groupes si demandé
+if only_groups:
+    # On ne garde que les dossiers dont le parent a au moins un fils
+    parents_with_children = (
+        df[df["Est Fils"] & df["Dossier Parent"].ne("")]["Dossier Parent"].unique().tolist()
+    )
+    df_view = df_view[df_view["Dossier Parent"].isin(parents_with_children)]
+
+# Tri
+if sort_mode == "Hiérarchie (parent, index)":
+    df_view["Parent Num"] = pd.to_numeric(df_view["Dossier Parent"], errors="coerce")
+    df_view = df_view.sort_values(
+        ["Parent Num", "Dossier Parent", "Dossier Index", "Dossier N"],
+        ascending=[True, True, True, True],
+    )
+elif sort_mode == "Nom":
+    df_view = df_view.sort_values(["Nom", "Dossier N"])
+else:
+    # Dossier N alphanum tri : parent numérique puis index
+    df_view["Parent Num"] = pd.to_numeric(df_view["Dossier Parent"], errors="coerce")
+    df_view = df_view.sort_values(
+        ["Parent Num", "Dossier Index", "Dossier N"],
+        ascending=[True, True, True],
+    )
+
+# ================================
+# KPI SUR LES RÉSULTATS
+# ================================
+res_count = len(df_view)
+hon_sum = df_view["Honoraires"].sum()
+frais_sum = df_view["Frais"].sum()
+fact_sum = df_view["Total facture"].sum()
+encaiss_sum = df_view["Total encaisse"].sum()
+solde_sum = df_view["Solde du"].sum()
+escrow_sum = df_view.loc[df_view["Escrow Any"], "Escrow Amount"].sum()
+
+k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+k1.metric("Dossiers", res_count)
+k2.metric("Honoraires", f"${hon_sum:,.2f}")
+k3.metric("Autres frais", f"${frais_sum:,.2f}")
+k4.metric("Total facturé", f"${fact_sum:,.2f}")
+k5.metric("Total encaissé", f"${encaiss_sum:,.2f}")
+k6.metric("Solde dû", f"${solde_sum:,.2f}")
+k7.metric("Escrow (Acompte 1)", f"${escrow_sum:,.2f}")
+
+st.caption("Astuce filtres rapides : `status:envoye` · `status:accepte` · `escrow:actif|areclamer|reclame|any` · `solde:oui|non|negatif`")
+
+# ================================
+# TABLEAU RÉSULTATS
+# ================================
+st.markdown("---")
+st.subheader("Résultats")
+
+wanted_cols = [
+    "Dossier N", "Dossier Parent", "Dossier Index", "Nom", "Date",
+    "Categories", "Sous-categories", "Visa",
+    "Honoraires", "Frais", "Total facture", "Total encaisse", "Solde du",
+    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4",
+    "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
+    "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE",
+]
+cols_display = [c for c in wanted_cols if c in df_view.columns]
+
+if df_view.empty:
+    st.info("Aucun résultat.")
+else:
+    st.dataframe(
+        df_view[cols_display],
+        use_container_width=True,
+        height=500
+    )
+
+# ================================
+# EXPORT CSV DES RÉSULTATS
+# ================================
+st.markdown("### Export")
+csv_buf = io.StringIO()
+df_view[cols_display].to_csv(csv_buf, index=False)
+st.download_button(
+    "⬇️ Exporter les résultats en CSV",
+    data=csv_buf.getvalue().encode("utf-8"),
+    file_name="recherche_universelle.csv",
+    mime="text/csv"
+)
