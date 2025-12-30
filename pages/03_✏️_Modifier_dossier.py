@@ -1,3 +1,4 @@
+# pages/03_✏️_Modifier_dossier.py
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -20,6 +21,7 @@ st.title("✏️ Modifier un dossier")
 db = load_database()
 clients = db.get("clients", [])
 tarifs = db.get("tarifs", [])
+visa_ref = pd.DataFrame(db.get("visa", []))
 
 if not clients:
     st.error("Aucun dossier trouvé.")
@@ -31,10 +33,10 @@ df = pd.DataFrame(clients)
 df = normalize_status_columns(df)
 
 DOSSIER_COL = "Dossier N"
-df[DOSSIER_COL] = df.get(DOSSIER_COL, "").astype(str).fillna("").str.strip()
+df[DOSSIER_COL] = df[DOSSIER_COL].astype(str)
 
 # ---------------------------------------------------------
-# OUTILS
+# HELPERS
 # ---------------------------------------------------------
 def safe_date(v):
     try:
@@ -43,119 +45,205 @@ def safe_date(v):
     except Exception:
         return None
 
+def date_to_str(d):
+    if d is None:
+        return ""
+    try:
+        return str(d)
+    except Exception:
+        return ""
+
 def to_float(v):
     try:
         return float(v)
     except Exception:
         return 0.0
 
-def norm_txt(x):
-    return str(x or "").strip()
+def to_text(v):
+    return "" if v is None else str(v)
 
-# =========================================================
-# ✅ RECHERCHE DOSSIER (Nom OU Dossier N)
-# =========================================================
-st.subheader("🔎 Rechercher un dossier")
+def get_souscats(df_visa, categorie):
+    if df_visa.empty or "Categories" not in df_visa.columns or "Sous-categories" not in df_visa.columns:
+        return []
+    return sorted(
+        df_visa[df_visa["Categories"] == categorie]["Sous-categories"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
 
-df["_Nom_norm"] = df.get("Nom", "").apply(norm_txt)
-df["_Dossier_norm"] = df[DOSSIER_COL].apply(norm_txt)
+def get_visas(df_visa, categorie, souscat):
+    if df_visa.empty or "Categories" not in df_visa.columns or "Sous-categories" not in df_visa.columns or "Visa" not in df_visa.columns:
+        return []
+    return sorted(
+        df_visa[(df_visa["Categories"] == categorie) & (df_visa["Sous-categories"] == souscat)]["Visa"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
 
-search = st.text_input(
-    "Recherche (Nom ou Dossier N)",
-    value="",
-    placeholder="Ex: 12904 ou LUCAS",
-)
+# ---------------------------------------------------------
+# SÉLECTION DOSSIER (avec recherche Nom ou Dossier N)
+# ---------------------------------------------------------
+st.subheader("🔎 Recherche dossier")
 
-if search.strip():
-    s = search.strip().lower()
-    df_filtered = df[
-        df["_Nom_norm"].str.lower().str.contains(s, na=False)
-        | df["_Dossier_norm"].str.lower().str.contains(s, na=False)
-    ].copy()
-else:
-    df_filtered = df.copy()
+search = st.text_input("Rechercher par Dossier N ou Nom", value="").strip().lower()
 
-# Liste affichée : "Dossier N — Nom"
-df_filtered["_label"] = df_filtered.apply(
-    lambda r: f"{norm_txt(r.get('Dossier N'))} — {norm_txt(r.get('Nom'))}",
-    axis=1
-)
+df_search = df.copy()
+df_search["Nom"] = df_search.get("Nom", "").astype(str)
+df_search["_label"] = df_search[DOSSIER_COL].astype(str) + " — " + df_search["Nom"].astype(str)
 
-options = df_filtered["_label"].tolist()
+if search:
+    mask = df_search[DOSSIER_COL].astype(str).str.lower().str.contains(search) | df_search["Nom"].astype(str).str.lower().str.contains(search)
+    df_search = df_search[mask]
 
-if not options:
+liste_labels = df_search["_label"].dropna().astype(str).unique().tolist()
+liste_labels = sorted(liste_labels)
+
+if not liste_labels:
     st.warning("Aucun dossier ne correspond à la recherche.")
     st.stop()
 
-selected_label = st.selectbox("Sélectionner un dossier", options)
+selected_label = st.selectbox("Sélectionner un dossier", liste_labels)
+selected = selected_label.split(" — ", 1)[0].strip()
 
-selected = df_filtered[df_filtered["_label"] == selected_label].iloc[0][DOSSIER_COL]
-row = df[df[DOSSIER_COL] == str(selected)].iloc[0]
+row = df[df[DOSSIER_COL] == selected].iloc[0]
 idx = row.name
 
 # ---------------------------------------------------------
 # INFORMATIONS GÉNÉRALES
 # ---------------------------------------------------------
-st.markdown("---")
 st.subheader(f"📄 Dossier {selected}")
 
 c1, c2, c3 = st.columns(3)
 nom = c1.text_input("Nom", row.get("Nom", ""))
 date_dossier = c2.date_input("Date du dossier", safe_date(row.get("Date")))
-visa = c3.text_input("Visa", row.get("Visa", ""))
+# Visa (sera alimenté par selectbox plus bas)
+visa_current = to_text(row.get("Visa", ""))
 
-c4, c5 = st.columns(2)
-categorie = c4.text_input("Catégorie", row.get("Categories", ""))
-sous_categorie = c5.text_input("Sous-catégorie", row.get("Sous-categories", ""))
+# ---------------------------------------------------------
+# CATÉGORISATION (selectbox réactivés)
+# ---------------------------------------------------------
+st.subheader("🧩 Catégorisation")
+
+visa_ref = visa_ref.copy()
+for col in ["Categories", "Sous-categories", "Visa"]:
+    if col in visa_ref.columns:
+        visa_ref[col] = visa_ref[col].astype(str)
+
+cat_list = ["Choisir..."]
+if not visa_ref.empty and "Categories" in visa_ref.columns:
+    cat_list += sorted(visa_ref["Categories"].dropna().astype(str).unique().tolist())
+
+current_cat = to_text(row.get("Categories", ""))
+if current_cat and current_cat not in cat_list:
+    cat_list.append(current_cat)
+cat_list = ["Choisir..."] + sorted([c for c in cat_list if c != "Choisir..."])
+
+colA, colB, colC = st.columns(3)
+categorie = colA.selectbox(
+    "Catégorie",
+    options=cat_list,
+    index=(cat_list.index(current_cat) if current_cat in cat_list else 0),
+)
+
+souscats = ["Choisir..."]
+if categorie != "Choisir...":
+    souscats += get_souscats(visa_ref, categorie)
+
+current_souscat = to_text(row.get("Sous-categories", ""))
+if current_souscat and current_souscat not in souscats:
+    souscats.append(current_souscat)
+souscats = ["Choisir..."] + sorted([s for s in souscats if s != "Choisir..."])
+
+sous_categorie = colB.selectbox(
+    "Sous-catégorie",
+    options=souscats,
+    index=(souscats.index(current_souscat) if current_souscat in souscats else 0),
+)
+
+visa_list = ["Choisir..."]
+if categorie != "Choisir..." and sous_categorie != "Choisir...":
+    visa_list += get_visas(visa_ref, categorie, sous_categorie)
+
+# IMPORTANT : le visa peut être différent même si cat/sous-cat ne matchent pas (compat)
+if visa_current and visa_current not in visa_list:
+    visa_list.append(visa_current)
+visa_list = ["Choisir..."] + sorted([v for v in visa_list if v != "Choisir..."])
+
+visa = colC.selectbox(
+    "Visa",
+    options=visa_list,
+    index=(visa_list.index(visa_current) if visa_current in visa_list else 0),
+)
 
 commentaire = st.text_area("📝 Commentaire", row.get("Commentaire", ""))
 
 # ---------------------------------------------------------
-# TARIF VISA (CALCUL AUTO)
+# FACTURATION (Montant honoraires à la place de “Tarif visa appliqué”)
 # ---------------------------------------------------------
-tarif_auto = get_tarif_for_visa(
-    visa,
-    date_dossier,
-    tarifs
-)
-
 st.subheader("💰 Facturation")
 
 f1, f2, f3 = st.columns(3)
 
-tarif_applique = f1.number_input(
+montant_honoraires = f1.number_input(
     "Montant honoraires (US $)",
-    value=to_float(row.get("Montant honoraires (US $)", tarif_auto)),
+    value=to_float(row.get("Montant honoraires (US $)", 0)),
     step=50.0
 )
 
-tarif_modifie = f2.checkbox(
-    "Tarif modifié manuellement",
-    value=bool(row.get("Tarif modifie manuellement", False))
-)
-
-autres_frais = f3.number_input(
+autres_frais = f2.number_input(
     "Autres frais (US $)",
     value=to_float(row.get("Autres frais (US $)", 0)),
     step=10.0
 )
 
-total_facture = tarif_applique + autres_frais
-st.info(f"💵 Total facturé : **${total_facture:,.2f}**")
+total_facture = montant_honoraires + autres_frais
+f3.number_input("Total facturé", value=float(total_facture), disabled=True)
 
 # ---------------------------------------------------------
-# ACOMPTES
+# ACOMPTES + DATES + MODES (AJOUT SANS CASSER)
 # ---------------------------------------------------------
-st.subheader("🏦 Paiements")
+st.subheader("🏦 Paiements (Acomptes)")
 
-ac_cols = st.columns(4)
+modes = ["", "Chèque", "CB", "Virement", "Venmo"]
+
 acomptes = {}
+dates_ac = {}
+modes_ac = {}
 
 for i in range(1, 5):
-    acomptes[i] = ac_cols[i - 1].number_input(
-        f"Acompte {i}",
+    st.markdown(f"### Acompte {i}")
+    colM1, colM2, colM3 = st.columns(3)
+
+    # Montant
+    acomptes[i] = colM1.number_input(
+        f"Montant Acompte {i}",
         value=to_float(row.get(f"Acompte {i}", 0)),
-        step=50.0
+        step=50.0,
+        key=f"ac_montant_{i}_{selected}",
+    )
+
+    # Date de paiement (colonne attendue: "Date Acompte i")
+    dates_ac[i] = colM2.date_input(
+        f"Date Acompte {i}",
+        value=safe_date(row.get(f"Date Acompte {i}", "")),
+        key=f"ac_date_{i}_{selected}",
+    )
+
+    # Mode de règlement (priorité à "Mode Acompte i", sinon fallback sur "mode de paiement")
+    current_mode = to_text(row.get(f"Mode Acompte {i}", ""))
+    if not current_mode and i == 1:
+        current_mode = to_text(row.get("mode de paiement", ""))
+
+    idx_mode = modes.index(current_mode) if current_mode in modes else 0
+    modes_ac[i] = colM3.selectbox(
+        f"Mode Acompte {i}",
+        options=modes,
+        index=idx_mode,
+        key=f"ac_mode_{i}_{selected}",
     )
 
 total_encaisse = sum(acomptes.values())
@@ -175,17 +263,23 @@ escrow_actif = st.checkbox(
 )
 
 # ---------------------------------------------------------
-# STATUTS
+# STATUTS + DATES (AJOUT SANS CASSER)
 # ---------------------------------------------------------
 st.subheader("📦 Statuts du dossier")
 
 s1, s2, s3, s4, s5 = st.columns(5)
-
 envoye = s1.checkbox("Dossier envoyé", normalize_bool(row.get("Dossier envoye")))
 accepte = s2.checkbox("Dossier accepté", normalize_bool(row.get("Dossier accepte")))
 refuse = s3.checkbox("Dossier refusé", normalize_bool(row.get("Dossier refuse")))
 annule = s4.checkbox("Dossier annulé", normalize_bool(row.get("Dossier Annule")))
 rfe = s5.checkbox("RFE", normalize_bool(row.get("RFE")))
+
+d1, d2, d3, d4, d5 = st.columns(5)
+date_envoye = d1.date_input("Date dossier envoyé", safe_date(row.get("Date envoi")))
+date_accepte = d2.date_input("Date dossier accepté", safe_date(row.get("Date acceptation")))
+date_refuse = d3.date_input("Date dossier refusé", safe_date(row.get("Date refus")))
+date_annule = d4.date_input("Date dossier annulé", safe_date(row.get("Date annulation")))
+date_rfe = d5.date_input("Date RFE", safe_date(row.get("Date reclamation")))
 
 # ---------------------------------------------------------
 # SAUVEGARDE
@@ -195,19 +289,27 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
     # Infos générales
     df.loc[idx, "Nom"] = nom
     df.loc[idx, "Date"] = str(date_dossier)
-    df.loc[idx, "Visa"] = visa
-    df.loc[idx, "Categories"] = categorie
-    df.loc[idx, "Sous-categories"] = sous_categorie
+    df.loc[idx, "Categories"] = "" if categorie == "Choisir..." else categorie
+    df.loc[idx, "Sous-categories"] = "" if sous_categorie == "Choisir..." else sous_categorie
+    df.loc[idx, "Visa"] = "" if visa == "Choisir..." else visa
     df.loc[idx, "Commentaire"] = commentaire
 
     # Facturation
-    df.loc[idx, "Tarif modifie manuellement"] = bool(tarif_modifie)
-    df.loc[idx, "Montant honoraires (US $)"] = float(tarif_applique or 0)
-    df.loc[idx, "Autres frais (US $)"] = float(autres_frais or 0)
+    df.loc[idx, "Montant honoraires (US $)"] = float(montant_honoraires)
+    df.loc[idx, "Autres frais (US $)"] = float(autres_frais)
 
-    # Acomptes
+    # Acomptes + dates + modes (AJOUT)
     for i in range(1, 5):
-        df.loc[idx, f"Acompte {i}"] = float(acomptes[i] or 0)
+        df.loc[idx, f"Acompte {i}"] = float(acomptes[i])
+
+        # Date
+        df.loc[idx, f"Date Acompte {i}"] = date_to_str(dates_ac[i])
+
+        # Mode par acompte
+        df.loc[idx, f"Mode Acompte {i}"] = modes_ac[i]
+
+    # Compat: garde aussi le champ historique "mode de paiement" (lié à Acompte 1)
+    df.loc[idx, "mode de paiement"] = modes_ac[1]
 
     # Statuts (centralisé)
     df = update_status_row(
@@ -220,6 +322,13 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         rfe=rfe,
     )
 
+    # Dates statuts (AJOUT)
+    df.loc[idx, "Date envoi"] = date_to_str(date_envoye)
+    df.loc[idx, "Date acceptation"] = date_to_str(date_accepte)
+    df.loc[idx, "Date refus"] = date_to_str(date_refuse)
+    df.loc[idx, "Date annulation"] = date_to_str(date_annule)
+    df.loc[idx, "Date reclamation"] = date_to_str(date_rfe)
+
     # Escrow (règle claire)
     if escrow_actif:
         df.loc[idx, "Escrow"] = True
@@ -229,7 +338,7 @@ if st.button("💾 Enregistrer les modifications", type="primary"):
         df.loc[idx, "Escrow"] = False
 
     # Sauvegarde
-    db["clients"] = df.drop(columns=[c for c in ["_Nom_norm", "_Dossier_norm", "_label"] if c in df.columns], errors="ignore").to_dict(orient="records")
+    db["clients"] = df.to_dict(orient="records")
     save_database(db)
 
     st.success("✔ Dossier mis à jour avec succès")
