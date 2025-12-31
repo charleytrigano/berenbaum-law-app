@@ -1,252 +1,221 @@
 # pages/04_📊_Analyses.py
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
-from components.kpi_cards import kpi_card
-from components.analysis_charts import (
-    monthly_hist,
-    multi_year_line,
-    category_donut,
-    heatmap_month,
-    category_bars,
-    top_visa,  # bonus (non bloquant)
-)
+from utils.status_utils import normalize_status_columns, normalize_bool
 
 # ---------------------------------------------------------
-# SIDEBAR + CONFIG
+# CONFIG
 # ---------------------------------------------------------
 st.set_page_config(page_title="📊 Analyses", page_icon="📊", layout="wide")
 render_sidebar()
-st.title("📊 Analyses statistiques – Tableau de bord avancé")
+st.title("📊 Analyses & Statistiques")
 
 # ---------------------------------------------------------
-# LOAD DB
+# LOAD DATABASE
 # ---------------------------------------------------------
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+clients = db.get("clients", [])
 
-# Harmonisation colonnes statuts (protection)
-rename_map = {
-    "Dossier_envoye": "Dossier envoye",
-    "Dossier Envoye": "Dossier envoye",
-    "Dossier envoyé": "Dossier envoye",
-}
-clients.rename(columns=rename_map, inplace=True)
-
-if clients.empty:
-    st.error("Aucun dossier trouvé dans la base.")
+if not clients:
+    st.warning("Aucun dossier trouvé.")
     st.stop()
 
-# ---------------------------------------------------------
-# Normalisation dates + colonnes auxiliaires
-# ---------------------------------------------------------
-if "Date" not in clients.columns:
-    clients["Date"] = None
-
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
-clients["Année"] = clients["Date"].dt.year
-clients["Mois"] = clients["Date"].dt.to_period("M").astype(str)
-
-# Garantir colonnes bool clés
-for col in [
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "RFE",
-    "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
-]:
-    if col not in clients.columns:
-        clients[col] = False
-
-def _bool(v):
-    if isinstance(v, bool):
-        return v
-    if v is None:
-        return False
-    return str(v).strip().lower() in ["true", "1", "yes", "oui", "y", "vrai"]
-
-for col in [
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "RFE",
-    "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
-]:
-    clients[col] = clients[col].apply(_bool)
+df = pd.DataFrame(clients).copy()
 
 # ---------------------------------------------------------
-# FILTRES AVANCÉS
+# NORMALISATION
 # ---------------------------------------------------------
-st.subheader("🎛️ Filtres avancés")
-col1, col2, col3, col4 = st.columns(4)
+# Dossier N en string (support xxxxx-1)
+df["Dossier N"] = df.get("Dossier N", "").astype(str)
+
+# Statuts
+df = normalize_status_columns(df)
+
+# Dates
+df["Date"] = pd.to_datetime(df.get("Date", None), errors="coerce")
+df["Année"] = df["Date"].dt.year
+
+# Numériques
+def to_float(x):
+    try:
+        return float(x or 0)
+    except Exception:
+        return 0.0
+
+for c in ["Montant honoraires (US $)", "Autres frais (US $)"]:
+    if c not in df.columns:
+        df[c] = 0.0
+    df[c] = df[c].apply(to_float)
+
+for i in range(1, 5):
+    col = f"Acompte {i}"
+    if col not in df.columns:
+        df[col] = 0.0
+    df[col] = df[col].apply(to_float)
+
+df["Total facturé"] = df["Montant honoraires (US $)"] + df["Autres frais (US $)"]
+df["Total encaissé"] = df[[f"Acompte {i}" for i in range(1, 5)]].sum(axis=1)
+df["Solde"] = df["Total facturé"] - df["Total encaissé"]
+
+# Champs texte pour filtres
+for col in ["Categories", "Sous-categories", "Visa"]:
+    if col not in df.columns:
+        df[col] = ""
+    df[col] = df[col].astype(str).fillna("")
+
+# ---------------------------------------------------------
+# FILTRES (dont Soldés / Solde >0 / Solde <0)
+# ---------------------------------------------------------
+st.subheader("🧰 Filtres")
+
+c1, c2, c3, c4, c5 = st.columns(5)
+
+# Multi-années
+years = sorted([y for y in df["Année"].dropna().unique().tolist() if pd.notna(y)])
+years_int = [int(y) for y in years]
+annees_sel = c1.multiselect("Années", options=years_int, default=years_int)
+
+# Catégorie / Sous-cat / Visa
+cat_list = ["Tous"] + sorted([x for x in df["Categories"].dropna().unique().tolist() if x.strip() != ""])
+categorie_sel = c2.selectbox("Catégorie", options=cat_list)
+
+if categorie_sel != "Tous":
+    df_cat = df[df["Categories"] == categorie_sel]
+else:
+    df_cat = df
+
+sous_list = ["Tous"] + sorted([x for x in df_cat["Sous-categories"].dropna().unique().tolist() if x.strip() != ""])
+sous_sel = c3.selectbox("Sous-catégorie", options=sous_list)
+
+if sous_sel != "Tous":
+    df_sous = df_cat[df_cat["Sous-categories"] == sous_sel]
+else:
+    df_sous = df_cat
+
+visa_list = ["Tous"] + sorted([x for x in df_sous["Visa"].dropna().unique().tolist() if x.strip() != ""])
+visa_sel = c4.selectbox("Visa", options=visa_list)
+
+# ✅ FILTRE SOLDE (rétabli)
+solde_filter = c5.selectbox(
+    "Filtre Solde",
+    options=[
+        "Tous",
+        "Dossiers soldés (Solde ≤ 0)",
+        "Solde > 0 (non soldés)",
+        "Solde < 0 (surpayés)",
+    ],
+    index=0,
+)
+
+# ---------------------------------------------------------
+# APPLICATION FILTRES
+# ---------------------------------------------------------
+df_filt = df.copy()
+
+# Années
+if annees_sel:
+    df_filt = df_filt[df_filt["Année"].isin(annees_sel)]
 
 # Catégorie
-if "Categories" not in clients.columns:
-    clients["Categories"] = ""
-categories = ["Tous"] + sorted([c for c in clients["Categories"].dropna().unique() if str(c).strip() != ""])
-cat = col1.selectbox("Catégorie", categories)
+if categorie_sel != "Tous":
+    df_filt = df_filt[df_filt["Categories"] == categorie_sel]
 
-# Sous-catégorie dépendante
-if "Sous-categories" not in clients.columns:
-    clients["Sous-categories"] = ""
-if cat != "Tous":
-    souscats = ["Tous"] + sorted(
-        clients[clients["Categories"] == cat]["Sous-categories"].dropna().unique().tolist()
-    )
-else:
-    souscats = ["Tous"] + sorted(clients["Sous-categories"].dropna().unique().tolist())
-sous = col2.selectbox("Sous-catégorie", souscats)
+# Sous-catégorie
+if sous_sel != "Tous":
+    df_filt = df_filt[df_filt["Sous-categories"] == sous_sel]
 
-# Visa dépendant
-if "Visa" not in clients.columns:
-    clients["Visa"] = ""
-if sous != "Tous":
-    visas = ["Tous"] + sorted(
-        clients[clients["Sous-categories"] == sous]["Visa"].dropna().unique().tolist()
-    )
-else:
-    visas = ["Tous"] + sorted(clients["Visa"].dropna().unique().tolist())
-visa = col3.selectbox("Visa", visas)
+# Visa
+if visa_sel != "Tous":
+    df_filt = df_filt[df_filt["Visa"] == visa_sel]
 
-# Statut dossier
-statuts = ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
-statut = col4.selectbox("Statut du dossier", statuts)
-
-# ---------------------------------------------------------
-# APPLICATION DES FILTRES
-# ---------------------------------------------------------
-df = clients.copy()
-
-if cat != "Tous":
-    df = df[df["Categories"] == cat]
-
-if sous != "Tous":
-    df = df[df["Sous-categories"] == sous]
-
-if visa != "Tous":
-    df = df[df["Visa"] == visa]
-
-if statut != "Tous":
-    mapping = {
-        "Envoyé": "Dossier envoye",
-        "Accepté": "Dossier accepte",
-        "Refusé": "Dossier refuse",
-        "Annulé": "Dossier Annule",
-        "RFE": "RFE",
-    }
-    df = df[df[mapping[statut]] == True]
-
-# ---------------------------------------------------------
-# COMPARAISONS TEMPORELLES
-# ---------------------------------------------------------
-st.subheader("📆 Comparaisons temporelles")
-colT1, colT2 = st.columns(2)
-
-periode_type = colT1.selectbox(
-    "Type de période",
-    ["Mois", "Trimestre", "Semestre", "Année", "Date à date"]
-)
-
-years_all = sorted([int(y) for y in df["Année"].dropna().unique().tolist() if pd.notna(y)])
-selected_years = colT2.multiselect(
-    "Comparer jusqu’à 5 années",
-    years_all,
-    default=years_all[-2:] if len(years_all) >= 2 else years_all,
-    max_selections=5,
-)
+# ✅ Solde (rétabli)
+if solde_filter == "Dossiers soldés (Solde ≤ 0)":
+    df_filt = df_filt[df_filt["Solde"] <= 0]
+elif solde_filter == "Solde > 0 (non soldés)":
+    df_filt = df_filt[df_filt["Solde"] > 0]
+elif solde_filter == "Solde < 0 (surpayés)":
+    df_filt = df_filt[df_filt["Solde"] < 0]
 
 # ---------------------------------------------------------
 # KPI
 # ---------------------------------------------------------
-st.subheader("📈 Indicateurs clés")
+st.subheader("📌 KPI")
 
-# Colonnes montants
-if "Montant honoraires (US $)" not in df.columns:
-    df["Montant honoraires (US $)"] = 0.0
-if "Autres frais (US $)" not in df.columns:
-    df["Autres frais (US $)"] = 0.0
-if "Acompte 1" not in df.columns:
-    df["Acompte 1"] = 0.0
+k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 
-df["Montant honoraires (US $)"] = pd.to_numeric(df["Montant honoraires (US $)"], errors="coerce").fillna(0.0)
-df["Autres frais (US $)"] = pd.to_numeric(df["Autres frais (US $)"], errors="coerce").fillna(0.0)
-df["Acompte 1"] = pd.to_numeric(df["Acompte 1"], errors="coerce").fillna(0.0)
+nb = len(df_filt)
+hon = df_filt["Montant honoraires (US $)"].sum()
+frais = df_filt["Autres frais (US $)"].sum()
+tot = df_filt["Total facturé"].sum()
+enc = df_filt["Total encaissé"].sum()
+solde_sum = df_filt["Solde"].sum()
 
-colK1, colK2, colK3, colK4, colK5, colK6 = st.columns(6)
+# Statuts
+accepted = int(df_filt.get("Dossier accepte", pd.Series([False]*len(df_filt))).apply(normalize_bool).sum())
+refused = int(df_filt.get("Dossier refuse", pd.Series([False]*len(df_filt))).apply(normalize_bool).sum())
+annules = int(df_filt.get("Dossier Annule", pd.Series([False]*len(df_filt))).apply(normalize_bool).sum())
 
-with colK1:
-    kpi_card("Total dossiers filtrés", len(df), "📁")
-with colK2:
-    kpi_card("Chiffre d’affaires (Filtré)", int(df["Montant honoraires (US $)"].sum()), "💰")
-with colK3:
-    kpi_card("Dossiers envoyés", int(df["Dossier envoye"].sum()), "📤")
-with colK4:
-    kpi_card("Dossiers acceptés", int(df["Dossier accepte"].sum()), "✅")
-with colK5:
-    kpi_card("Dossiers refusés", int(df["Dossier refuse"].sum()), "❌")
-with colK6:
-    kpi_card("Dossiers annulés", int(df["Dossier Annule"].sum()), "🛑")
+k1.metric("Dossiers", nb)
+k2.metric("Honoraires", f"${hon:,.2f}")
+k3.metric("Autres frais", f"${frais:,.2f}")
+k4.metric("Total facturé", f"${tot:,.2f}")
+k5.metric("Total encaissé", f"${enc:,.2f}")
+k6.metric("Solde (somme)", f"${solde_sum:,.2f}")
+k7.metric("Annulés", annules)
 
-# KPI Escrow (Acompte 1 uniquement si un des états escrow est vrai)
-escrow_mask = (df["Escrow"] | df["Escrow_a_reclamer"] | df["Escrow_reclame"])
-escrow_total = float(df.loc[escrow_mask, "Acompte 1"].sum())
-st.info(f"💼 Total Escrow (Acompte 1 uniquement) : **${escrow_total:,.2f}**")
+k8, k9 = st.columns(2)
+k8.metric("Acceptés", accepted)
+k9.metric("Refusés", refused)
+
+st.markdown("---")
 
 # ---------------------------------------------------------
-# GRAPHIQUES
+# COURBES MULTI-ANNÉES (existant + sécurisé)
 # ---------------------------------------------------------
-st.subheader("📊 Graphiques interactifs")
+st.subheader("📈 Courbes multi-années")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📅 Histogramme (période)",
-    "📈 Courbes multi-années",
-    "🎯 Répartition catégories",
-    "🔥 Heatmap activité",
-    "📊 Revenus par catégories",
-    "🛂 Top Visas (bonus)",
-])
+df_month = df_filt.copy()
+df_month["Mois"] = df_month["Date"].dt.to_period("M").astype(str)
 
-with tab1:
-    st.plotly_chart(monthly_hist(df, period_type=periode_type), use_container_width=True)
+if df_month["Mois"].dropna().empty:
+    st.info("Aucune donnée datée exploitable pour tracer les courbes.")
+else:
+    agg = df_month.groupby(["Mois"], as_index=False).agg(
+        Dossiers=("Dossier N", "count"),
+        Total_facture=("Total facturé", "sum"),
+        Total_encaisse=("Total encaissé", "sum"),
+        Solde=("Solde", "sum"),
+    )
 
-with tab2:
-    # IMPORTANT : on passe df (avec Date), pas un df groupé
-    st.plotly_chart(multi_year_line(df, years=selected_years), use_container_width=True)
+    metric_choice = st.selectbox(
+        "Indicateur",
+        ["Dossiers", "Total_facture", "Total_encaisse", "Solde"],
+        index=0
+    )
 
-with tab3:
-    st.plotly_chart(category_donut(df), use_container_width=True)
+    fig = px.line(agg, x="Mois", y=metric_choice, markers=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-with tab4:
-    st.plotly_chart(heatmap_month(df), use_container_width=True)
-
-with tab5:
-    st.plotly_chart(category_bars(df), use_container_width=True)
-
-with tab6:
-    st.plotly_chart(top_visa(df, top_n=12), use_container_width=True)
+st.markdown("---")
 
 # ---------------------------------------------------------
-# TABLEAU FINAL
+# TABLEAU DETAIL
 # ---------------------------------------------------------
-st.subheader("📋 Détails des dossiers filtrés")
+st.subheader("📋 Dossiers (détail)")
 
-wanted = [
-    "Dossier N", "Nom", "Date",
-    "Categories", "Sous-categories", "Visa",
+cols = [
+    "Dossier N", "Nom", "Date", "Categories", "Sous-categories", "Visa",
     "Montant honoraires (US $)", "Autres frais (US $)",
+    "Total facturé", "Total encaissé", "Solde",
     "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE",
-    "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
 ]
-cols = [c for c in wanted if c in df.columns]
+cols_display = [c for c in cols if c in df_filt.columns]
 
-st.dataframe(df[cols].copy(), height=420, use_container_width=True)
-
-st.markdown("### 🌟 Tableau de bord premium — Berenbaum Law App")
+st.dataframe(
+    df_filt.sort_values(["Date", "Dossier N"], ascending=[False, True])[cols_display],
+    use_container_width=True,
+)
