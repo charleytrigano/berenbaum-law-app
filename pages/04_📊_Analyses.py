@@ -1,226 +1,231 @@
-# pages/04_📊_Analyses.py
-
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from datetime import datetime
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
-from utils.status_utils import normalize_bool
+
+from components.analysis_charts import (
+    monthly_hist,
+    multi_year_line,
+    category_donut,
+    heatmap_month,
+    category_bars
+)
+
+from components.analysis_escrow_charts import (
+    escrow_state_donut,
+    escrow_aging_bar,
+    escrow_monthly_line
+)
 
 # =====================================================
 # CONFIG
 # =====================================================
-st.set_page_config(
-    page_title="📊 Analyses",
-    page_icon="📊",
-    layout="wide"
-)
+st.set_page_config(page_title="📊 Analyses", page_icon="📊", layout="wide")
 render_sidebar()
-st.title("📊 Analyses & indicateurs avancés")
+st.title("📊 Analyses & indicateurs")
 
 # =====================================================
-# LOAD DATA
+# LOAD DATABASE
 # =====================================================
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+clients = db.get("clients", [])
 
-if clients.empty:
+if not clients:
     st.warning("Aucune donnée disponible.")
     st.stop()
+
+df = pd.DataFrame(clients).copy()
 
 # =====================================================
 # NORMALISATION
 # =====================================================
-clients["Dossier N"] = clients["Dossier N"].astype(str)
-clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
+df["Dossier N"] = df["Dossier N"].astype(str)
 
-clients["Total facturé"] = (
-    clients.get("Montant honoraires (US $)", 0).fillna(0)
-    + clients.get("Autres frais (US $)", 0).fillna(0)
-)
+df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
+df["Année"] = df["Date"].dt.year
+df["Mois"] = df["Date"].dt.to_period("M").astype(str)
 
-clients["Total encaissé"] = 0.0
-for i in range(1, 5):
-    col = f"Acompte {i}"
-    if col in clients.columns:
-        clients["Total encaissé"] += clients[col].fillna(0)
-
-clients["Solde"] = clients["Total facturé"] - clients["Total encaissé"]
+for col in [
+    "Dossier envoye", "Dossier accepte", "Dossier refuse",
+    "Dossier Annule", "RFE",
+    "Escrow", "Escrow_a_reclamer", "Escrow_reclame"
+]:
+    if col in df.columns:
+        df[col] = df[col].astype(bool)
+    else:
+        df[col] = False
 
 # =====================================================
 # FILTRES
 # =====================================================
 st.subheader("🎛️ Filtres")
 
-c1, c2, c3, c4, c5 = st.columns(5)
+f1, f2, f3, f4, f5 = st.columns(5)
 
-# Année
-years = sorted(clients["Date"].dropna().dt.year.unique())
-selected_years = c1.multiselect("Année", years, default=years)
+years = sorted(df["Année"].dropna().unique())
+year = f1.selectbox("Année", ["Toutes"] + years)
 
-# Catégorie
-categories = sorted(clients["Categories"].dropna().unique())
-cat = c2.multiselect("Catégorie", categories, default=categories)
+categories = sorted(df["Categories"].dropna().unique())
+categorie = f2.selectbox("Catégorie", ["Toutes"] + categories)
 
-# Sous-catégorie
-souscats = sorted(clients["Sous-categories"].dropna().unique())
-souscat = c3.multiselect("Sous-catégorie", souscats, default=souscats)
+if categorie != "Toutes":
+    souscats = sorted(df[df["Categories"] == categorie]["Sous-categories"].dropna().unique())
+else:
+    souscats = sorted(df["Sous-categories"].dropna().unique())
 
-# Visa
-visas = sorted(clients["Visa"].dropna().unique())
-visa = c4.multiselect("Visa", visas, default=visas)
+souscat = f3.selectbox("Sous-catégorie", ["Toutes"] + souscats)
 
-# Statuts
-statut = c5.multiselect(
+if souscat != "Toutes":
+    visas = sorted(df[df["Sous-categories"] == souscat]["Visa"].dropna().unique())
+else:
+    visas = sorted(df["Visa"].dropna().unique())
+
+visa = f4.selectbox("Visa", ["Tous"] + visas)
+
+statut = f5.selectbox(
     "Statut",
-    [
-        "Dossier envoye",
-        "Dossier accepte",
-        "Dossier refuse",
-        "Dossier Annule",
-        "RFE"
-    ],
-    default=[]
+    ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
 )
 
-df = clients.copy()
-
-if selected_years:
-    df = df[df["Date"].dt.year.isin(selected_years)]
-
-df = df[
-    df["Categories"].isin(cat)
-    & df["Sous-categories"].isin(souscat)
-    & df["Visa"].isin(visa)
-]
-
-# Filtre statuts
-for s in statut:
-    df = df[df[s].apply(normalize_bool)]
-
 # =====================================================
-# FILTRES FINANCIERS
+# APPLICATION FILTRES
 # =====================================================
-st.markdown("### 💰 Filtres financiers")
+df_f = df.copy()
 
-f1, f2, f3 = st.columns(3)
+if year != "Toutes":
+    df_f = df_f[df_f["Année"] == year]
 
-show_soldes = f1.checkbox("Dossiers soldés (solde = 0)", False)
-show_non_soldes = f2.checkbox("Dossiers non soldés (solde ≠ 0)", False)
-show_negative = f3.checkbox("Solde négatif", False)
+if categorie != "Toutes":
+    df_f = df_f[df_f["Categories"] == categorie]
 
-if show_soldes:
-    df = df[df["Solde"] == 0]
+if souscat != "Toutes":
+    df_f = df_f[df_f["Sous-categories"] == souscat]
 
-if show_non_soldes:
-    df = df[df["Solde"] != 0]
+if visa != "Tous":
+    df_f = df_f[df_f["Visa"] == visa]
 
-if show_negative:
-    df = df[df["Solde"] < 0]
+if statut != "Tous":
+    col_map = {
+        "Envoyé": "Dossier envoye",
+        "Accepté": "Dossier accepte",
+        "Refusé": "Dossier refuse",
+        "Annulé": "Dossier Annule",
+        "RFE": "RFE"
+    }
+    df_f = df_f[df_f[col_map[statut]]]
 
 # =====================================================
 # KPI
 # =====================================================
 st.markdown("---")
-st.subheader("📌 Indicateurs clés")
+st.subheader("📈 Indicateurs clés")
+
+def to_float(v):
+    try:
+        return float(v or 0)
+    except:
+        return 0.0
+
+hon = df_f.get("Montant honoraires (US $)", 0).apply(to_float).sum()
+frais = df_f.get("Autres frais (US $)", 0).apply(to_float).sum()
+total_facture = hon + frais
+
+total_encaisse = 0.0
+for i in range(1, 5):
+    total_encaisse += df_f.get(f"Acompte {i}", 0).apply(to_float).sum()
+
+solde = total_facture - total_encaisse
 
 k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 
-k1.metric("Dossiers", len(df))
-k2.metric("Acceptés", df["Dossier accepte"].apply(normalize_bool).sum())
-k3.metric("Refusés", df["Dossier refuse"].apply(normalize_bool).sum())
-k4.metric("Annulés", df["Dossier Annule"].apply(normalize_bool).sum())
-k5.metric("Total facturé", f"${df['Total facturé'].sum():,.2f}")
-k6.metric("Total encaissé", f"${df['Total encaissé'].sum():,.2f}")
-k7.metric("Solde total", f"${df['Solde'].sum():,.2f}")
+k1.metric("Dossiers", len(df_f))
+k2.metric("Acceptés", df_f["Dossier accepte"].sum())
+k3.metric("Refusés", df_f["Dossier refuse"].sum())
+k4.metric("Annulés", df_f["Dossier Annule"].sum())
+k5.metric("Total facturé", f"${total_facture:,.2f}")
+k6.metric("Total encaissé", f"${total_encaisse:,.2f}")
+k7.metric("Solde dû", f"${solde:,.2f}")
 
 # =====================================================
-# GRAPHIQUE 1 — ÉVOLUTION MENSUELLE
+# GRAPHIQUES CLASSIQUES
 # =====================================================
 st.markdown("---")
-st.subheader("📈 Évolution mensuelle (facturé / encaissé)")
+st.subheader("📊 Analyses générales")
 
-monthly = (
-    df.dropna(subset=["Date"])
-    .assign(Mois=lambda x: x["Date"].dt.to_period("M").astype(str))
-    .groupby("Mois")[["Total facturé", "Total encaissé"]]
-    .sum()
-    .reset_index()
-)
+t1, t2, t3, t4, t5 = st.tabs([
+    "Histogramme mensuel",
+    "Courbes multi-années",
+    "Répartition catégories",
+    "Heatmap activité",
+    "Revenus par catégorie"
+])
 
-if not monthly.empty:
-    fig = px.line(
-        monthly,
-        x="Mois",
-        y=["Total facturé", "Total encaissé"],
-        markers=True
+with t1:
+    st.plotly_chart(monthly_hist(df_f), use_container_width=True)
+
+with t2:
+    st.plotly_chart(multi_year_line(df_f), use_container_width=True)
+
+with t3:
+    st.plotly_chart(category_donut(df_f), use_container_width=True)
+
+with t4:
+    st.plotly_chart(heatmap_month(df_f), use_container_width=True)
+
+with t5:
+    st.plotly_chart(category_bars(df_f), use_container_width=True)
+
+# =====================================================
+# ANALYSES ESCROW
+# =====================================================
+st.markdown("---")
+st.subheader("🔐 Analyses Escrow")
+
+e1, e2, e3 = st.tabs([
+    "Répartition",
+    "Ancienneté",
+    "Évolution"
+])
+
+with e1:
+    st.plotly_chart(
+        escrow_state_donut(df_f),
+        use_container_width=True
     )
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Aucune donnée mensuelle disponible.")
 
-# =====================================================
-# GRAPHIQUE 2 — MULTI-ANNÉES (RÉTABLI)
-# =====================================================
-st.markdown("---")
-st.subheader("📊 Comparaison multi-années")
-
-yearly = (
-    df.dropna(subset=["Date"])
-    .assign(Année=lambda x: x["Date"].dt.year)
-    .groupby("Année")[["Total facturé", "Total encaissé"]]
-    .sum()
-    .reset_index()
-)
-
-if not yearly.empty:
-    fig2 = px.bar(
-        yearly,
-        x="Année",
-        y=["Total facturé", "Total encaissé"],
-        barmode="group"
+with e2:
+    st.plotly_chart(
+        escrow_aging_bar(df_f),
+        use_container_width=True
     )
-    st.plotly_chart(fig2, use_container_width=True)
-else:
-    st.info("Pas assez de données pour la comparaison annuelle.")
+
+with e3:
+    fig = escrow_monthly_line(df_f)
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Pas encore assez de données pour afficher l’évolution.")
 
 # =====================================================
-# GRAPHIQUE 3 — RÉPARTITION PAR VISA
-# =====================================================
-st.markdown("---")
-st.subheader("🛂 Répartition des honoraires par Visa")
-
-visa_stats = (
-    df.groupby("Visa")["Total facturé"]
-    .sum()
-    .reset_index()
-    .sort_values("Total facturé", ascending=False)
-)
-
-if not visa_stats.empty:
-    fig3 = px.pie(
-        visa_stats,
-        names="Visa",
-        values="Total facturé",
-        hole=0.4
-    )
-    st.plotly_chart(fig3, use_container_width=True)
-
-# =====================================================
-# TABLEAU DÉTAILLÉ
+# TABLEAU FINAL
 # =====================================================
 st.markdown("---")
-st.subheader("📋 Détails des dossiers analysés")
+st.subheader("📋 Dossiers filtrés")
 
 cols = [
-    "Dossier N", "Nom", "Date", "Categories", "Sous-categories", "Visa",
-    "Total facturé", "Total encaissé", "Solde",
-    "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"
+    "Dossier N", "Nom", "Date",
+    "Categories", "Sous-categories", "Visa",
+    "Montant honoraires (US $)", "Autres frais (US $)",
+    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4",
+    "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
+    "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule"
 ]
 
+cols = [c for c in cols if c in df_f.columns]
+
 st.dataframe(
-    df[cols].sort_values("Date", ascending=False),
-    use_container_width=True
+    df_f.sort_values(["Date", "Dossier N"], ascending=[False, True])[cols],
+    use_container_width=True,
+    height=420
 )
