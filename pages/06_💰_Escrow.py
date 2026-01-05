@@ -173,3 +173,10 @@ else:
         hist_df.sort_values("Date", ascending=False),
         use_container_width=True
     )
+
+st.download_button(
+    "⬇️ Exporter l’historique Escrow (CSV)",
+    data=hist_df.to_csv(index=False),
+    file_name="historique_escrow.csv",
+    mime="text/csv"
+)
