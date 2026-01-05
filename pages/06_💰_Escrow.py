@@ -17,6 +17,7 @@ st.title("💰 Gestion des Escrows")
 # =====================================================
 db = load_database()
 clients = db.get("clients", [])
+history = db.get("escrow_history", [])
 
 if not clients:
     st.info("Aucun dossier trouvé.")
@@ -36,16 +37,10 @@ def to_float(v):
 
 
 def total_acomptes(row):
-    total = 0.0
-    for i in range(1, 5):
-        total += to_float(row.get(f"Acompte {i}", 0))
-    return total
+    return sum(to_float(row.get(f"Acompte {i}", 0)) for i in range(1, 5))
 
 
-# =====================================================
-# LOGIQUE ESCROW OFFICIELLE
-# =====================================================
-def get_escrow_state(row):
+def escrow_state(row):
     if row.get("Escrow_reclame"):
         return "reclame"
     if row.get("Escrow_a_reclamer"):
@@ -56,96 +51,113 @@ def get_escrow_state(row):
 
 
 # =====================================================
-# FILTRAGE PAR ÉTAT
+# ONGLET PRINCIPAL
 # =====================================================
-etat = st.radio(
-    "Afficher les dossiers :",
-    ["Escrow actif", "Escrow à réclamer", "Escrow réclamé"],
-    horizontal=True,
-)
-
-if etat == "Escrow actif":
-    view = df[df["Escrow"] == True]
-elif etat == "Escrow à réclamer":
-    view = df[df["Escrow_a_reclamer"] == True]
-else:
-    view = df[df["Escrow_reclame"] == True]
-
-if view.empty:
-    st.info("Aucun dossier dans cet état.")
-    st.stop()
+tab1, tab2 = st.tabs(["💼 Escrows actifs", "🕓 Historique des escrows"])
 
 # =====================================================
-# TABLEAU PRINCIPAL
+# TAB 1 — GESTION ESCROW
 # =====================================================
-rows = []
+with tab1:
+    etat = st.radio(
+        "Afficher :",
+        ["Escrow actif", "Escrow à réclamer", "Escrow réclamé"],
+        horizontal=True,
+    )
 
-for _, r in view.iterrows():
-    rows.append({
-        "Dossier N": r["Dossier N"],
-        "Nom": r.get("Nom", ""),
-        "Visa": r.get("Visa", ""),
-        "Montant Escrow": total_acomptes(r),
-    })
+    if etat == "Escrow actif":
+        view = df[df["Escrow"] == True]
+    elif etat == "Escrow à réclamer":
+        view = df[df["Escrow_a_reclamer"] == True]
+    else:
+        view = df[df["Escrow_reclame"] == True]
 
-table = pd.DataFrame(rows)
+    if view.empty:
+        st.info("Aucun dossier dans cet état.")
+        st.stop()
 
-st.dataframe(table, use_container_width=True)
+    rows = []
+    for _, r in view.iterrows():
+        rows.append({
+            "Dossier N": r["Dossier N"],
+            "Nom": r.get("Nom", ""),
+            "Visa": r.get("Visa", ""),
+            "Montant Escrow": total_acomptes(r),
+        })
 
-total_escrow = table["Montant Escrow"].sum()
-st.metric("💼 Total Escrow", f"${total_escrow:,.2f}")
+    table = pd.DataFrame(rows)
+    st.dataframe(table, use_container_width=True)
+
+    total = table["Montant Escrow"].sum()
+    st.metric("💼 Total Escrow", f"${total:,.2f}")
+
+    st.markdown("---")
+    st.subheader("⚙️ Action sur un dossier")
+
+    dossier_sel = st.selectbox(
+        "Sélectionner un dossier",
+        table["Dossier N"].tolist()
+    )
+
+    row = df[df["Dossier N"] == dossier_sel].iloc[0]
+    idx = row.name
+
+    montant = total_acomptes(row)
+    etat_actuel = escrow_state(row)
+
+    st.info(f"État actuel : **{etat_actuel}** — ${montant:,.2f}")
+
+    if etat_actuel == "actif":
+        if st.button("➡️ Passer en Escrow à réclamer"):
+            log_escrow_history(
+                db,
+                row,
+                "actif",
+                "a_reclamer",
+                montant,
+                "Dossier accepté / refusé / annulé",
+            )
+            df.loc[idx, ["Escrow", "Escrow_a_reclamer"]] = [False, True]
+            save_database(db)
+            st.rerun()
+
+    elif etat_actuel == "a_reclamer":
+        if st.button("✅ Marquer comme Escrow réclamé"):
+            log_escrow_history(
+                db,
+                row,
+                "a_reclamer",
+                "reclame",
+                montant,
+                "Réclamation manuelle",
+            )
+            df.loc[idx, ["Escrow_a_reclamer", "Escrow_reclame"]] = [False, True]
+            save_database(db)
+            st.rerun()
+
+    else:
+        st.success("Escrow déjà réclamé.")
 
 # =====================================================
-# ACTION SUR UN DOSSIER
+# TAB 2 — HISTORIQUE ESCROW
 # =====================================================
-st.markdown("---")
-st.subheader("⚙️ Action sur un dossier")
+with tab2:
+    st.subheader("🕓 Historique complet des escrows")
 
-dossier_sel = st.selectbox(
-    "Sélectionner un dossier",
-    table["Dossier N"].tolist()
-)
+    if not history:
+        st.info("Aucun historique enregistré.")
+        st.stop()
 
-row = df[df["Dossier N"] == dossier_sel].iloc[0]
-idx = row.name
+    hist_df = pd.DataFrame(history)
 
-montant = total_acomptes(row)
-etat_actuel = get_escrow_state(row)
+    hist_df["Montant"] = hist_df["Montant"].astype(float)
 
-st.info(f"État actuel : **{etat_actuel}** — Montant : ${montant:,.2f}")
+    st.dataframe(
+        hist_df.sort_values("Date", ascending=False),
+        use_container_width=True,
+    )
 
-# =====================================================
-# TRANSITIONS AUTORISÉES
-# =====================================================
-if etat_actuel == "actif":
-    if st.button("➡️ Passer en Escrow à réclamer"):
-        log_escrow_history(
-            db,
-            row,
-            "actif",
-            "a_reclamer",
-            montant,
-            "Changement statut dossier",
-        )
-        df.loc[idx, "Escrow"] = False
-        df.loc[idx, "Escrow_a_reclamer"] = True
-        save_database(db)
-        st.rerun()
-
-elif etat_actuel == "a_reclamer":
-    if st.button("✅ Marquer comme Escrow réclamé"):
-        log_escrow_history(
-            db,
-            row,
-            "a_reclamer",
-            "reclame",
-            montant,
-            "Réclamation manuelle",
-        )
-        df.loc[idx, "Escrow_a_reclamer"] = False
-        df.loc[idx, "Escrow_reclame"] = True
-        save_database(db)
-        st.rerun()
-
-elif etat_actuel == "reclame":
-    st.success("Escrow déjà réclamé. Aucune action possible.")
+    st.metric(
+        "Total historique escrow",
+        f"${hist_df['Montant'].sum():,.2f}"
+    )
