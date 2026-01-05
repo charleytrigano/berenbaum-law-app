@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
+from utils.escrow_history import log_escrow_history
 
 # =====================================================
 # CONFIG
@@ -17,10 +17,9 @@ st.title("💰 Gestion des Escrows")
 # =====================================================
 db = load_database()
 clients = db.get("clients", [])
-history = db.get("escrow_history", [])
 
 if not clients:
-    st.info("Aucun dossier disponible.")
+    st.info("Aucun dossier trouvé.")
     st.stop()
 
 df = pd.DataFrame(clients).copy()
@@ -32,115 +31,121 @@ df["Dossier N"] = df["Dossier N"].astype(str)
 def to_float(v):
     try:
         return float(v or 0)
-    except:
+    except Exception:
         return 0.0
 
-def total_acomptes(row):
-    return sum(to_float(row.get(f"Acompte {i}", 0)) for i in range(1, 5))
 
-def statut_escrow(row):
+def total_acomptes(row):
+    total = 0.0
+    for i in range(1, 5):
+        total += to_float(row.get(f"Acompte {i}", 0))
+    return total
+
+
+# =====================================================
+# LOGIQUE ESCROW OFFICIELLE
+# =====================================================
+def get_escrow_state(row):
     if row.get("Escrow_reclame"):
         return "reclame"
-    if row.get("Dossier accepte") or row.get("Dossier refuse") or row.get("Dossier Annule"):
+    if row.get("Escrow_a_reclamer"):
         return "a_reclamer"
-    return "actif"
+    if row.get("Escrow"):
+        return "actif"
+    return None
+
 
 # =====================================================
-# CALCUL ESCROW DYNAMIQUE
+# FILTRAGE PAR ÉTAT
 # =====================================================
-df["Montant Escrow"] = df.apply(total_acomptes, axis=1)
-df["Etat Escrow"] = df.apply(statut_escrow, axis=1)
+etat = st.radio(
+    "Afficher les dossiers :",
+    ["Escrow actif", "Escrow à réclamer", "Escrow réclamé"],
+    horizontal=True,
+)
+
+if etat == "Escrow actif":
+    view = df[df["Escrow"] == True]
+elif etat == "Escrow à réclamer":
+    view = df[df["Escrow_a_reclamer"] == True]
+else:
+    view = df[df["Escrow_reclame"] == True]
+
+if view.empty:
+    st.info("Aucun dossier dans cet état.")
+    st.stop()
 
 # =====================================================
-# TABS
+# TABLEAU PRINCIPAL
 # =====================================================
-tab1, tab2, tab3 = st.tabs([
-    "🔵 Escrow actif",
-    "🟡 Escrow à réclamer",
-    "🟢 Escrow réclamé"
-])
+rows = []
 
-# =====================================================
-# TAB 1 — ESCROW ACTIF
-# =====================================================
-with tab1:
-    actif = df[df["Etat Escrow"] == "actif"]
-    if actif.empty:
-        st.info("Aucun escrow actif.")
-    else:
-        st.dataframe(
-            actif[[
-                "Dossier N", "Nom", "Visa",
-                "Montant Escrow"
-            ]],
-            use_container_width=True
-        )
+for _, r in view.iterrows():
+    rows.append({
+        "Dossier N": r["Dossier N"],
+        "Nom": r.get("Nom", ""),
+        "Visa": r.get("Visa", ""),
+        "Montant Escrow": total_acomptes(r),
+    })
+
+table = pd.DataFrame(rows)
+
+st.dataframe(table, use_container_width=True)
+
+total_escrow = table["Montant Escrow"].sum()
+st.metric("💼 Total Escrow", f"${total_escrow:,.2f}")
 
 # =====================================================
-# TAB 2 — ESCROW À RÉCLAMER
-# =====================================================
-with tab2:
-    a_reclamer = df[df["Etat Escrow"] == "a_reclamer"]
-    if a_reclamer.empty:
-        st.info("Aucun escrow à réclamer.")
-    else:
-        for _, row in a_reclamer.iterrows():
-            with st.container(border=True):
-                st.write(
-                    f"**Dossier {row['Dossier N']} — {row.get('Nom','')}**  \n"
-                    f"Montant : **${row['Montant Escrow']:,.2f}**"
-                )
-
-                if st.button(
-                    f"✅ Marquer comme réclamé ({row['Dossier N']})",
-                    key=f"reclame_{row['Dossier N']}"
-                ):
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                    history.append({
-                        "Dossier N": row["Dossier N"],
-                        "Ancien_etat": "Escrow à réclamer",
-                        "Nouvel_etat": "Escrow réclamé",
-                        "Montant": row["Montant Escrow"],
-                        "Date": now,
-                        "Motif": "Action manuelle"
-                    })
-
-                    df.loc[df["Dossier N"] == row["Dossier N"], "Escrow_reclame"] = True
-
-                    db["clients"] = df.to_dict(orient="records")
-                    db["escrow_history"] = history
-                    save_database(db)
-
-                    st.success("✔ Escrow marqué comme réclamé")
-                    st.rerun()
-
-# =====================================================
-# TAB 3 — ESCROW RÉCLAMÉ
-# =====================================================
-with tab3:
-    reclame = df[df["Etat Escrow"] == "reclame"]
-    if reclame.empty:
-        st.info("Aucun escrow réclamé.")
-    else:
-        st.dataframe(
-            reclame[[
-                "Dossier N", "Nom", "Visa",
-                "Montant Escrow"
-            ]],
-            use_container_width=True
-        )
-
-# =====================================================
-# HISTORIQUE
+# ACTION SUR UN DOSSIER
 # =====================================================
 st.markdown("---")
-st.subheader("🕓 Historique des escrows")
+st.subheader("⚙️ Action sur un dossier")
 
-if history:
-    st.dataframe(
-        pd.DataFrame(history).sort_values("Date", ascending=False),
-        use_container_width=True
-    )
-else:
-    st.info("Aucun historique enregistré.")
+dossier_sel = st.selectbox(
+    "Sélectionner un dossier",
+    table["Dossier N"].tolist()
+)
+
+row = df[df["Dossier N"] == dossier_sel].iloc[0]
+idx = row.name
+
+montant = total_acomptes(row)
+etat_actuel = get_escrow_state(row)
+
+st.info(f"État actuel : **{etat_actuel}** — Montant : ${montant:,.2f}")
+
+# =====================================================
+# TRANSITIONS AUTORISÉES
+# =====================================================
+if etat_actuel == "actif":
+    if st.button("➡️ Passer en Escrow à réclamer"):
+        log_escrow_history(
+            db,
+            row,
+            "actif",
+            "a_reclamer",
+            montant,
+            "Changement statut dossier",
+        )
+        df.loc[idx, "Escrow"] = False
+        df.loc[idx, "Escrow_a_reclamer"] = True
+        save_database(db)
+        st.rerun()
+
+elif etat_actuel == "a_reclamer":
+    if st.button("✅ Marquer comme Escrow réclamé"):
+        log_escrow_history(
+            db,
+            row,
+            "a_reclamer",
+            "reclame",
+            montant,
+            "Réclamation manuelle",
+        )
+        df.loc[idx, "Escrow_a_reclamer"] = False
+        df.loc[idx, "Escrow_reclame"] = True
+        save_database(db)
+        st.rerun()
+
+elif etat_actuel == "reclame":
+    st.success("Escrow déjà réclamé. Aucune action possible.")
