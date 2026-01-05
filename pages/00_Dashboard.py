@@ -1,214 +1,187 @@
-# pages/00_🏠_Dashboard.py
 import streamlit as st
 import pandas as pd
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
-from utils.status_utils import normalize_status_columns, normalize_bool
+from utils.status_utils import normalize_status_columns
 
-# ---------------------------------------------------------
+# =====================================================
 # CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="🏠 Dashboard", page_icon="🏠", layout="wide")
+# =====================================================
+st.set_page_config(
+    page_title="🏠 Dashboard – Vue globale",
+    page_icon="🏠",
+    layout="wide"
+)
+
 render_sidebar()
 st.title("🏠 Dashboard – Vue globale")
 
-# ---------------------------------------------------------
-# STYLE (KPI plus petits + alignés)
-# ---------------------------------------------------------
-st.markdown(
-    """
-    <style>
-      [data-testid="stMetricValue"] { font-size: 20px !important; }
-      [data-testid="stMetricLabel"] { font-size: 13px !important; }
-      [data-testid="stMetricDelta"] { font-size: 12px !important; }
-      .block-container { padding-top: 1.2rem; padding-bottom: 1.2rem; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ---------------------------------------------------------
+# =====================================================
 # LOAD DATABASE
-# ---------------------------------------------------------
+# =====================================================
 db = load_database()
 clients = db.get("clients", [])
 
 if not clients:
-    st.warning("Aucun dossier trouvé dans la base.")
+    st.warning("Aucun dossier disponible.")
     st.stop()
 
 df = pd.DataFrame(clients)
 
-# ---------------------------------------------------------
-# NORMALISATION COLONNES ESSENTIELLES
-# ---------------------------------------------------------
-def ensure_col(frame: pd.DataFrame, col: str, default):
-    if col not in frame.columns:
-        frame[col] = default
-    return frame
-
-ensure_col(df, "Dossier N", "")
-ensure_col(df, "Nom", "")
-ensure_col(df, "Date", "")
-ensure_col(df, "Categories", "")
-ensure_col(df, "Sous-categories", "")
-ensure_col(df, "Visa", "")
-ensure_col(df, "Montant honoraires (US $)", 0)
-ensure_col(df, "Autres frais (US $)", 0)
-
-for i in range(1, 5):
-    ensure_col(df, f"Acompte {i}", 0)
-
-ensure_col(df, "Escrow", False)
-ensure_col(df, "Escrow_a_reclamer", False)
-ensure_col(df, "Escrow_reclame", False)
-
-# Normalisation statuts (gère alias Dossier_envoye, etc.)
+# =====================================================
+# NORMALISATION
+# =====================================================
 df = normalize_status_columns(df)
 
+df["Dossier N"] = df["Dossier N"].astype(str)
+
 # Dates
-df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-df["Année"] = df["Date"].dt.year
+df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
+df["Annee"] = df["Date"].dt.year
 
-# Numériques
-money_cols = ["Montant honoraires (US $)", "Autres frais (US $)"] + [f"Acompte {i}" for i in range(1, 5)]
-for c in money_cols:
-    df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
-
-# Booléens
-bool_cols = [
-    "Escrow", "Escrow_a_reclamer", "Escrow_reclame",
-    "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"
-]
-for c in bool_cols:
-    ensure_col(df, c, False)
-    df[c] = df[c].apply(normalize_bool)
-
-# ---------------------------------------------------------
-# DOSSIER PARENT / FILS (supporte 12937-1, 12937-2, etc.)
-# ---------------------------------------------------------
-df["Dossier N"] = df["Dossier N"].astype(str).fillna("")
-
-def parse_parent(n: str) -> str:
-    n = str(n).strip()
-    if "-" in n:
-        return n.split("-", 1)[0].strip()
-    return n
-
-def parse_index(n: str) -> int:
-    n = str(n).strip()
-    if "-" in n:
-        suf = n.split("-", 1)[1].strip()
-        try:
-            return int(float(suf))
-        except Exception:
-            return 0
-    return 0
-
-def parse_parent_num(n: str) -> float:
-    p = parse_parent(n)
-    try:
-        return float(p)
-    except Exception:
-        # met les valeurs non numériques à la fin
-        return float("inf")
-
-df["Dossier Parent"] = df["Dossier N"].apply(parse_parent)
-df["Dossier Index"] = df["Dossier N"].apply(parse_index)
-df["Dossier Parent Num"] = df["Dossier N"].apply(parse_parent_num)
-
-# ---------------------------------------------------------
+# =====================================================
 # FILTRES
-# ---------------------------------------------------------
-st.subheader("🎛️ Filtres")
+# =====================================================
+st.markdown("### 🎛️ Filtres")
 
-c1, c2, c3, c4, c5 = st.columns(5)
+f1, f2, f3, f4, f5 = st.columns(5)
 
-years = sorted([int(y) for y in df["Année"].dropna().unique() if pd.notna(y)])
-year_choice = c1.selectbox("Filtrer par année", ["Toutes"] + years)
+annees = sorted(df["Annee"].dropna().unique().tolist())
+annee_sel = f1.multiselect("Année", annees, default=annees)
 
-cats = sorted([x for x in df["Categories"].dropna().unique().tolist() if str(x).strip() != ""])
-cat_choice = c2.selectbox("Catégorie", ["Toutes"] + cats)
+cats = sorted(df["Categories"].dropna().unique().tolist())
+cat_sel = f2.multiselect("Catégorie", cats, default=cats)
 
-if cat_choice != "Toutes":
-    souscats = sorted(
-        [x for x in df.loc[df["Categories"] == cat_choice, "Sous-categories"].dropna().unique().tolist() if str(x).strip() != ""]
+souscats = sorted(df["Sous-categories"].dropna().unique().tolist())
+sous_sel = f3.multiselect("Sous-catégorie", souscats, default=souscats)
+
+visas = sorted(df["Visa"].dropna().unique().tolist())
+visa_sel = f4.multiselect("Visa", visas, default=visas)
+
+statut_sel = f5.multiselect(
+    "Statut",
+    ["Envoyé", "Accepté", "Refusé", "Annulé", "RFE"],
+    default=["Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
+)
+
+# =====================================================
+# APPLICATION FILTRES
+# =====================================================
+df_f = df[
+    df["Annee"].isin(annee_sel)
+    & df["Categories"].isin(cat_sel)
+    & df["Sous-categories"].isin(sous_sel)
+    & df["Visa"].isin(visa_sel)
+].copy()
+
+# Filtre statuts
+mask_statut = False
+if "Envoyé" in statut_sel:
+    mask_statut |= df_f["Dossier envoye"]
+if "Accepté" in statut_sel:
+    mask_statut |= df_f["Dossier accepte"]
+if "Refusé" in statut_sel:
+    mask_statut |= df_f["Dossier refuse"]
+if "Annulé" in statut_sel:
+    mask_statut |= df_f["Dossier Annule"]
+if "RFE" in statut_sel:
+    mask_statut |= df_f["RFE"]
+
+df_f = df_f[mask_statut]
+
+# =====================================================
+# UTILS FINANCIERS
+# =====================================================
+def to_float(v):
+    try:
+        return float(v or 0)
+    except Exception:
+        return 0.0
+
+
+def total_acomptes(row):
+    return sum(
+        to_float(row.get(f"Acompte {i}", 0))
+        for i in range(1, 5)
     )
-else:
-    souscats = sorted([x for x in df["Sous-categories"].dropna().unique().tolist() if str(x).strip() != ""])
-sous_choice = c3.selectbox("Sous-catégorie", ["Toutes"] + souscats)
 
-if sous_choice != "Toutes":
-    visas = sorted([x for x in df.loc[df["Sous-categories"] == sous_choice, "Visa"].dropna().unique().tolist() if str(x).strip() != ""])
-else:
-    visas = sorted([x for x in df["Visa"].dropna().unique().tolist() if str(x).strip() != ""])
-visa_choice = c4.selectbox("Visa", ["Toutes"] + visas)
+df_f["Total acomptes"] = df_f.apply(total_acomptes, axis=1)
 
-statut_choice = c5.selectbox("Statut", ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"])
+# =====================================================
+# KPI GLOBAUX
+# =====================================================
+honoraires = df_f["Montant honoraires (US $)"].apply(to_float).sum()
+frais = df_f["Autres frais (US $)"].apply(to_float).sum()
+total_facture = honoraires + frais
+total_encaisse = df_f["Total acomptes"].sum()
+solde = total_facture - total_encaisse
 
-df_f = df.copy()
+# =====================================================
+# LOGIQUE ESCROW (SOURCE UNIQUE)
+# =====================================================
+df_f["Etat Escrow"] = "actif"
 
-if year_choice != "Toutes":
-    df_f = df_f[df_f["Année"] == year_choice]
+df_f.loc[
+    (df_f["Dossier accepte"])
+    | (df_f["Dossier refuse"])
+    | (df_f["Dossier Annule"]),
+    "Etat Escrow"
+] = "a_reclamer"
 
-if cat_choice != "Toutes":
-    df_f = df_f[df_f["Categories"] == cat_choice]
+df_f.loc[
+    df_f["Escrow_reclame"] == True,
+    "Etat Escrow"
+] = "reclame"
 
-if sous_choice != "Toutes":
-    df_f = df_f[df_f["Sous-categories"] == sous_choice]
+escrow_actif = df_f[df_f["Etat Escrow"] == "actif"]
+escrow_reclamer = df_f[df_f["Etat Escrow"] == "a_reclamer"]
+escrow_reclame = df_f[df_f["Etat Escrow"] == "reclame"]
 
-if visa_choice != "Toutes":
-    df_f = df_f[df_f["Visa"] == visa_choice]
+# =====================================================
+# KPI AFFICHAGE
+# =====================================================
+st.markdown("### 📊 Indicateurs clés")
 
-if statut_choice != "Tous":
-    statut_map = {
-        "Envoyé": "Dossier envoye",
-        "Accepté": "Dossier accepte",
-        "Refusé": "Dossier refuse",
-        "Annulé": "Dossier Annule",
-        "RFE": "RFE",
-    }
-    col = statut_map[statut_choice]
-    ensure_col(df_f, col, False)
-    df_f = df_f[df_f[col] == True]
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 
-# ---------------------------------------------------------
-# KPI
-# ---------------------------------------------------------
-st.subheader("📌 Indicateurs clés")
+k1.metric("📁 Dossiers", len(df_f))
+k2.metric("💼 Honoraires", f"${honoraires:,.2f}")
+k3.metric("💸 Autres frais", f"${frais:,.2f}")
+k4.metric("🧾 Total facturé", f"${total_facture:,.2f}")
+k5.metric("💰 Total encaissé", f"${total_encaisse:,.2f}")
+k6.metric("📉 Solde dû", f"${solde:,.2f}")
 
-total_dossiers = int(len(df_f))
-total_hono = float(df_f["Montant honoraires (US $)"].sum())
-total_frais = float(df_f["Autres frais (US $)"].sum())
-total_facture = total_hono + total_frais
-total_encaisse = float(sum(df_f[f"Acompte {i}"].sum() for i in range(1, 5)))
-solde_du = total_facture - total_encaisse
+st.markdown("---")
 
-# Montants escrow = Acompte 1 (même logique sur les 3 états)
-escrow_actif_amt = float(df_f.loc[df_f["Escrow"] == True, "Acompte 1"].sum())
-escrow_reclamer_amt = float(df_f.loc[df_f["Escrow_a_reclamer"] == True, "Acompte 1"].sum())
-escrow_reclame_amt = float(df_f.loc[df_f["Escrow_reclame"] == True, "Acompte 1"].sum())
-escrow_total_amt = escrow_actif_amt + escrow_reclamer_amt + escrow_reclame_amt
+k7, k8, k9 = st.columns(3)
 
-k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
-k1.metric("Nombre de dossiers", f"{total_dossiers}")
-k2.metric("Montant honoraires (US $)", f"{total_hono:,.2f}")
-k3.metric("Autres frais (US $)", f"{total_frais:,.2f}")
-k4.metric("Total facturé", f"{total_facture:,.2f}")
-k5.metric("Total encaissé", f"{total_encaisse:,.2f}")
-k6.metric("Solde dû", f"{solde_du:,.2f}")
-k7.metric("Escrow total (Acompte 1)", f"{escrow_total_amt:,.2f}")
+k7.metric(
+    "💼 Escrow actif",
+    f"${escrow_actif['Total acomptes'].sum():,.2f}",
+    help=f"{len(escrow_actif)} dossiers"
+)
 
-# ---------------------------------------------------------
-# TABLEAU – VUE PARENTS / FILS
-# ---------------------------------------------------------
-st.subheader("📋 Dossiers (parents & fils)")
+k8.metric(
+    "📤 Escrow à réclamer",
+    f"${escrow_reclamer['Total acomptes'].sum():,.2f}",
+    help=f"{len(escrow_reclamer)} dossiers"
+)
 
-cols_display = [
+k9.metric(
+    "✅ Escrow réclamé",
+    f"${escrow_reclame['Total acomptes'].sum():,.2f}",
+    help=f"{len(escrow_reclame)} dossiers"
+)
+
+# =====================================================
+# TABLEAU DOSSIERS
+# =====================================================
+st.markdown("---")
+st.subheader("📋 Dossiers (vue synthétique)")
+
+cols = [
     "Dossier N",
-    "Dossier Parent",
-    "Dossier Index",
     "Nom",
     "Date",
     "Categories",
@@ -216,33 +189,13 @@ cols_display = [
     "Visa",
     "Montant honoraires (US $)",
     "Autres frais (US $)",
-    "Acompte 1", "Acompte 2", "Acompte 3", "Acompte 4",
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "RFE",
-    "Escrow",
-    "Escrow_a_reclamer",
-    "Escrow_reclame",
+    "Total acomptes",
+    "Etat Escrow",
 ]
 
-# On construit une vue triée en gardant les colonnes de tri, puis on affiche uniquement cols_display
-df_view = df_f.copy()
+cols = [c for c in cols if c in df_f.columns]
 
-# Sécurise les colonnes de tri
-ensure_col(df_view, "Dossier Parent Num", float("inf"))
-ensure_col(df_view, "Dossier Parent", "")
-ensure_col(df_view, "Dossier Index", 0)
-ensure_col(df_view, "Dossier N", "")
-
-df_view = df_view.sort_values(
-    ["Dossier Parent Num", "Dossier Parent", "Dossier Index", "Dossier N"],
-    ascending=[True, True, True, True],
+st.dataframe(
+    df_f.sort_values(["Date", "Dossier N"], ascending=[False, True])[cols],
+    use_container_width=True
 )
-
-# Sécurise les colonnes d'affichage
-for c in cols_display:
-    ensure_col(df_view, c, "")
-
-st.dataframe(df_view[cols_display], use_container_width=True, height=520)
