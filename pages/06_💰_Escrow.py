@@ -159,3 +159,17 @@ if selected:
         save_database(db)
         st.success("✔ Dossier passé en Escrow réclamé")
         st.rerun()
+
+st.markdown("---")
+st.subheader("🕓 Historique des escrows")
+
+history = db.get("escrow_history", [])
+
+if not history:
+    st.info("Aucun historique escrow pour le moment.")
+else:
+    hist_df = pd.DataFrame(history)
+    st.dataframe(
+        hist_df.sort_values("Date", ascending=False),
+        use_container_width=True
+    )
