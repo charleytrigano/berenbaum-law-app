@@ -1,130 +1,154 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
 from utils.status_utils import normalize_bool
 
-# ---------------------------------------------------------
+# =====================================================
 # CONFIG
-# ---------------------------------------------------------
+# =====================================================
 st.set_page_config(page_title="💰 Escrow", page_icon="💰", layout="wide")
 render_sidebar()
 st.title("💰 Gestion des Escrows")
 
-# ---------------------------------------------------------
-# CHARGEMENT BASE
-# ---------------------------------------------------------
+# =====================================================
+# LOAD DATABASE
+# =====================================================
 db = load_database()
-clients = pd.DataFrame(db.get("clients", []))
+clients = db.get("clients", [])
 
-if clients.empty:
-    st.info("Aucun dossier trouvé.")
+if not clients:
+    st.info("Aucun dossier disponible.")
     st.stop()
 
-# Sécurisation booléens
-for col in ["Escrow", "Escrow_a_reclamer", "Escrow_reclame"]:
-    if col not in clients.columns:
-        clients[col] = False
-    clients[col] = clients[col].apply(normalize_bool)
+df = pd.DataFrame(clients).copy()
 
-clients["Acompte 1"] = pd.to_numeric(clients.get("Acompte 1", 0), errors="coerce").fillna(0)
+# Normalisation
+df["Dossier N"] = df["Dossier N"].astype(str)
 
-# ---------------------------------------------------------
-# FILTRES
-# ---------------------------------------------------------
-st.subheader("🎯 Filtres Escrow")
+for col in [
+    "Dossier accepte",
+    "Dossier refuse",
+    "Dossier Annule",
+    "Escrow",
+    "Escrow_a_reclamer",
+    "Escrow_reclame",
+]:
+    if col not in df.columns:
+        df[col] = False
+    df[col] = df[col].apply(normalize_bool)
 
-colF1, colF2 = st.columns(2)
+# =====================================================
+# CALCUL ESCROW (NOUVELLE RÈGLE VALIDÉE)
+# =====================================================
+def calc_escrow_amount(row):
+    """
+    Tant que le dossier n'est PAS accepté / refusé / annulé :
+    → tous les acomptes sont en escrow
+    """
+    if row["Dossier accepte"] or row["Dossier refuse"] or row["Dossier Annule"]:
+        return 0.0
 
-etat = colF1.selectbox(
-    "État de l'Escrow",
-    ["Escrow actif", "Escrow à réclamer", "Escrow réclamé"]
-)
+    total = 0.0
+    for i in range(1, 5):
+        try:
+            total += float(row.get(f"Acompte {i}", 0) or 0)
+        except:
+            pass
+    return total
 
-# ---------------------------------------------------------
-# FILTRAGE LOGIQUE
-# ---------------------------------------------------------
-if etat == "Escrow actif":
-    df = clients[(clients["Escrow"] == True)]
 
-elif etat == "Escrow à réclamer":
-    df = clients[(clients["Escrow_a_reclamer"] == True)]
+df["Escrow Montant"] = df.apply(calc_escrow_amount, axis=1)
 
-else:
-    df = clients[(clients["Escrow_reclame"] == True)]
+# =====================================================
+# FILTRAGE PAR ÉTAT ESCROW
+# =====================================================
+tab1, tab2, tab3 = st.tabs([
+    "💼 Escrow actif",
+    "📤 Escrow à réclamer",
+    "✅ Escrow réclamé",
+])
 
-# ---------------------------------------------------------
-# KPI
-# ---------------------------------------------------------
-total_montant = df["Acompte 1"].sum()
-nb_dossiers = len(df)
+# =====================================================
+# AFFICHAGE FONCTION
+# =====================================================
+def render_table(df_view, action=None):
+    if df_view.empty:
+        st.info("Aucun dossier dans cet état.")
+        return
 
-k1, k2 = st.columns(2)
-k1.metric("📁 Dossiers", nb_dossiers)
-k2.metric("💰 Montant Escrow", f"${total_montant:,.2f}")
+    for _, row in df_view.iterrows():
+        with st.container():
+            c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 2, 2])
 
-# ---------------------------------------------------------
-# TABLEAU
-# ---------------------------------------------------------
-st.subheader("📋 Dossiers en Escrow")
+            c1.write(f"**{row['Dossier N']}**")
+            c2.write(row.get("Nom", ""))
+            c3.write(f"${row['Escrow Montant']:,.2f}")
 
-if df.empty:
-    st.info("Aucun dossier pour cet état.")
-    st.stop()
+            if action == "to_reclamer":
+                if c4.button("➡️ Passer à réclamer", key=f"reclamer_{row.name}"):
+                    df.loc[row.name, "Escrow"] = False
+                    df.loc[row.name, "Escrow_a_reclamer"] = True
+                    df.loc[row.name, "Escrow_reclame"] = False
 
-cols = [
-    "Dossier N",
-    "Nom",
-    "Visa",
-    "Acompte 1",
-]
+            elif action == "to_reclame":
+                if c4.button("✅ Marquer réclamé", key=f"reclame_{row.name}"):
+                    df.loc[row.name, "Escrow"] = False
+                    df.loc[row.name, "Escrow_a_reclamer"] = False
+                    df.loc[row.name, "Escrow_reclame"] = True
 
-st.dataframe(df[cols], use_container_width=True)
+            else:
+                c4.write("—")
 
-# ---------------------------------------------------------
-# ACTIONS
-# ---------------------------------------------------------
-st.subheader("⚙️ Actions")
+            c5.write("")
 
-for idx, row in df.iterrows():
+            st.markdown("---")
 
-    st.markdown(f"### 📄 Dossier {row['Dossier N']} — {row['Nom']}")
 
-    colA, colB = st.columns(2)
+# =====================================================
+# TAB 1 — ESCROW ACTIF
+# =====================================================
+with tab1:
+    st.subheader("💼 Escrow actif")
 
-    # --- Escrow actif → à réclamer
-    if etat == "Escrow actif":
-        if colA.button(
-            "➡️ Passer à Escrow à réclamer",
-            key=f"to_reclamer_{idx}"
-        ):
-            clients.loc[idx, "Escrow"] = False
-            clients.loc[idx, "Escrow_a_reclamer"] = True
-            clients.loc[idx, "Escrow_reclame"] = False
+    view = df[
+        (df["Escrow"])
+        & (df["Escrow Montant"] > 0)
+    ]
 
-            save_database({"clients": clients.to_dict(orient="records")})
-            st.success("Escrow déplacé vers *À réclamer*")
-            st.rerun()
+    render_table(view, action="to_reclamer")
 
-    # --- Escrow à réclamer → réclamé
-    if etat == "Escrow à réclamer":
-        if colB.button(
-            "✅ Marquer comme réclamé",
-            key=f"to_reclame_{idx}"
-        ):
-            clients.loc[idx, "Escrow"] = False
-            clients.loc[idx, "Escrow_a_reclamer"] = False
-            clients.loc[idx, "Escrow_reclame"] = True
-            clients.loc[idx, "Date reclamation"] = str(datetime.today().date())
+# =====================================================
+# TAB 2 — ESCROW À RÉCLAMER
+# =====================================================
+with tab2:
+    st.subheader("📤 Escrow à réclamer")
 
-            save_database({"clients": clients.to_dict(orient="records")})
-            st.success("Escrow marqué comme *Réclamé*")
-            st.rerun()
+    view = df[
+        (df["Escrow_a_reclamer"])
+        & (df["Escrow Montant"] > 0)
+    ]
 
-# ---------------------------------------------------------
-# FIN
-# ---------------------------------------------------------
-st.markdown("---")
-st.markdown("✔ Gestion Escrow fiable — Acompte 1 uniquement")
+    render_table(view, action="to_reclame")
+
+# =====================================================
+# TAB 3 — ESCROW RÉCLAMÉ
+# =====================================================
+with tab3:
+    st.subheader("✅ Escrow réclamé")
+
+    view = df[
+        (df["Escrow_reclame"])
+    ]
+
+    render_table(view)
+
+# =====================================================
+# SAVE CHANGES
+# =====================================================
+if st.button("💾 Enregistrer les changements Escrow", type="primary"):
+    db["clients"] = df.drop(columns=["Escrow Montant"]).to_dict(orient="records")
+    save_database(db)
+    st.success("✔ États Escrow mis à jour avec succès.")
+    st.rerun()
