@@ -1,214 +1,226 @@
+# pages/04_📊_Analyses.py
+
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+from datetime import datetime
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
-from components.kpi_cards import kpi_card
-from components.analysis_charts import (
-    monthly_hist,
-    multi_year_line,
-    category_donut,
-    heatmap_month,
-    category_bars,
-)
 from utils.status_utils import normalize_bool
 
 # =====================================================
 # CONFIG
 # =====================================================
-st.set_page_config(page_title="📊 Analyses", page_icon="📊", layout="wide")
+st.set_page_config(
+    page_title="📊 Analyses",
+    page_icon="📊",
+    layout="wide"
+)
 render_sidebar()
-st.title("📊 Analyses statistiques – Tableau de bord")
+st.title("📊 Analyses & indicateurs avancés")
 
 # =====================================================
-# LOAD DATABASE
+# LOAD DATA
 # =====================================================
 db = load_database()
-clients = db.get("clients", [])
+clients = pd.DataFrame(db.get("clients", []))
 
-if not clients:
-    st.info("Aucune donnée disponible.")
+if clients.empty:
+    st.warning("Aucune donnée disponible.")
     st.stop()
-
-df = pd.DataFrame(clients).copy()
 
 # =====================================================
 # NORMALISATION
 # =====================================================
-df["Dossier N"] = df["Dossier N"].astype(str)
+clients["Dossier N"] = clients["Dossier N"].astype(str)
+clients["Date"] = pd.to_datetime(clients["Date"], errors="coerce")
 
-for col in [
-    "Dossier envoye",
-    "Dossier accepte",
-    "Dossier refuse",
-    "Dossier Annule",
-    "RFE",
-]:
-    if col not in df.columns:
-        df[col] = False
-    df[col] = df[col].apply(normalize_bool)
+clients["Total facturé"] = (
+    clients.get("Montant honoraires (US $)", 0).fillna(0)
+    + clients.get("Autres frais (US $)", 0).fillna(0)
+)
 
-df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
-df["Année"] = df["Date"].dt.year
-
-# =====================================================
-# CALCULS FINANCIERS
-# =====================================================
-def to_float(v):
-    try:
-        return float(v or 0)
-    except:
-        return 0.0
-
-
-df["Honoraires"] = df["Montant honoraires (US $)"].apply(to_float)
-df["Frais"] = df["Autres frais (US $)"].apply(to_float)
-df["Total facturé"] = df["Honoraires"] + df["Frais"]
-
-df["Total encaissé"] = 0.0
+clients["Total encaissé"] = 0.0
 for i in range(1, 5):
     col = f"Acompte {i}"
-    if col in df.columns:
-        df["Total encaissé"] += df[col].apply(to_float)
+    if col in clients.columns:
+        clients["Total encaissé"] += clients[col].fillna(0)
 
-df["Solde"] = df["Total facturé"] - df["Total encaissé"]
-
-# =====================================================
-# 🟡 NOUVELLE LOGIQUE ESCROW (VALIDÉE)
-# =====================================================
-def calc_escrow(row):
-    if row["Dossier accepte"] or row["Dossier refuse"] or row["Dossier Annule"]:
-        return 0.0
-
-    total = 0.0
-    for i in range(1, 5):
-        total += to_float(row.get(f"Acompte {i}", 0))
-    return total
-
-
-df["Escrow Montant"] = df.apply(calc_escrow, axis=1)
+clients["Solde"] = clients["Total facturé"] - clients["Total encaissé"]
 
 # =====================================================
-# FILTRES AVANCÉS
+# FILTRES
 # =====================================================
 st.subheader("🎛️ Filtres")
 
 c1, c2, c3, c4, c5 = st.columns(5)
 
-# Années
-years = sorted(df["Année"].dropna().unique().tolist())
-year_sel = c1.multiselect("Année", years, default=years)
+# Année
+years = sorted(clients["Date"].dropna().dt.year.unique())
+selected_years = c1.multiselect("Année", years, default=years)
 
-# Catégories
-cats = ["Tous"] + sorted(df["Categories"].dropna().unique().tolist())
-cat = c2.selectbox("Catégorie", cats)
+# Catégorie
+categories = sorted(clients["Categories"].dropna().unique())
+cat = c2.multiselect("Catégorie", categories, default=categories)
 
-# Sous-catégories
-if cat != "Tous":
-    souscats = ["Tous"] + sorted(df[df["Categories"] == cat]["Sous-categories"].dropna().unique())
-else:
-    souscats = ["Tous"] + sorted(df["Sous-categories"].dropna().unique())
-
-sous = c3.selectbox("Sous-catégorie", souscats)
+# Sous-catégorie
+souscats = sorted(clients["Sous-categories"].dropna().unique())
+souscat = c3.multiselect("Sous-catégorie", souscats, default=souscats)
 
 # Visa
-if sous != "Tous":
-    visas = ["Tous"] + sorted(df[df["Sous-categories"] == sous]["Visa"].dropna().unique())
-else:
-    visas = ["Tous"] + sorted(df["Visa"].dropna().unique())
+visas = sorted(clients["Visa"].dropna().unique())
+visa = c4.multiselect("Visa", visas, default=visas)
 
-visa = c4.selectbox("Visa", visas)
-
-# Statut
-statut = c5.selectbox(
+# Statuts
+statut = c5.multiselect(
     "Statut",
-    ["Tous", "Envoyé", "Accepté", "Refusé", "Annulé", "RFE"]
+    [
+        "Dossier envoye",
+        "Dossier accepte",
+        "Dossier refuse",
+        "Dossier Annule",
+        "RFE"
+    ],
+    default=[]
 )
 
+df = clients.copy()
+
+if selected_years:
+    df = df[df["Date"].dt.year.isin(selected_years)]
+
+df = df[
+    df["Categories"].isin(cat)
+    & df["Sous-categories"].isin(souscat)
+    & df["Visa"].isin(visa)
+]
+
+# Filtre statuts
+for s in statut:
+    df = df[df[s].apply(normalize_bool)]
+
 # =====================================================
-# APPLICATION FILTRES
+# FILTRES FINANCIERS
 # =====================================================
-df_f = df.copy()
+st.markdown("### 💰 Filtres financiers")
 
-df_f = df_f[df_f["Année"].isin(year_sel)]
+f1, f2, f3 = st.columns(3)
 
-if cat != "Tous":
-    df_f = df_f[df_f["Categories"] == cat]
+show_soldes = f1.checkbox("Dossiers soldés (solde = 0)", False)
+show_non_soldes = f2.checkbox("Dossiers non soldés (solde ≠ 0)", False)
+show_negative = f3.checkbox("Solde négatif", False)
 
-if sous != "Tous":
-    df_f = df_f[df_f["Sous-categories"] == sous]
+if show_soldes:
+    df = df[df["Solde"] == 0]
 
-if visa != "Tous":
-    df_f = df_f[df_f["Visa"] == visa]
+if show_non_soldes:
+    df = df[df["Solde"] != 0]
 
-if statut != "Tous":
-    mapping = {
-        "Envoyé": "Dossier envoye",
-        "Accepté": "Dossier accepte",
-        "Refusé": "Dossier refuse",
-        "Annulé": "Dossier Annule",
-        "RFE": "RFE",
-    }
-    df_f = df_f[df_f[mapping[statut]]]
+if show_negative:
+    df = df[df["Solde"] < 0]
 
 # =====================================================
 # KPI
 # =====================================================
-st.subheader("📈 Indicateurs clés")
+st.markdown("---")
+st.subheader("📌 Indicateurs clés")
 
 k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 
-k1.metric("Dossiers", len(df_f))
-k2.metric("Honoraires", f"${df_f['Honoraires'].sum():,.2f}")
-k3.metric("Frais", f"${df_f['Frais'].sum():,.2f}")
-k4.metric("Total facturé", f"${df_f['Total facturé'].sum():,.2f}")
-k5.metric("Total encaissé", f"${df_f['Total encaissé'].sum():,.2f}")
-k6.metric("Solde dû", f"${df_f['Solde'].sum():,.2f}")
-k7.metric("Escrow", f"${df_f['Escrow Montant'].sum():,.2f}")
+k1.metric("Dossiers", len(df))
+k2.metric("Acceptés", df["Dossier accepte"].apply(normalize_bool).sum())
+k3.metric("Refusés", df["Dossier refuse"].apply(normalize_bool).sum())
+k4.metric("Annulés", df["Dossier Annule"].apply(normalize_bool).sum())
+k5.metric("Total facturé", f"${df['Total facturé'].sum():,.2f}")
+k6.metric("Total encaissé", f"${df['Total encaissé'].sum():,.2f}")
+k7.metric("Solde total", f"${df['Solde'].sum():,.2f}")
 
 # =====================================================
-# GRAPHIQUES
+# GRAPHIQUE 1 — ÉVOLUTION MENSUELLE
 # =====================================================
-st.subheader("📊 Graphiques interactifs")
+st.markdown("---")
+st.subheader("📈 Évolution mensuelle (facturé / encaissé)")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📅 Histogramme mensuel",
-    "📈 Courbes multi-années",
-    "🎯 Répartition catégories",
-    "🔥 Heatmap activité",
-    "💰 Revenus par catégorie",
-])
+monthly = (
+    df.dropna(subset=["Date"])
+    .assign(Mois=lambda x: x["Date"].dt.to_period("M").astype(str))
+    .groupby("Mois")[["Total facturé", "Total encaissé"]]
+    .sum()
+    .reset_index()
+)
 
-with tab1:
-    st.plotly_chart(monthly_hist(df_f), use_container_width=True)
-
-with tab2:
-    st.plotly_chart(multi_year_line(df_f), use_container_width=True)
-
-with tab3:
-    st.plotly_chart(category_donut(df_f), use_container_width=True)
-
-with tab4:
-    st.plotly_chart(heatmap_month(df_f), use_container_width=True)
-
-with tab5:
-    st.plotly_chart(category_bars(df_f), use_container_width=True)
+if not monthly.empty:
+    fig = px.line(
+        monthly,
+        x="Mois",
+        y=["Total facturé", "Total encaissé"],
+        markers=True
+    )
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Aucune donnée mensuelle disponible.")
 
 # =====================================================
-# TABLEAU FINAL
+# GRAPHIQUE 2 — MULTI-ANNÉES (RÉTABLI)
 # =====================================================
-st.subheader("📋 Dossiers filtrés")
+st.markdown("---")
+st.subheader("📊 Comparaison multi-années")
+
+yearly = (
+    df.dropna(subset=["Date"])
+    .assign(Année=lambda x: x["Date"].dt.year)
+    .groupby("Année")[["Total facturé", "Total encaissé"]]
+    .sum()
+    .reset_index()
+)
+
+if not yearly.empty:
+    fig2 = px.bar(
+        yearly,
+        x="Année",
+        y=["Total facturé", "Total encaissé"],
+        barmode="group"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+else:
+    st.info("Pas assez de données pour la comparaison annuelle.")
+
+# =====================================================
+# GRAPHIQUE 3 — RÉPARTITION PAR VISA
+# =====================================================
+st.markdown("---")
+st.subheader("🛂 Répartition des honoraires par Visa")
+
+visa_stats = (
+    df.groupby("Visa")["Total facturé"]
+    .sum()
+    .reset_index()
+    .sort_values("Total facturé", ascending=False)
+)
+
+if not visa_stats.empty:
+    fig3 = px.pie(
+        visa_stats,
+        names="Visa",
+        values="Total facturé",
+        hole=0.4
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+
+# =====================================================
+# TABLEAU DÉTAILLÉ
+# =====================================================
+st.markdown("---")
+st.subheader("📋 Détails des dossiers analysés")
 
 cols = [
-    "Dossier N", "Nom", "Date",
-    "Categories", "Sous-categories", "Visa",
+    "Dossier N", "Nom", "Date", "Categories", "Sous-categories", "Visa",
     "Total facturé", "Total encaissé", "Solde",
-    "Escrow Montant",
-    "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule",
+    "Dossier envoye", "Dossier accepte", "Dossier refuse", "Dossier Annule", "RFE"
 ]
 
 st.dataframe(
-    df_f[[c for c in cols if c in df_f.columns]],
-    use_container_width=True,
-    height=400
+    df[cols].sort_values("Date", ascending=False),
+    use_container_width=True
 )
