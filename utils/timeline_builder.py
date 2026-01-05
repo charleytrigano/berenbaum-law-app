@@ -1,87 +1,110 @@
-# utils/timeline_builder.py
 from datetime import datetime
-
-def safe_date(val):
-    if not val or val in ["", "None"]:
-        return None
-    try:
-        return datetime.fromisoformat(str(val))
-    except Exception:
-        return None
+import pandas as pd
 
 
-def build_timeline(dossier: dict):
+def build_timeline(dossier: dict) -> list:
     """
-    Construit la timeline chronologique d’un dossier
-    Retourne une liste triée d’événements
+    Construit une timeline STRICTEMENT basée sur des faits réels et datés.
     """
     events = []
 
-    def add(date, label, amount=None, extra=None):
-        if date:
-            events.append({
-                "date": date,
-                "label": label,
-                "amount": amount,
-                "extra": extra,
-            })
+    def add_event(date, label, amount=None, meta=None):
+        if not date:
+            return
+        try:
+            d = pd.to_datetime(date)
+        except:
+            return
 
-    # Création dossier
-    add(
-        safe_date(dossier.get("Date")),
-        "📄 Dossier créé"
+        ev = {
+            "date": d,
+            "label": label
+        }
+        if amount is not None:
+            ev["amount"] = amount
+        if meta:
+            ev["meta"] = meta
+
+        events.append(ev)
+
+    # -------------------------------------------------
+    # Création du dossier
+    # -------------------------------------------------
+    add_event(
+        dossier.get("Date"),
+        "Création du dossier"
     )
 
-    # Acomptes (avec date + mode)
+    # -------------------------------------------------
+    # Paiements (Acomptes)
+    # -------------------------------------------------
     for i in range(1, 5):
-        amt = float(dossier.get(f"Acompte {i}", 0) or 0)
-        if amt > 0:
-            add(
-                safe_date(dossier.get(f"Date Acompte {i}")),
-                f"💰 Acompte {i} encaissé",
-                amount=amt,
-                extra=dossier.get("mode de paiement", "")
+        montant = dossier.get(f"Acompte {i}")
+        date_pay = dossier.get(f"Date Acompte {i}")
+        mode = dossier.get(f"Mode Acompte {i}") or dossier.get("mode de paiement")
+
+        try:
+            montant = float(montant or 0)
+        except:
+            montant = 0
+
+        if montant > 0 and date_pay:
+            add_event(
+                date_pay,
+                f"Paiement Acompte {i}",
+                amount=montant,
+                meta=f"Mode : {mode}"
             )
 
-    # Escrow — Acompte 1 uniquement
-    if dossier.get("Escrow"):
-        add(
-            safe_date(dossier.get("Date")),
-            "💼 Escrow actif",
-            amount=float(dossier.get("Acompte 1", 0) or 0)
-        )
+    # -------------------------------------------------
+    # Statuts administratifs
+    # -------------------------------------------------
+    status_map = [
+        ("Date envoi", "Dossier envoyé"),
+        ("Date acceptation", "Dossier accepté"),
+        ("Date refus", "Dossier refusé"),
+        ("Date annulation", "Dossier annulé"),
+        ("Date reclamation", "RFE")
+    ]
 
-    if dossier.get("Escrow_a_reclamer"):
-        add(
-            safe_date(dossier.get("Date envoi")),
-            "📤 Escrow à réclamer",
-            amount=float(dossier.get("Acompte 1", 0) or 0)
-        )
+    for date_field, label in status_map:
+        add_event(dossier.get(date_field), label)
 
-    if dossier.get("Escrow_reclame"):
-        add(
-            safe_date(dossier.get("Date reclamation")),
-            "✅ Escrow réclamé",
-            amount=float(dossier.get("Acompte 1", 0) or 0)
-        )
+    # -------------------------------------------------
+    # Escrow (logique métier)
+    # -------------------------------------------------
+    total_acomptes = 0.0
+    for i in range(1, 5):
+        try:
+            total_acomptes += float(dossier.get(f"Acompte {i}") or 0)
+        except:
+            pass
 
-    # Statuts
-    if dossier.get("Dossier envoye"):
-        add(safe_date(dossier.get("Date envoi")), "📤 Dossier envoyé")
+    if total_acomptes > 0:
+        if dossier.get("Escrow"):
+            add_event(
+                dossier.get("Date"),
+                "Escrow actif",
+                amount=total_acomptes
+            )
 
-    if dossier.get("Dossier accepte"):
-        add(safe_date(dossier.get("Date acceptation")), "✅ Dossier accepté")
+        if dossier.get("Escrow_a_reclamer"):
+            add_event(
+                dossier.get("Date acceptation") or dossier.get("Date refus") or dossier.get("Date annulation"),
+                "Escrow à réclamer",
+                amount=total_acomptes
+            )
 
-    if dossier.get("Dossier refuse"):
-        add(safe_date(dossier.get("Date refus")), "❌ Dossier refusé")
+        if dossier.get("Escrow_reclame"):
+            add_event(
+                dossier.get("Date reclamation"),
+                "Escrow réclamé",
+                amount=total_acomptes
+            )
 
-    if dossier.get("Dossier Annule"):
-        add(safe_date(dossier.get("Date annulation")), "🚫 Dossier annulé")
-
-    if dossier.get("RFE"):
-        add(safe_date(dossier.get("Date reclamation")), "📎 RFE")
-
-    # Tri chronologique
-    events = sorted([e for e in events if e["date"]], key=lambda x: x["date"])
+    # -------------------------------------------------
+    # TRI FINAL
+    # -------------------------------------------------
+    events = sorted(events, key=lambda x: x["date"])
 
     return events
