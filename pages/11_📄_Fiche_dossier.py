@@ -5,17 +5,18 @@ from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database
 from utils.timeline_builder import build_timeline
 from utils.pdf_export import export_dossier_pdf
+from utils.status_utils import normalize_bool
 
-# ---------------------------------------------------------
-# CONFIG & SIDEBAR
-# ---------------------------------------------------------
+# =====================================================
+# CONFIG
+# =====================================================
 st.set_page_config(page_title="📄 Fiche dossier", page_icon="📄", layout="wide")
 render_sidebar()
 st.title("📄 Fiche dossier")
 
-# ---------------------------------------------------------
-# CHARGEMENT BASE
-# ---------------------------------------------------------
+# =====================================================
+# LOAD DATABASE
+# =====================================================
 db = load_database()
 clients = db.get("clients", [])
 
@@ -24,25 +25,49 @@ if not clients:
     st.stop()
 
 df = pd.DataFrame(clients)
-
-# Support des sous-dossiers (xxxxx-1, etc.)
 df["Dossier N"] = df["Dossier N"].astype(str)
 
-# ---------------------------------------------------------
-# SÉLECTION DOSSIER (N° + NOM)
-# ---------------------------------------------------------
-df["Label"] = df["Dossier N"] + " — " + df.get("Nom", "").astype(str)
+# =====================================================
+# SELECTION DOSSIER
+# =====================================================
+labels = df.apply(
+    lambda r: f"{r['Dossier N']} — {r.get('Nom','')}", axis=1
+).tolist()
 
-labels = df["Label"].unique().tolist()
+label_to_id = dict(zip(labels, df["Dossier N"]))
+
 selected_label = st.selectbox("Sélectionner un dossier", labels)
+selected_id = label_to_id[selected_label]
 
-selected_row = df[df["Label"] == selected_label].iloc[0]
-dossier = selected_row.to_dict()
+row = df[df["Dossier N"] == selected_id].iloc[0]
+dossier = row.to_dict()
 
-# ---------------------------------------------------------
-# INFOS GÉNÉRALES
-# ---------------------------------------------------------
-st.subheader(f"Dossier {dossier.get('Dossier N')} — {dossier.get('Nom','')}")
+# =====================================================
+# ESCROW — LOGIQUE UNIQUE
+# =====================================================
+def compute_escrow_amount(d):
+    if (
+        normalize_bool(d.get("Dossier accepte"))
+        or normalize_bool(d.get("Dossier refuse"))
+        or normalize_bool(d.get("Dossier Annule"))
+    ):
+        return 0.0
+
+    total = 0.0
+    for i in range(1, 5):
+        try:
+            total += float(d.get(f"Acompte {i}", 0) or 0)
+        except:
+            pass
+    return total
+
+
+escrow_amount = compute_escrow_amount(dossier)
+
+# =====================================================
+# INFOS GENERALES
+# =====================================================
+st.subheader(f"Dossier {dossier['Dossier N']} — {dossier.get('Nom','')}")
 
 c1, c2, c3 = st.columns(3)
 c1.write(f"**Catégorie** : {dossier.get('Categories','')}")
@@ -51,144 +76,74 @@ c3.write(f"**Visa** : {dossier.get('Visa','')}")
 
 st.markdown("---")
 
-# ---------------------------------------------------------
-# FACTURATION & RÈGLEMENTS
-# ---------------------------------------------------------
-st.subheader("💰 Facturation & règlements")
+# =====================================================
+# FACTURATION
+# =====================================================
+hon = float(dossier.get("Montant honoraires (US $)", 0))
+frais = float(dossier.get("Autres frais (US $)", 0))
+total_facture = hon + frais
 
-colF, colP = st.columns(2)
+total_encaisse = sum(
+    float(dossier.get(f"Acompte {i}", 0) or 0) for i in range(1, 5)
+)
+solde = total_facture - total_encaisse
 
-with colF:
-    honoraires = float(dossier.get("Montant honoraires (US $)", 0) or 0)
-    frais = float(dossier.get("Autres frais (US $)", 0) or 0)
-    total_facture = honoraires + frais
-
-    st.metric("Montant honoraires", f"${honoraires:,.2f}")
-    st.metric("Autres frais", f"${frais:,.2f}")
-    st.metric("Total facturé", f"${total_facture:,.2f}")
-
-with colP:
-    total_encaisse = 0.0
-    paiements = []
-
-    for i in range(1, 5):
-        montant = float(dossier.get(f"Acompte {i}", 0) or 0)
-        date_p = dossier.get(f"Date Acompte {i}", "")
-        mode = dossier.get(f"Mode Acompte {i}", dossier.get("mode de paiement", ""))
-
-        if montant > 0:
-            paiements.append([
-                f"Acompte {i}",
-                f"${montant:,.2f}",
-                date_p,
-                mode
-            ])
-            total_encaisse += montant
-
-    if paiements:
-        st.markdown("**Paiements encaissés**")
-        st.dataframe(
-            pd.DataFrame(
-                paiements,
-                columns=["Acompte", "Montant", "Date de paiement", "Mode"]
-            ),
-            hide_index=True,
-            use_container_width=True
-        )
-
-    solde = total_facture - total_encaisse
-    st.metric("Total encaissé", f"${total_encaisse:,.2f}")
-    st.metric("Solde dû", f"${solde:,.2f}")
+c1, c2, c3 = st.columns(3)
+c1.metric("Total facturé", f"${total_facture:,.2f}")
+c2.metric("Total encaissé", f"${total_encaisse:,.2f}")
+c3.metric("Solde dû", f"${solde:,.2f}")
 
 st.markdown("---")
 
-# ---------------------------------------------------------
-# STATUT FINANCIER
-# ---------------------------------------------------------
-if solde <= 0:
-    st.success("✅ Dossier soldé")
-elif total_encaisse > 0:
-    st.warning("🟡 Paiement partiel")
-else:
-    st.error("🔴 Aucun paiement enregistré")
-
-# ---------------------------------------------------------
+# =====================================================
 # ESCROW
-# ---------------------------------------------------------
+# =====================================================
 st.subheader("💼 Escrow")
 
-escrow_amount = float(dossier.get("Acompte 1", 0) or 0)
-
-if dossier.get("Escrow"):
-    st.info(f"💼 Escrow actif — ${escrow_amount:,.2f}")
-elif dossier.get("Escrow_a_reclamer"):
-    st.warning(f"📤 Escrow à réclamer — ${escrow_amount:,.2f}")
-elif dossier.get("Escrow_reclame"):
-    st.success(f"✅ Escrow réclamé — ${escrow_amount:,.2f}")
+if escrow_amount > 0:
+    st.warning(f"💼 Montant en escrow : **${escrow_amount:,.2f}**")
 else:
-    st.write("Aucun escrow pour ce dossier.")
+    st.success("Aucun montant en escrow pour ce dossier.")
 
-# ---------------------------------------------------------
-# 📦 STATUTS DU DOSSIER (TABLEAU ALIGNÉ)
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📦 Statuts du dossier")
-
-def yesno(v):
-    return "✅ Oui" if str(v).strip().lower() in ["true", "1", "yes", "oui"] or v is True else "❌ Non"
-
-statuts_rows = [
-    ("Dossier envoyé", yesno(dossier.get("Dossier envoye", False))),
-    ("Dossier accepté", yesno(dossier.get("Dossier accepte", False))),
-    ("Dossier refusé", yesno(dossier.get("Dossier refuse", False))),
-    ("Dossier annulé", yesno(dossier.get("Dossier Annule", False))),
-    ("RFE", yesno(dossier.get("RFE", False))),
-]
-
-st.dataframe(
-    pd.DataFrame(statuts_rows, columns=["Statut", "Valeur"]),
-    hide_index=True,
-    use_container_width=True
+st.caption(
+    "Règle : les acomptes restent en escrow tant que le dossier n’est ni accepté, ni refusé, ni annulé."
 )
 
-# ---------------------------------------------------------
-# 🕓 TIMELINE
-# ---------------------------------------------------------
 st.markdown("---")
-st.subheader("🕓 Timeline du dossier")
+
+# =====================================================
+# STATUTS
+# =====================================================
+st.subheader("📦 Statuts du dossier")
+
+s1, s2, s3, s4, s5 = st.columns(5)
+s1.metric("Envoyé", "✔" if dossier.get("Dossier envoye") else "—")
+s2.metric("Accepté", "✔" if dossier.get("Dossier accepte") else "—")
+s3.metric("Refusé", "✔" if dossier.get("Dossier refuse") else "—")
+s4.metric("Annulé", "✔" if dossier.get("Dossier Annule") else "—")
+s5.metric("RFE", "✔" if dossier.get("RFE") else "—")
+
+# =====================================================
+# TIMELINE
+# =====================================================
+st.markdown("---")
+st.subheader("🕓 Timeline")
 
 timeline = build_timeline(dossier)
+for ev in timeline:
+    st.markdown(f"**{ev['date'].date()}** — {ev['label']}")
 
-if not timeline:
-    st.info("Aucun événement enregistré.")
-else:
-    for ev in timeline:
-        line = f"**{ev['date'].date()}** — {ev['label']}"
-        if ev.get("amount"):
-            line += f" — ${ev['amount']:,.2f}"
-        st.markdown(line)
-
-# ---------------------------------------------------------
-# 📝 COMMENTAIRE
-# ---------------------------------------------------------
-commentaire = dossier.get("Commentaire", "")
-if str(commentaire).strip():
-    st.markdown("---")
-    st.subheader("📝 Commentaire")
-    st.write(commentaire)
-
-# ---------------------------------------------------------
-# 📄 EXPORT PDF
-# ---------------------------------------------------------
+# =====================================================
+# EXPORT PDF
+# =====================================================
 st.markdown("---")
 if st.button("📄 Exporter la fiche dossier en PDF"):
     output = f"/tmp/dossier_{dossier['Dossier N']}.pdf"
     export_dossier_pdf(dossier, output)
-
     with open(output, "rb") as f:
         st.download_button(
             "⬇️ Télécharger le PDF",
             f,
             file_name=f"Dossier_{dossier['Dossier N']}.pdf",
-            mime="application/pdf"
+            mime="application/pdf",
         )
