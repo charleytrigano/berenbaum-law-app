@@ -157,3 +157,22 @@ st.dataframe(
     df_view.sort_values(["Dossier Parent", "Dossier Index", "Dossier N"])[cols],
     use_container_width=True
 )
+
+st.markdown("---")
+st.subheader("➡️ Ouvrir une fiche dossier")
+
+labels = (
+    df_view["Dossier N"].astype(str)
+    + " — "
+    + df_view.get("Nom", "").astype(str)
+)
+
+dossier_choice = st.selectbox(
+    "Sélectionner un dossier",
+    options=df_view["Dossier N"].tolist(),
+    format_func=lambda x: f"{x} — {df_view[df_view['Dossier N']==x]['Nom'].iloc[0]}"
+)
+
+if st.button("📄 Ouvrir la fiche dossier", type="primary"):
+    st.session_state["open_dossier"] = dossier_choice
+    st.switch_page("pages/11_📄_Fiche_dossier.py")
