@@ -5,255 +5,251 @@ from utils.sidebar import render_sidebar
 # CONFIG
 # =====================================================
 st.set_page_config(
-    page_title="❓ Aide & User Guide",
+    page_title="❓ Aide & Mode d’emploi",
     page_icon="❓",
     layout="wide"
 )
 render_sidebar()
 
 st.title("❓ AIDE & MODE D’EMPLOI")
-st.markdown("### Application de gestion des dossiers – **Cabinet interne**")
+st.markdown("### Application de gestion des dossiers – Cabinet (usage interne)")
+
+st.markdown("---")
 
 # =====================================================
-# LANGUAGE SELECTOR
+# SOMMAIRE CLIQUABLE
 # =====================================================
-lang = st.radio(
-    "🌐 Langue / Language",
-    options=["Français 🇫🇷", "English 🇺🇸"],
-    horizontal=True
-)
+st.markdown("""
+### 📑 Sommaire
 
-# =====================================================
-# TABS
-# =====================================================
-tabs = st.tabs([
-    "📘 Objectif / Purpose",
-    "🧭 Navigation",
-    "📁 Dossiers",
-    "💰 Facturation & Escrow",
-    "📊 Analyses & KPI",
-    "📤 Exports",
-    "⚠️ Bonnes pratiques",
-    "❓ FAQ",
-    "📄 Impression & PDF"
-])
+- [1. Objectif de l’application](#objectif)
+- [2. Navigation générale](#navigation)
+- [3. Gestion des dossiers](#dossiers)
+- [4. Facturation & Escrow](#facturation)
+- [5. Analyses & KPI](#analyses)
+- [6. Exports](#exports)
+- [7. Bonnes pratiques](#bonnes-pratiques)
+- [8. FAQ](#faq)
+- [9. Impression & PDF](#pdf)
+- [10. Index alphabétique](#index)
+""", unsafe_allow_html=True)
+
+st.markdown("---")
 
 # =====================================================
-# FR VERSION
+# 1. OBJECTIF
 # =====================================================
-if lang.startswith("Français"):
+st.markdown('<a id="objectif"></a>', unsafe_allow_html=True)
+st.subheader("1. Objectif de l’application")
 
-    with tabs[0]:
-        st.subheader("1. Objectif de l’application")
-        st.write("""
-Cette application centralise **toute la gestion des dossiers du cabinet** :
+st.write("""
+Cette application permet de gérer **l’ensemble des dossiers clients du cabinet**, de manière centralisée et sécurisée.
 
-- Suivi administratif (statuts, dates)
-- Suivi financier (honoraires, acomptes, soldes)
-- Gestion complète des escrows
-- Dossiers parents & sous-dossiers
-- Analyses, KPI et exports professionnels
+Elle couvre :
+- le suivi administratif des dossiers,
+- la gestion financière (honoraires, acomptes, soldes),
+- la gestion des escrows,
+- l’organisation des dossiers parents et sous-dossiers,
+- les analyses, KPI et exports (Excel / PDF).
 
-👉 **Aucune connaissance technique requise.**
-        """)
+👉 **Aucune compétence informatique n’est requise.**
+""")
 
-    with tabs[1]:
-        st.subheader("2. Navigation générale")
-        st.markdown("""
-Le menu latéral donne accès à toutes les pages :
+# =====================================================
+# 2. NAVIGATION
+# =====================================================
+st.markdown('<a id="navigation"></a>', unsafe_allow_html=True)
+st.subheader("2. Navigation générale")
 
-- 🏠 Dashboard
+st.write("""
+La navigation se fait via le **menu latéral à gauche**.
+
+Pages principales :
+- 🏠 Dashboard – Vue globale
 - 📁 Liste des dossiers
 - ➕ Nouveau dossier
-- ✏️ Modifier dossier
+- ✏️ Modifier un dossier
 - 📊 Analyses
 - 💰 Escrow
+- 🛂 Visa
 - 💲 Tarifs
-- 📤 Exports
-- 📄 Fiches dossiers
+- 📤 Exports Excel / JSON
 - ⚙️ Paramètres
 - ❓ Aide
-        """)
-        st.info("Astuce : si une page n’apparaît pas, vérifier son nom exact dans le dossier /pages.")
+""")
 
-    with tabs[2]:
-        st.subheader("3. Gestion des dossiers")
-        st.markdown("""
+st.info("💡 Astuce : si une page n’apparaît pas, vérifier son nom exact dans le dossier `/pages`.")
+
+# =====================================================
+# 3. DOSSIERS
+# =====================================================
+st.markdown('<a id="dossiers"></a>', unsafe_allow_html=True)
+st.subheader("3. Gestion des dossiers")
+
+st.write("""
 ### Types de dossiers
 
-**Dossier parent**
-- Numéro simple (ex: 13068)
+Il existe **deux types de dossiers** :
 
-**Sous-dossier (fils)**
-- Numérotation : 13068-1, 13068-2…
-- Visa et facturation propres
-        """)
+**1️⃣ Dossier parent**
+- Numéro simple : `13068`
+- Dossier principal du client
 
-    with tabs[3]:
-        st.subheader("4. Facturation & Escrow")
-        st.markdown("""
-### Règle Escrow (fondamentale)
+**2️⃣ Sous-dossier (fils)**
+- Numérotation : `13068-1`, `13068-2`, etc.
+- Utilisé lorsque :
+  - un client a plusieurs procédures,
+  - des visas différents sont nécessaires.
 
-- Tant que le dossier n’est **ni accepté, ni refusé, ni annulé** :
-  👉 **Tous les acomptes sont en escrow**
-- Lorsqu’il est accepté / refusé / annulé :
-  👉 Passage en **Escrow à réclamer**
-- Étape finale :
+👉 Les sous-dossiers peuvent avoir **un visa différent** du parent.
+""")
+
+# =====================================================
+# 4. FACTURATION & ESCROW
+# =====================================================
+st.markdown('<a id="facturation"></a>', unsafe_allow_html=True)
+st.subheader("4. Facturation & Escrow")
+
+st.write("""
+### Facturation
+- Montant honoraires (US $)
+- Autres frais
+- Total facturé (calcul automatique)
+- Acomptes 1 à 4 (montant, date, mode de règlement)
+
+### Règle Escrow (ESSENTIELLE)
+
+- **Tant que le dossier n’est ni accepté, ni refusé, ni annulé** :
+  👉 **TOUS les acomptes sont en escrow**
+
+- Lorsque le dossier est :
+  - accepté
+  - refusé
+  - annulé  
+  👉 le montant passe en **Escrow à réclamer**
+
+- Une fois réclamé :
   👉 **Escrow réclamé**
 
-L’historique est conservé automatiquement.
-        """)
+Un **historique escrow** est conservé automatiquement.
+""")
 
-    with tabs[4]:
-        st.subheader("5. Analyses & KPI")
-        st.markdown("""
-KPI disponibles :
+# =====================================================
+# 5. ANALYSES & KPI
+# =====================================================
+st.markdown('<a id="analyses"></a>', unsafe_allow_html=True)
+st.subheader("5. Analyses & KPI")
+
+st.write("""
+Les analyses permettent de piloter l’activité du cabinet.
+
+### KPI disponibles
 - Nombre de dossiers
-- Acceptés / refusés / annulés
-- Soldés / non soldés
-- Soldes négatifs
-- Montant total en escrow
+- Dossiers acceptés / refusés / annulés
+- Dossiers soldés / non soldés
+- Dossiers avec solde négatif
+- Montants facturés / encaissés
+- Escrow total
 
-Filtres :
-- Multi-années
-- Comparaison de périodes
+### Filtres avancés
+- Année
+- Catégorie
+- Sous-catégorie
+- Visa
 - Statuts
-        """)
+- Comparaison multi-années
+""")
 
-    with tabs[5]:
-        st.subheader("6. Exports")
-        st.markdown("""
-- Export Excel multi-feuilles
-- Export PDF dossiers & groupes
-- Export JSON ↔ Excel
-        """)
+# =====================================================
+# 6. EXPORTS
+# =====================================================
+st.markdown('<a id="exports"></a>', unsafe_allow_html=True)
+st.subheader("6. Exports")
 
-    with tabs[6]:
-        st.subheader("7. Bonnes pratiques")
-        st.markdown("""
-✔ Utiliser les filtres  
+st.write("""
+### Export Excel
+- Export JSON → Excel multi-feuilles
+- Fichier horodaté
+- Sans signature
+- Prêt pour audit ou archivage
+
+### Export PDF
+- Fiche dossier (un dossier)
+- Fiche groupe dossier (parent + fils)
+- Documents professionnels imprimables
+""")
+
+# =====================================================
+# 7. BONNES PRATIQUES
+# =====================================================
+st.markdown('<a id="bonnes-pratiques"></a>', unsafe_allow_html=True)
+st.subheader("7. Bonnes pratiques")
+
+st.write("""
+✔ Toujours utiliser les filtres  
 ✔ Ne jamais modifier le JSON manuellement  
 ✔ Vérifier les dates de paiement  
-✔ Utiliser les sous-dossiers pour visas multiples
-        """)
+✔ Utiliser les sous-dossiers pour visas multiples  
+✔ Utiliser les exports pour archivage  
+""")
 
-    with tabs[7]:
-        st.subheader("8. FAQ")
-        st.markdown("""
-**Pourquoi un dossier n’apparaît pas ?**  
+# =====================================================
+# 8. FAQ
+# =====================================================
+st.markdown('<a id="faq"></a>', unsafe_allow_html=True)
+st.subheader("8. FAQ")
+
+st.write("""
+**Q : Pourquoi un dossier n’apparaît pas ?**  
 ➡ Vérifier les filtres actifs.
 
-**Pourquoi l’escrow est élevé ?**  
-➡ Tous les paiements restent en escrow tant que le dossier n’est pas finalisé.
-        """)
+**Q : Pourquoi l’escrow ne correspond pas au total encaissé ?**  
+➡ Tant que le dossier n’est pas accepté/refusé/annulé, tous les acomptes sont en escrow.
 
-    with tabs[8]:
-        st.subheader("9. Impression & PDF")
-        st.write("""
+**Q : Puis-je modifier un visa sur un sous-dossier ?**  
+➡ Oui, indépendamment du parent.
+""")
+
+# =====================================================
+# 9. PDF
+# =====================================================
+st.markdown('<a id="pdf"></a>', unsafe_allow_html=True)
+st.subheader("9. Impression & PDF")
+
+st.write("""
 Cette aide est :
-- Consultable en ligne
-- Imprimable
-- Exportable en PDF
-        """)
+- consultable en ligne,
+- imprimable,
+- exportable en PDF,
+- déclinable en version française ou américaine.
+
+Elle constitue le **manuel interne officiel du cabinet**.
+""")
 
 # =====================================================
-# EN VERSION
+# 10. INDEX ALPHABÉTIQUE AUTOMATIQUE
 # =====================================================
-else:
+st.markdown('<a id="index"></a>', unsafe_allow_html=True)
+st.subheader("10. Index alphabétique")
 
-    with tabs[0]:
-        st.subheader("1. Application Purpose")
-        st.write("""
-This application centralizes **all case management operations** of the firm:
+index_items = sorted([
+    "Acompte",
+    "Analyses",
+    "Dashboard",
+    "Dossier parent",
+    "Dossier fils",
+    "Escrow",
+    "Export Excel",
+    "Export PDF",
+    "Facturation",
+    "KPI",
+    "Sous-dossier",
+    "Statuts",
+    "Tarifs Visa",
+    "Timeline",
+    "Visa"
+])
 
-- Administrative tracking
-- Financial tracking
-- Full escrow management
-- Parent & sub-cases
-- Analytics and exports
-        """)
-
-    with tabs[1]:
-        st.subheader("2. Navigation")
-        st.markdown("""
-Main pages include:
-- Dashboard
-- Case List
-- New Case
-- Edit Case
-- Analytics
-- Escrow
-- Fees
-- Exports
-- Help
-        """)
-
-    with tabs[2]:
-        st.subheader("3. Case Management")
-        st.markdown("""
-**Parent Case**
-- Simple number
-
-**Sub-case**
-- Numbering: 13068-1, 13068-2
-- Independent visa & billing
-        """)
-
-    with tabs[3]:
-        st.subheader("4. Billing & Escrow")
-        st.markdown("""
-### Escrow Rule
-
-- Until accepted / refused / canceled:
-  👉 All payments remain in escrow
-- Then:
-  👉 Escrow to claim
-- Final:
-  👉 Escrow claimed
-        """)
-
-    with tabs[4]:
-        st.subheader("5. Analytics & KPIs")
-        st.markdown("""
-KPIs include:
-- Case counts
-- Status breakdown
-- Escrow totals
-- Multi-year comparisons
-        """)
-
-    with tabs[5]:
-        st.subheader("6. Exports")
-        st.markdown("""
-- Excel exports
-- PDF exports
-- JSON ↔ Excel sync
-        """)
-
-    with tabs[6]:
-        st.subheader("7. Best Practices")
-        st.markdown("""
-✔ Use filters  
-✔ Never edit JSON manually  
-✔ Verify payment dates  
-✔ Use sub-cases properly
-        """)
-
-    with tabs[7]:
-        st.subheader("8. FAQ")
-        st.markdown("""
-**Why is escrow high?**  
-➡ All payments remain in escrow until case finalization.
-        """)
-
-    with tabs[8]:
-        st.subheader("9. Printing & PDF")
-        st.write("""
-This guide is printable and exportable to PDF.
-        """)
-
-# =====================================================
-# FOOTER
-# =====================================================
-st.markdown("---")
-st.caption("© Cabinet – Internal Use Only")
+cols = st.columns(4)
+for i, item in enumerate(index_items):
+    cols[i % 4].write(f"• {item}")
