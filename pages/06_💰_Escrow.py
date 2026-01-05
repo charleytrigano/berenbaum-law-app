@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 from utils.sidebar import render_sidebar
 from backend.dropbox_utils import load_database, save_database
-from utils.escrow_history import log_escrow_history
 
 # =====================================================
 # CONFIG
@@ -17,13 +17,13 @@ st.title("💰 Gestion des Escrows")
 # =====================================================
 db = load_database()
 clients = db.get("clients", [])
-history = db.get("escrow_history", [])
+escrow_history = db.get("escrow_history", [])
 
 if not clients:
-    st.info("Aucun dossier trouvé.")
+    st.error("Aucun dossier trouvé.")
     st.stop()
 
-df = pd.DataFrame(clients).copy()
+df = pd.DataFrame(clients)
 df["Dossier N"] = df["Dossier N"].astype(str)
 
 # =====================================================
@@ -35,129 +35,85 @@ def to_float(v):
     except Exception:
         return 0.0
 
-
 def total_acomptes(row):
     return sum(to_float(row.get(f"Acompte {i}", 0)) for i in range(1, 5))
 
-
-def escrow_state(row):
-    if row.get("Escrow_reclame"):
-        return "reclame"
-    if row.get("Escrow_a_reclamer"):
-        return "a_reclamer"
-    if row.get("Escrow"):
-        return "actif"
-    return None
-
-
-# =====================================================
-# ONGLET PRINCIPAL
-# =====================================================
-tab1, tab2 = st.tabs(["💼 Escrows actifs", "🕓 Historique des escrows"])
+def last_escrow_date(dossier_n):
+    events = [
+        e for e in escrow_history
+        if str(e.get("Dossier N")) == str(dossier_n)
+        and e.get("Etat") == "Escrow_a_reclamer"
+    ]
+    if not events:
+        return None
+    dates = [pd.to_datetime(e["Date"]) for e in events if e.get("Date")]
+    return max(dates) if dates else None
 
 # =====================================================
-# TAB 1 — GESTION ESCROW
+# CONSTRUCTION TABLE ESCROW À RÉCLAMER
 # =====================================================
-with tab1:
-    etat = st.radio(
-        "Afficher :",
-        ["Escrow actif", "Escrow à réclamer", "Escrow réclamé"],
-        horizontal=True,
-    )
+rows = []
 
-    if etat == "Escrow actif":
-        view = df[df["Escrow"] == True]
-    elif etat == "Escrow à réclamer":
-        view = df[df["Escrow_a_reclamer"] == True]
+today = pd.Timestamp.today()
+
+for _, r in df.iterrows():
+    if not r.get("Escrow_a_reclamer"):
+        continue
+
+    montant = total_acomptes(r)
+    date_ref = last_escrow_date(r["Dossier N"])
+    if date_ref:
+        days = (today - date_ref).days
     else:
-        view = df[df["Escrow_reclame"] == True]
+        days = None
 
-    if view.empty:
-        st.info("Aucun dossier dans cet état.")
-        st.stop()
+    rows.append({
+        "Dossier N": r["Dossier N"],
+        "Nom": r.get("Nom", ""),
+        "Visa": r.get("Visa", ""),
+        "Montant escrow": montant,
+        "Date à réclamer": date_ref.date() if date_ref else "",
+        "Ancienneté (jours)": days,
+    })
 
-    rows = []
-    for _, r in view.iterrows():
-        rows.append({
-            "Dossier N": r["Dossier N"],
-            "Nom": r.get("Nom", ""),
-            "Visa": r.get("Visa", ""),
-            "Montant Escrow": total_acomptes(r),
-        })
-
-    table = pd.DataFrame(rows)
-    st.dataframe(table, use_container_width=True)
-
-    total = table["Montant Escrow"].sum()
-    st.metric("💼 Total Escrow", f"${total:,.2f}")
-
-    st.markdown("---")
-    st.subheader("⚙️ Action sur un dossier")
-
-    dossier_sel = st.selectbox(
-        "Sélectionner un dossier",
-        table["Dossier N"].tolist()
-    )
-
-    row = df[df["Dossier N"] == dossier_sel].iloc[0]
-    idx = row.name
-
-    montant = total_acomptes(row)
-    etat_actuel = escrow_state(row)
-
-    st.info(f"État actuel : **{etat_actuel}** — ${montant:,.2f}")
-
-    if etat_actuel == "actif":
-        if st.button("➡️ Passer en Escrow à réclamer"):
-            log_escrow_history(
-                db,
-                row,
-                "actif",
-                "a_reclamer",
-                montant,
-                "Dossier accepté / refusé / annulé",
-            )
-            df.loc[idx, ["Escrow", "Escrow_a_reclamer"]] = [False, True]
-            save_database(db)
-            st.rerun()
-
-    elif etat_actuel == "a_reclamer":
-        if st.button("✅ Marquer comme Escrow réclamé"):
-            log_escrow_history(
-                db,
-                row,
-                "a_reclamer",
-                "reclame",
-                montant,
-                "Réclamation manuelle",
-            )
-            df.loc[idx, ["Escrow_a_reclamer", "Escrow_reclame"]] = [False, True]
-            save_database(db)
-            st.rerun()
-
-    else:
-        st.success("Escrow déjà réclamé.")
+escrow_df = pd.DataFrame(rows)
 
 # =====================================================
-# TAB 2 — HISTORIQUE ESCROW
+# KPI ANCIENNETÉ
 # =====================================================
-with tab2:
-    st.subheader("🕓 Historique complet des escrows")
+st.subheader("📊 KPI Escrow à réclamer")
 
-    if not history:
-        st.info("Aucun historique enregistré.")
-        st.stop()
+c1, c2, c3, c4 = st.columns(4)
 
-    hist_df = pd.DataFrame(history)
+total = escrow_df["Montant escrow"].sum() if not escrow_df.empty else 0
+c1.metric("Total Escrow à réclamer", f"${total:,.2f}")
+c2.metric("> 30 jours", f"${escrow_df[escrow_df['Ancienneté (jours)'] > 30]['Montant escrow'].sum():,.2f}")
+c3.metric("> 60 jours", f"${escrow_df[escrow_df['Ancienneté (jours)'] > 60]['Montant escrow'].sum():,.2f}")
+c4.metric("> 90 jours", f"${escrow_df[escrow_df['Ancienneté (jours)'] > 90]['Montant escrow'].sum():,.2f}")
 
-    hist_df["Montant"] = hist_df["Montant"].astype(float)
+# =====================================================
+# TABLEAU DÉTAILLÉ
+# =====================================================
+st.markdown("---")
+st.subheader("📋 Détails des escrows à réclamer")
 
+if escrow_df.empty:
+    st.info("Aucun escrow à réclamer.")
+else:
     st.dataframe(
-        hist_df.sort_values("Date", ascending=False),
-        use_container_width=True,
+        escrow_df.sort_values("Ancienneté (jours)", ascending=False),
+        use_container_width=True
     )
 
-    st.metric(
-        "Total historique escrow",
-        f"${hist_df['Montant'].sum():,.2f}"
-    )
+# =====================================================
+# PRÉPARATION ALERTES (VISUEL)
+# =====================================================
+st.markdown("---")
+st.subheader("🚨 Alertes visuelles")
+
+late_60 = escrow_df[escrow_df["Ancienneté (jours)"] >= 60]
+
+if not late_60.empty:
+    st.error(f"⚠️ {len(late_60)} dossier(s) avec escrow > 60 jours")
+else:
+    st.success("✔ Aucun escrow critique (> 60 jours)")
