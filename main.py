@@ -9,7 +9,7 @@ from utils.sidebar import render_sidebar
 # ---------------------------------------------------------
 # CONFIG PAGE
 # ---------------------------------------------------------
-st.set_page_config(page_title="Berenbaum Law App", page_icon="📁", layout="wide")
+st.set_page_config(page_title="Berenbaum Law", page_icon="📁", layout="wide")
 
 # ---------------------------------------------------------
 # SIDEBAR
