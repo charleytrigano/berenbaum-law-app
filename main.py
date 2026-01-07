@@ -34,7 +34,7 @@ except Exception as e:
     st.error(f"Erreur lors du chargement de Dropbox : {e}")
     db = {"clients": [], "visa": [], "escrow": [], "compta": []}
 
-st.title("📊 Tableau de bord – Berenbaum Law App")
+st.title("📊 Tableau de bord – Berenbaum Law")
 st.write("Bienvenue dans l'application professionnelle de gestion des dossiers.")
 
 
